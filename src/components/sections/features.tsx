@@ -1,0 +1,114 @@
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { 
+  Calendar, 
+  TrendingUp, 
+  Zap, 
+  Shield, 
+  Globe, 
+  Clock,
+  BarChart3,
+  Users
+} from "lucide-react";
+
+export function Features() {
+  const features = [
+    {
+      icon: Calendar,
+      title: "Multi-Source Data Ingestion",
+      description: "Automatically pulls events from Ticketmaster, Eventbrite, Meetup, PredictHQ, and city calendars.",
+    },
+    {
+      icon: Shield,
+      title: "Smart Deduplication",
+      description: "Advanced algorithms detect and merge duplicate events across platforms for accurate analysis.",
+    },
+    {
+      icon: TrendingUp,
+      title: "Conflict Score Engine",
+      description: "Proprietary scoring system calculates risk levels based on audience overlap and event proximity.",
+    },
+    {
+      icon: Globe,
+      title: "Global City Coverage",
+      description: "Start with major tech hubs and expand to cover events worldwide with local data sources.",
+    },
+    {
+      icon: Clock,
+      title: "Real-Time Updates",
+      description: "Continuous monitoring ensures your analysis stays current as new events are announced.",
+    },
+    {
+      icon: BarChart3,
+      title: "Analytics Dashboard",
+      description: "Track your event performance and see how date optimization impacts attendance.",
+    },
+    {
+      icon: Zap,
+      title: "API Integration",
+      description: "Embed conflict analysis directly into your existing event management tools.",
+    },
+    {
+      icon: Users,
+      title: "Team Collaboration",
+      description: "Share analyses with your team and stakeholders for data-driven decision making.",
+    },
+  ];
+
+  return (
+    <section id="features" className="py-20 bg-gray-50">
+      <div className="container mx-auto px-4">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            Powerful Features for Event Success
+          </h2>
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            Everything you need to make data-driven decisions about your event dates
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {features.map((feature, index) => (
+            <Card key={index} className="h-full">
+              <CardHeader>
+                <feature.icon className="h-8 w-8 text-primary mb-2" />
+                <CardTitle className="text-lg">{feature.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-sm">
+                  {feature.description}
+                </CardDescription>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <div className="mt-16 text-center">
+          <Card className="max-w-4xl mx-auto">
+            <CardHeader>
+              <CardTitle className="text-2xl">Ready to Optimize Your Event Dates?</CardTitle>
+              <CardDescription className="text-lg">
+                Join event organizers who've increased attendance by 15% with Oslavu
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+                <div>
+                  <div className="text-3xl font-bold text-primary">15%</div>
+                  <div className="text-sm text-muted-foreground">Average attendance increase</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold text-primary">30+</div>
+                  <div className="text-sm text-muted-foreground">Event sources monitored</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold text-primary">24/7</div>
+                  <div className="text-sm text-muted-foreground">Real-time conflict monitoring</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </section>
+  );
+}
