@@ -1,112 +1,88 @@
-import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { createServerClient } from "@/lib/supabase";
-import { conflictAnalysisService } from "@/lib/services/conflict-analysis";
-
-const analyzeRequestSchema = z.object({
-  city: z.string().min(2),
-  category: z.string().min(1),
-  subcategory: z.string().optional(),
-  expectedAttendees: z.number().min(1),
-  preferredDates: z.array(z.string()),
-  dateRange: z.object({
-    start: z.string(),
-    end: z.string(),
-  }),
-});
+// src/app/api/analyze/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { conflictAnalysisService } from '@/lib/services/conflict-analysis';
+import { AnalysisRequest } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const validatedData = analyzeRequestSchema.parse(body);
-
-    // For now, return mock data
-    // TODO: Implement actual conflict analysis with external APIs
-    const mockAnalysis = {
-      id: crypto.randomUUID(),
-      city: validatedData.city,
-      category: validatedData.category,
-      preferredDates: validatedData.preferredDates,
-      expectedAttendees: validatedData.expectedAttendees,
-      results: [
-        {
-          date: "2024-03-15",
-          score: 15,
-          risk: "low" as const,
-          conflictingEvents: [],
-          recommendation: "Excellent choice! No major conflicts detected.",
-        },
-        {
-          date: "2024-03-22",
-          score: 22,
-          risk: "low" as const,
-          conflictingEvents: [
-            {
-              id: "1",
-              title: "Local Startup Meetup",
-              date: "2024-03-22",
-              category: "Technology",
-              expectedAttendees: 50,
-              impact: 10,
-              reason: "Small overlap in tech audience"
-            }
-          ],
-          recommendation: "Good option with minimal conflicts.",
-        },
-        {
-          date: "2024-03-08",
-          score: 85,
-          risk: "high" as const,
-          conflictingEvents: [
-            {
-              id: "2",
-              title: "TechCrunch Disrupt",
-              date: "2024-03-08",
-              category: "Technology",
-              expectedAttendees: 5000,
-              impact: 60,
-              reason: "Major competing conference"
-            },
-            {
-              id: "3",
-              title: "Spring Music Festival",
-              date: "2024-03-09",
-              category: "Entertainment",
-              expectedAttendees: 10000,
-              impact: 25,
-              reason: "Large local event affecting city capacity"
-            }
-          ],
-          recommendation: "Avoid this date due to major conflicts.",
-        }
-      ],
-      createdAt: new Date().toISOString(),
-    };
-
-    return NextResponse.json({
-      data: mockAnalysis,
-      message: "Conflict analysis completed successfully",
-    });
-
-  } catch (error) {
-    console.error("Error in conflict analysis:", error);
+    const body: AnalysisRequest = await request.json();
     
-    if (error instanceof z.ZodError) {
+    // Validate required fields
+    if (!body.city || !body.category || !body.expectedAttendees || !body.dateRange) {
       return NextResponse.json(
-        {
-          error: "Invalid request data",
-          details: error.errors,
-        },
+        { error: 'Missing required fields: city, category, expectedAttendees, dateRange' },
         { status: 400 }
       );
     }
 
+    // Validate date range
+    const startDate = new Date(body.dateRange.start);
+    const endDate = new Date(body.dateRange.end);
+    
+    if (startDate >= endDate) {
+      return NextResponse.json(
+        { error: 'Start date must be before end date' },
+        { status: 400 }
+      );
+    }
+
+    if (startDate < new Date()) {
+      return NextResponse.json(
+        { error: 'Start date cannot be in the past' },
+        { status: 400 }
+      );
+    }
+
+    // Perform conflict analysis
+    console.log('Starting conflict analysis for:', {
+      city: body.city,
+      category: body.category,
+      dateRange: body.dateRange,
+    });
+
+    const analysis = await conflictAnalysisService.analyzeConflicts(body);
+    
+    console.log('Analysis completed:', {
+      resultsCount: analysis.results.length,
+      avgScore: analysis.results.reduce((sum, r) => sum + r.score, 0) / analysis.results.length,
+    });
+
+    return NextResponse.json({
+      data: analysis,
+      message: 'Analysis completed successfully'
+    });
+
+  } catch (error) {
+    console.error('Analysis error:', error);
+    
+    // Handle specific API errors
+    if (error instanceof Error && error.message.includes('TICKETMASTER_API_KEY')) {
+      return NextResponse.json(
+        { error: 'Ticketmaster API configuration error' },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
-      {
-        error: "Internal server error",
-        message: "Failed to analyze conflicts",
+      { 
+        error: 'Analysis failed',
+        details: process.env.NODE_ENV === 'development' ? 
+          (error instanceof Error ? error.message : 'Unknown error') : 
+          'Internal server error'
       },
       { status: 500 }
     );
   }
+}
+
+// Health check endpoint
+export async function GET() {
+  return NextResponse.json({
+    message: 'Conflict Analysis API is running',
+    timestamp: new Date().toISOString(),
+    services: {
+      ticketmaster: !!process.env.TICKETMASTER_API_KEY,
+      // Add other service checks here
+    }
+  });
 }
