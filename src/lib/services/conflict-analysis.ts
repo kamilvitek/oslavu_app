@@ -1,290 +1,323 @@
-// src/lib/services/conflict-analysis.ts
-import { AnalysisRequest, ConflictAnalysis, ConflictScore, ConflictingEvent, Event } from "@/types";
-import { ticketmasterService } from './ticketmaster';
+import { Event } from '@/types';
 
-class ConflictAnalysisService {
-  async analyzeConflicts(request: AnalysisRequest): Promise<ConflictAnalysis> {
-    const results: ConflictScore[] = [];
-    
-    // Fetch competing events from external APIs
-    const competingEvents = await this.fetchCompetingEvents(request);
-    
-    // Generate analysis for each date in the range
-    const startDate = new Date(request.dateRange.start);
-    const endDate = new Date(request.dateRange.end);
-    
-    for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-      const dateString = date.toISOString().split('T')[0];
-      
-      // Skip if not in preferred dates (if specified)
-      if (request.preferredDates.length > 0 && !request.preferredDates.includes(dateString)) {
-        continue;
-      }
-      
-      const conflictsForDate = this.findConflictsForDate(dateString, competingEvents, request);
-      const score = this.calculateConflictScore(conflictsForDate, request.expectedAttendees);
-      const risk = this.determineRiskLevel(score);
-      
-      results.push({
-        date: dateString,
-        score,
-        risk,
-        conflictingEvents: conflictsForDate,
-        recommendation: this.generateRecommendation(score, risk, conflictsForDate.length),
-      });
-    }
-    
-    return {
-      id: crypto.randomUUID(),
-      userId: 'mock-user-id', // Will come from auth
-      city: request.city,
-      category: request.category,
-      preferredDates: request.preferredDates,
-      expectedAttendees: request.expectedAttendees,
-      results: results.sort((a, b) => a.score - b.score), // Sort by best scores first
-      createdAt: new Date().toISOString(),
-    };
-  }
+export interface ConflictAnalysisResult {
+  recommendedDates: DateRecommendation[];
+  highRiskDates: DateRecommendation[];
+  allEvents: Event[];
+  analysisDate: string;
+}
 
+export interface DateRecommendation {
+  startDate: string;
+  endDate: string;
+  conflictScore: number;
+  riskLevel: 'Low' | 'Medium' | 'High';
+  competingEvents: Event[];
+  reasons: string[];
+}
+
+export interface ConflictAnalysisParams {
+  city: string;
+  category: string;
+  subcategory?: string;
+  expectedAttendees: number;
+  startDate: string; // preferred start date
+  endDate: string; // preferred end date
+  dateRangeStart: string; // analysis range start
+  dateRangeEnd: string; // analysis range end
+}
+
+export class ConflictAnalysisService {
   /**
-   * Fetch competing events from all external sources
+   * Analyze conflicts for event dates
    */
-  private async fetchCompetingEvents(request: AnalysisRequest): Promise<Event[]> {
-    const allEvents: Event[] = [];
-    
+  async analyzeConflicts(params: ConflictAnalysisParams): Promise<ConflictAnalysisResult> {
     try {
-      // Fetch from Ticketmaster
-      const ticketmasterEvents = await this.fetchTicketmasterEvents(
-        request.city,
-        request.dateRange,
-        request.category
+      // Fetch events from Ticketmaster API
+      const events = await this.fetchEventsFromAPI(params);
+      
+      // Generate date recommendations
+      const dateRecommendations = this.generateDateRecommendations(
+        params,
+        events
       );
-      allEvents.push(...ticketmasterEvents);
-      
-      // TODO: Add other sources (Eventbrite, Meetup, PredictHQ)
-      // const eventbriteEvents = await this.fetchEventbriteEvents(request.city, request.dateRange);
-      // allEvents.push(...eventbriteEvents);
-      
+
+      // Categorize recommendations
+      const recommendedDates = dateRecommendations
+        .filter(rec => rec.riskLevel === 'Low')
+        .slice(0, 3); // Top 3 recommendations
+
+      const highRiskDates = dateRecommendations
+        .filter(rec => rec.riskLevel === 'High')
+        .slice(0, 3); // Top 3 high risk dates
+
+      return {
+        recommendedDates,
+        highRiskDates,
+        allEvents: events,
+        analysisDate: new Date().toISOString()
+      };
     } catch (error) {
-      console.error('Error fetching competing events:', error);
-      // Continue with empty array if API fails
+      console.error('Error in conflict analysis:', error);
+      throw error;
     }
-    
-    return this.deduplicateEvents(allEvents);
   }
 
   /**
    * Fetch events from Ticketmaster API
    */
-  private async fetchTicketmasterEvents(
-    city: string,
-    dateRange: { start: string; end: string },
-    category?: string
-  ): Promise<Event[]> {
-    try {
-      return await ticketmasterService.getEventsForCity(
-        city,
-        dateRange.start,
-        dateRange.end,
-        category
-      );
-    } catch (error) {
-      console.error('Error fetching Ticketmaster events:', error);
-      return [];
+  private async fetchEventsFromAPI(params: ConflictAnalysisParams): Promise<Event[]> {
+    // Validate required parameters
+    if (!params.city) {
+      throw new Error('City is required');
     }
+    
+    if (!params.dateRangeStart || !params.dateRangeEnd) {
+      throw new Error('Analysis date range is required');
+    }
+
+    const queryParams = new URLSearchParams({
+      city: params.city,
+      startDate: params.dateRangeStart,
+      endDate: params.dateRangeEnd,
+      category: params.category,
+      size: '100'
+    });
+
+    console.log('Fetching events with params:', queryParams.toString());
+
+    const response = await fetch(`/api/analyze/events/ticketmaster?${queryParams.toString()}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      throw new Error(`Failed to fetch events: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return result.data || [];
   }
 
   /**
-   * Find conflicting events for a specific date
+   * Generate date recommendations based on events and parameters
    */
-  private findConflictsForDate(
-    targetDate: string,
-    allEvents: Event[],
-    request: AnalysisRequest
-  ): ConflictingEvent[] {
-    const conflicts: ConflictingEvent[] = [];
-    const targetDateObj = new Date(targetDate);
+  private generateDateRecommendations(
+    params: ConflictAnalysisParams,
+    events: Event[]
+  ): DateRecommendation[] {
+    const recommendations: DateRecommendation[] = [];
     
-    for (const event of allEvents) {
-      const eventDate = new Date(event.date);
-      const endDate = event.endDate ? new Date(event.endDate) : eventDate;
+    // Generate potential dates around the preferred dates
+    const potentialDates = this.generatePotentialDates(params);
+    
+    for (const dateRange of potentialDates) {
+      const competingEvents = this.findCompetingEvents(
+        dateRange.startDate,
+        dateRange.endDate,
+        events,
+        params
+      );
+
+      const conflictScore = this.calculateConflictScore(
+        competingEvents,
+        params.expectedAttendees,
+        params.category
+      );
+
+      const riskLevel = this.determineRiskLevel(conflictScore);
+      const reasons = this.generateReasons(competingEvents, conflictScore);
+
+      recommendations.push({
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        conflictScore,
+        riskLevel,
+        competingEvents,
+        reasons
+      });
+    }
+
+    // Sort by conflict score (ascending for recommendations, descending for high risk)
+    return recommendations.sort((a, b) => a.conflictScore - b.conflictScore);
+  }
+
+  /**
+   * Generate potential dates around the preferred dates
+   */
+  private generatePotentialDates(params: ConflictAnalysisParams): Array<{startDate: string, endDate: string}> {
+    const dates: Array<{startDate: string, endDate: string}> = [];
+    const preferredStart = new Date(params.startDate);
+    const preferredEnd = new Date(params.endDate);
+    const eventDuration = Math.ceil((preferredEnd.getTime() - preferredStart.getTime()) / (1000 * 60 * 60 * 24));
+
+    // Generate dates ±7 days around preferred dates
+    for (let i = -7; i <= 7; i++) {
+      const startDate = new Date(preferredStart);
+      startDate.setDate(startDate.getDate() + i);
       
-      // Check if dates overlap (including multi-day events)
-      if (targetDateObj >= eventDate && targetDateObj <= endDate) {
-        const impact = this.calculateEventImpact(event, request);
-        
-        // Only include events with significant impact
-        if (impact > 10) {
-          conflicts.push({
-            id: event.id,
-            title: event.title,
-            date: event.date,
-            category: event.category,
-            expectedAttendees: event.expectedAttendees,
-            impact,
-            reason: this.generateConflictReason(event, request),
-          });
-        }
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + eventDuration);
+
+      // Only include dates within the analysis range
+      if (startDate >= new Date(params.dateRangeStart) && 
+          endDate <= new Date(params.dateRangeEnd)) {
+        dates.push({
+          startDate: startDate.toISOString().split('T')[0],
+          endDate: endDate.toISOString().split('T')[0]
+        });
       }
     }
-    
-    return conflicts.sort((a, b) => b.impact - a.impact); // Sort by highest impact first
+
+    return dates;
   }
 
   /**
-   * Calculate impact score for a specific event
+   * Find events that compete with the proposed date range
    */
-  private calculateEventImpact(event: Event, request: AnalysisRequest): number {
-    let impact = 0;
-    
-    // Category match (highest impact)
-    if (event.category === request.category) {
-      impact += 60;
-    } else if (this.areCategoriesRelated(event.category, request.category)) {
-      impact += 30;
+  private findCompetingEvents(
+    startDate: string,
+    endDate: string,
+    events: Event[],
+    params: ConflictAnalysisParams
+  ): Event[] {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    return events.filter(event => {
+      const eventDate = new Date(event.date);
+      
+      // Check if event overlaps with our date range
+      const overlaps = eventDate >= start && eventDate <= end;
+      
+      // Check if it's in the same category or related categories
+      const sameCategory = event.category === params.category || 
+                          this.isRelatedCategory(event.category, params.category);
+      
+      // Check if it's a significant event (has venue, good attendance potential)
+      const isSignificant = event.venue && event.venue.length > 0;
+
+      return overlaps && (sameCategory || isSignificant);
+    });
+  }
+
+  /**
+   * Calculate conflict score based on competing events
+   */
+  private calculateConflictScore(
+    competingEvents: Event[],
+    expectedAttendees: number,
+    category: string
+  ): number {
+    if (competingEvents.length === 0) {
+      return 0;
     }
-    
-    // Subcategory match
-    if (event.subcategory === request.subcategory) {
-      impact += 20;
+
+    let score = 0;
+
+    for (const event of competingEvents) {
+      // Base score for any competing event
+      score += 20;
+
+      // Higher score for same category
+      if (event.category === category) {
+        score += 30;
+      }
+
+      // Higher score for events with venues (more significant)
+      if (event.venue) {
+        score += 15;
+      }
+
+      // Higher score for events with images (more professional/promoted)
+      if (event.imageUrl) {
+        score += 10;
+      }
+
+      // Higher score for events with descriptions (more detailed/promoted)
+      if (event.description && event.description.length > 50) {
+        score += 5;
+      }
     }
-    
-    // Audience size consideration
-    if (event.expectedAttendees) {
-      const audienceRatio = event.expectedAttendees / request.expectedAttendees;
-      if (audienceRatio > 0.5) impact += 15; // Large competing event
-      else if (audienceRatio > 0.2) impact += 8; // Medium competing event
+
+    // Adjust based on expected attendees (larger events are more affected by conflicts)
+    if (expectedAttendees > 1000) {
+      score *= 1.2;
+    } else if (expectedAttendees > 500) {
+      score *= 1.1;
     }
-    
-    // Same venue/city (already filtered by city in the request)
-    impact += 5;
-    
-    return Math.min(impact, 100); // Cap at 100
+
+    // Cap the score at 100
+    return Math.min(score, 100);
+  }
+
+  /**
+   * Determine risk level based on conflict score
+   */
+  private determineRiskLevel(conflictScore: number): 'Low' | 'Medium' | 'High' {
+    if (conflictScore <= 30) return 'Low';
+    if (conflictScore <= 60) return 'Medium';
+    return 'High';
+  }
+
+  /**
+   * Generate human-readable reasons for the conflict score
+   */
+  private generateReasons(competingEvents: Event[], conflictScore: number): string[] {
+    const reasons: string[] = [];
+
+    if (competingEvents.length === 0) {
+      reasons.push('No major competing events found');
+      return reasons;
+    }
+
+    // Group events by category
+    const eventsByCategory = competingEvents.reduce((acc, event) => {
+      acc[event.category] = (acc[event.category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Add reasons based on competing events
+    for (const [category, count] of Object.entries(eventsByCategory)) {
+      if (count === 1) {
+        reasons.push(`${category} event on same date`);
+      } else {
+        reasons.push(`${count} ${category} events during period`);
+      }
+    }
+
+    // Add specific event names for high-profile events
+    const highProfileEvents = competingEvents.filter(event => 
+      event.venue && event.imageUrl
+    ).slice(0, 2);
+
+    for (const event of highProfileEvents) {
+      reasons.push(`${event.title} overlaps`);
+    }
+
+    // Add general risk assessment
+    if (conflictScore > 70) {
+      reasons.push('High competition for audience attention');
+    } else if (conflictScore > 40) {
+      reasons.push('Moderate competition expected');
+    }
+
+    return reasons.slice(0, 3); // Limit to 3 reasons
   }
 
   /**
    * Check if two categories are related
    */
-  private areCategoriesRelated(category1: string, category2: string): boolean {
+  private isRelatedCategory(category1: string, category2: string): boolean {
     const relatedCategories: Record<string, string[]> = {
       'Technology': ['Business', 'Education'],
       'Business': ['Technology', 'Finance', 'Marketing'],
-      'Marketing': ['Business', 'Technology'],
-      'Healthcare': ['Education', 'Business'],
-      'Education': ['Technology', 'Healthcare', 'Business'],
-      'Finance': ['Business', 'Technology'],
       'Entertainment': ['Arts & Culture'],
       'Arts & Culture': ['Entertainment'],
+      'Sports': ['Entertainment'],
     };
-    
-    return relatedCategories[category1]?.includes(category2) || false;
-  }
 
-  /**
-   * Calculate overall conflict score for a date
-   */
-  private calculateConflictScore(conflicts: ConflictingEvent[], expectedAttendees: number): number {
-    if (conflicts.length === 0) return 0;
-    
-    // Base score from highest impact event
-    const maxImpact = Math.max(...conflicts.map(c => c.impact));
-    let score = maxImpact;
-    
-    // Add penalty for multiple conflicts
-    if (conflicts.length > 1) {
-      score += Math.min(conflicts.length * 5, 20);
-    }
-    
-    // Add penalty for large competing events
-    const largeEvents = conflicts.filter(c => 
-      c.expectedAttendees && c.expectedAttendees > expectedAttendees * 0.5
-    );
-    score += largeEvents.length * 10;
-    
-    return Math.min(score, 100);
-  }
-
-  /**
-   * Determine risk level based on score
-   */
-  private determineRiskLevel(score: number): 'low' | 'medium' | 'high' {
-    if (score <= 30) return 'low';
-    if (score <= 70) return 'medium';
-    return 'high';
-  }
-
-  /**
-   * Generate human-readable recommendation
-   */
-  private generateRecommendation(score: number, risk: string, conflictCount: number): string {
-    if (risk === 'low') {
-      return conflictCount === 0 
-        ? "Excellent choice! No significant conflicts detected."
-        : "Good choice! Minor conflicts that shouldn't significantly impact attendance.";
-    } else if (risk === 'medium') {
-      return `Moderate risk detected. ${conflictCount} competing event${conflictCount > 1 ? 's' : ''} found. Consider monitoring competitor marketing closely.`;
-    } else {
-      return `High risk! ${conflictCount} major conflict${conflictCount > 1 ? 's' : ''} detected. Strongly consider alternative dates.`;
-    }
-  }
-
-  /**
-   * Generate reason for conflict
-   */
-  private generateConflictReason(event: Event, request: AnalysisRequest): string {
-    const reasons = [];
-    
-    if (event.category === request.category) {
-      reasons.push('same category');
-    } else if (this.areCategoriesRelated(event.category, request.category)) {
-      reasons.push('related category');
-    }
-    
-    if (event.subcategory === request.subcategory) {
-      reasons.push('same subcategory');
-    }
-    
-    if (event.expectedAttendees && event.expectedAttendees > request.expectedAttendees * 0.5) {
-      reasons.push('large audience overlap');
-    }
-    
-    return reasons.length > 0 ? reasons.join(', ') : 'potential audience overlap';
-  }
-
-  /**
-   * Remove duplicate events across sources
-   */
-  private deduplicateEvents(events: Event[]): Event[] {
-    const seen = new Set<string>();
-    const deduplicated: Event[] = [];
-    
-    for (const event of events) {
-      // Create a key based on event details for deduplication
-      const key = `${event.title.toLowerCase()}_${event.date}_${event.city.toLowerCase()}`;
-      
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduplicated.push(event);
-      }
-    }
-    
-    return deduplicated;
-  }
-
-  // Placeholder methods for other API integrations
-  async fetchEventbriteEvents(city: string, dateRange: { start: string; end: string }) {
-    // TODO: Implement Eventbrite API integration
-    return [];
-  }
-
-  async fetchMeetupEvents(city: string, dateRange: { start: string; end: string }) {
-    // TODO: Implement Meetup API integration
-    return [];
-  }
-
-  async fetchPredictHQEvents(city: string, dateRange: { start: string; end: string }) {
-    // TODO: Implement PredictHQ API integration
-    return [];
+    return relatedCategories[category1]?.includes(category2) || 
+           relatedCategories[category2]?.includes(category1) || false;
   }
 }
 

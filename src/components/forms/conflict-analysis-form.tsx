@@ -23,7 +23,11 @@ const analysisSchema = z.object({
 
 type AnalysisForm = z.infer<typeof analysisSchema>;
 
-export function ConflictAnalysisForm() {
+interface ConflictAnalysisFormProps {
+  onAnalysisComplete?: (data: AnalysisForm) => void;
+}
+
+export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFormProps) {
   const [loading, setLoading] = useState(false);
 
   const {
@@ -37,14 +41,36 @@ export function ConflictAnalysisForm() {
   const onSubmit = async (data: AnalysisForm) => {
     setLoading(true);
     try {
-      // TODO: Implement API call to analyze conflicts
       console.log("Analysis request:", data);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Call the analysis complete callback if provided
+      if (onAnalysisComplete) {
+        await onAnalysisComplete(data);
+      } else {
+        // Fallback: Call Ticketmaster API directly
+        const queryParams = new URLSearchParams({
+          city: data.city,
+          startDate: data.dateRangeStart,
+          endDate: data.dateRangeEnd,
+          category: data.category,
+          size: '50'
+        });
+
+        const response = await fetch(`/api/analyze/events/ticketmaster?${queryParams.toString()}`);
+        
+        if (!response.ok) {
+          throw new Error(`API request failed: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        console.log("Ticketmaster API response:", result);
+        
+        alert(`Found ${result.count} events in ${data.city} between ${data.dateRangeStart} and ${data.dateRangeEnd}. Check console for details.`);
+      }
       
     } catch (error) {
       console.error("Error analyzing conflicts:", error);
+      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

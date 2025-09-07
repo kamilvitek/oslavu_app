@@ -14,10 +14,21 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '0');
     const size = parseInt(searchParams.get('size') || '20');
 
+    console.log('API Request params:', { city, startDate, endDate, category, keyword, page, size });
+
     if (!city && !keyword) {
       return NextResponse.json(
         { error: 'Either city or keyword parameter is required' },
         { status: 400 }
+      );
+    }
+
+    // Check if API key is configured
+    if (!process.env.TICKETMASTER_API_KEY) {
+      console.error('TICKETMASTER_API_KEY is not configured');
+      return NextResponse.json(
+        { error: 'Ticketmaster API key is not configured' },
+        { status: 500 }
       );
     }
 

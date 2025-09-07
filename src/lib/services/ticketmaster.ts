@@ -101,7 +101,10 @@ export class TicketmasterService {
       });
 
       if (!response.ok) {
-        throw new Error(`Ticketmaster API error: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Ticketmaster API Error Response:', errorText);
+        console.error('Request URL:', url);
+        throw new Error(`Ticketmaster API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data: TicketmasterResponse = await response.json();
