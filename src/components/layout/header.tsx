@@ -24,7 +24,13 @@ export function Header() {
             About
           </Link>
           <Link href="/test-ticketmaster" className="text-muted-foreground hover:text-primary transition-colors">
-            Test API
+            Test Ticketmaster
+          </Link>
+          <Link href="/test-eventbrite" className="text-muted-foreground hover:text-primary transition-colors">
+            Test Eventbrite
+          </Link>
+          <Link href="/test-conflict-analysis" className="text-muted-foreground hover:text-primary transition-colors">
+            Test Analysis
           </Link>
         </nav>
 
