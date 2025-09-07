@@ -15,7 +15,7 @@ export function Features() {
     {
       icon: Calendar,
       title: "Multi-Source Data Ingestion",
-      description: "Automatically pulls events from Ticketmaster, Eventbrite, Meetup, PredictHQ, and city calendars.",
+      description: "Automatically pulls events from Ticketmaster and Eventbrite",
     },
     {
       icon: Shield,
@@ -36,21 +36,6 @@ export function Features() {
       icon: Clock,
       title: "Real-Time Updates",
       description: "Continuous monitoring ensures your analysis stays current as new events are announced.",
-    },
-    {
-      icon: BarChart3,
-      title: "Analytics Dashboard",
-      description: "Track your event performance and see how date optimization impacts attendance.",
-    },
-    {
-      icon: Zap,
-      title: "API Integration",
-      description: "Embed conflict analysis directly into your existing event management tools.",
-    },
-    {
-      icon: Users,
-      title: "Team Collaboration",
-      description: "Share analyses with your team and stakeholders for data-driven decision making.",
     },
   ];
 

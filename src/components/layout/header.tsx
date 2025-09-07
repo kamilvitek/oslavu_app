@@ -17,9 +17,9 @@ export function Header() {
           <Link href="#features" className="text-muted-foreground hover:text-primary transition-colors">
             Features
           </Link>
-          <Link href="#pricing" className="text-muted-foreground hover:text-primary transition-colors">
+          {/* <Link href="#pricing" className="text-muted-foreground hover:text-primary transition-colors">
             Pricing
-          </Link>
+          </Link> */}
           <Link href="#about" className="text-muted-foreground hover:text-primary transition-colors">
             About
           </Link>
@@ -35,11 +35,11 @@ export function Header() {
         </nav>
 
         <div className="flex items-center space-x-4">
-          <Button variant="ghost" size="sm">
+          {/* <Button variant="ghost" size="sm">
             Sign In
-          </Button>
-          <Button size="sm">
-            Get Started
+          </Button> */}
+          <Button size="sm" asChild>
+            <Link href="/#conflict-analyzer">Get your date</Link>
           </Button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { Calendar, TrendingUp, Users, Shield } from "lucide-react";
 
 export function Hero() {
@@ -12,17 +13,16 @@ export function Hero() {
           </h1>
           
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            Data-backed conflict analysis to avoid competing events, maximize attendance, 
-            and ensure your conference stands out.
+          Oslavu scores your event date against conferences, meetups, and festivals in your city—backed by data-driven conflict analysis to maximize attendance and ensure your event stands out.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Button size="lg" className="text-lg px-8 py-3">
-              Analyze Your Date
+            <Button size="lg" className="text-lg px-8 py-3" asChild>
+              <Link href="#conflict-analyzer">Get Your Date</Link>
             </Button>
-            <Button variant="outline" size="lg" className="text-lg px-8 py-3">
+            {/* <Button variant="outline" size="lg" className="text-lg px-8 py-3">
               View Demo
-            </Button>
+            </Button> */}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-3xl mx-auto">
@@ -41,7 +41,7 @@ export function Hero() {
             <div className="flex flex-col items-center">
               <Shield className="h-12 w-12 text-primary mb-4" />
               <h3 className="font-semibold text-lg mb-2">Data-Driven</h3>
-              <p className="text-gray-600 text-sm">Evidence-based recommendations for success</p>
+              <p className="text-gray-600 text-sm">Data-based recommendations for success</p>
             </div>
           </div>
         </div>
