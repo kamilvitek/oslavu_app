@@ -40,11 +40,30 @@ export async function POST(request: NextRequest) {
       dateRange: body.dateRange,
     });
 
-    const analysis = await conflictAnalysisService.analyzeConflicts(body);
+    // Map incoming request to service params
+    const preferredStart = body.preferredDates?.[0] || body.dateRange.start;
+    const preferredEnd = body.preferredDates?.[1] || preferredStart;
+
+    const analysis = await conflictAnalysisService.analyzeConflicts({
+      city: body.city,
+      category: body.category,
+      subcategory: body.subcategory,
+      expectedAttendees: body.expectedAttendees,
+      startDate: preferredStart,
+      endDate: preferredEnd,
+      dateRangeStart: body.dateRange.start,
+      dateRangeEnd: body.dateRange.end,
+    });
     
     console.log('Analysis completed:', {
-      resultsCount: analysis.results.length,
-      avgScore: analysis.results.reduce((sum, r) => sum + r.score, 0) / analysis.results.length,
+      recommendations: analysis.recommendedDates.length,
+      highRisk: analysis.highRiskDates.length,
+      eventsConsidered: analysis.allEvents.length,
+      avgScore: (() => {
+        const all = [...analysis.recommendedDates, ...analysis.highRiskDates];
+        if (all.length === 0) return 0;
+        return all.reduce((sum, r) => sum + r.conflictScore, 0) / all.length;
+      })(),
     });
 
     return NextResponse.json({
