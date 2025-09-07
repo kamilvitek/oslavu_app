@@ -201,7 +201,7 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
       </div>
 
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Analyzing..." : "Analyze Conflicts"}
+        {loading ? "Analyzing..." : "Get your date"}
       </Button>
     </form>
   );

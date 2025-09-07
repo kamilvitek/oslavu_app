@@ -32,11 +32,6 @@ export function Features() {
       title: "Global City Coverage",
       description: "Start with major tech hubs and expand to cover events worldwide with local data sources.",
     },
-    {
-      icon: Clock,
-      title: "Real-Time Updates",
-      description: "Continuous monitoring ensures your analysis stays current as new events are announced.",
-    },
   ];
 
   return (
@@ -51,7 +46,7 @@ export function Features() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {features.map((feature, index) => (
             <Card key={index} className="h-full">
               <CardHeader>
@@ -68,21 +63,17 @@ export function Features() {
         </div>
 
         <div className="mt-16 text-center">
-          <Card className="max-w-4xl mx-auto">
+          <Card className="w-full mx-auto">
             <CardHeader>
               <CardTitle className="text-2xl">Ready to Optimize Your Event Dates?</CardTitle>
               <CardDescription className="text-lg">
-                Join event organizers who've increased attendance by 15% with Oslavu
+                Join event organizers who wants to increase attendance and revenue with Oslavu
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 text-center justify-items-center">
                 <div>
-                  <div className="text-3xl font-bold text-primary">15%</div>
-                  <div className="text-sm text-muted-foreground">Average attendance increase</div>
-                </div>
-                <div>
-                  <div className="text-3xl font-bold text-primary">30+</div>
+                  <div className="text-3xl font-bold text-primary">2</div>
                   <div className="text-sm text-muted-foreground">Event sources monitored</div>
                 </div>
                 <div>
