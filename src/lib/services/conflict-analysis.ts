@@ -97,10 +97,14 @@ export class ConflictAnalysisService {
 
     console.log('Fetching events with params:', queryParams.toString());
 
-    // Fetch from both Ticketmaster and Eventbrite in parallel
-    const [ticketmasterResponse, eventbriteResponse] = await Promise.allSettled([
+    // Fetch from Ticketmaster, Eventbrite, and Brno ArcGIS in parallel
+    const [ticketmasterResponse, eventbriteResponse, brnoResponse] = await Promise.allSettled([
       fetch(`/api/analyze/events/ticketmaster?${queryParams.toString()}`),
-      fetch(`/api/analyze/events/eventbrite?${queryParams.toString()}`)
+      fetch(`/api/analyze/events/eventbrite?${queryParams.toString()}`),
+      fetch(`/api/analyze/events/brno?${new URLSearchParams({
+        startDate: params.dateRangeStart,
+        endDate: params.dateRangeEnd
+      }).toString()}`)
     ]);
 
     const allEvents: Event[] = [];
@@ -163,6 +167,35 @@ export class ConflictAnalysisService {
       console.error('Eventbrite API request failed:', eventbriteResponse.reason);
     } else {
       console.error('Eventbrite API returned error:', eventbriteResponse.value.status);
+    }
+
+    // Process Brno results
+    if (brnoResponse.status === 'fulfilled' && brnoResponse.value.ok) {
+      try {
+        const brnoResult = await brnoResponse.value.json();
+        console.log('Brno API response structure:', brnoResult);
+
+        let events = [] as any[];
+        if (brnoResult.data?.events) {
+          events = brnoResult.data.events;
+        } else if (brnoResult.data && Array.isArray(brnoResult.data)) {
+          events = brnoResult.data;
+        } else if (Array.isArray(brnoResult)) {
+          events = brnoResult;
+        } else if (brnoResult.data) {
+          events = Array.isArray(brnoResult.data) ? brnoResult.data : [];
+        }
+
+        allEvents.push(...events);
+        console.log(`Fetched ${events.length} events from Brno`);
+      } catch (error) {
+        console.error('Error processing Brno response:', error);
+      }
+    } else if (brnoResponse.status === 'rejected') {
+      console.error('Brno API request failed:', brnoResponse.reason);
+    } else {
+      // @ts-ignore
+      console.error('Brno API returned error:', brnoResponse.value?.status);
     }
 
     // Remove duplicates based on title, date, and venue
