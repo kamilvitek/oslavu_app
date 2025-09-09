@@ -245,6 +245,20 @@ export function ConflictAnalyzer() {
                         <CardDescription>
                           {analysisResult.allEvents.length} events found in the analysis period
                         </CardDescription>
+                        {(() => {
+                          const counts = analysisResult.allEvents.reduce((acc: Record<string, number>, ev) => {
+                            acc[ev.source] = (acc[ev.source] || 0) + 1;
+                            return acc;
+                          }, {} as Record<string, number>);
+                          const summary = Object.entries(counts)
+                            .map(([src, n]) => `${src}: ${n}`)
+                            .join(' • ');
+                          return (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Sources: {summary}
+                            </div>
+                          );
+                        })()}
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-2 max-h-40 overflow-y-auto">
@@ -256,8 +270,13 @@ export function ConflictAnalyzer() {
                                   {new Date(event.date).toLocaleDateString()} • {event.venue || 'TBA'}
                                 </div>
                               </div>
-                              <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                {event.category}
+                              <div className="flex items-center gap-2">
+                                <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                  {event.category}
+                                </div>
+                                <div className="text-xs bg-gray-200 text-gray-800 px-2 py-1 rounded">
+                                  {event.source}
+                                </div>
                               </div>
                             </div>
                           ))}

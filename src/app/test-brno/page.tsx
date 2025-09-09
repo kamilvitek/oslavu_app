@@ -15,10 +15,14 @@ export default function TestBrnoPage() {
         const today = new Date();
         const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString().slice(0,10);
         const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 30).toISOString().slice(0,10);
+        console.log('Fetching Brno events from:', start, 'to', end);
         const res = await fetch(`/api/analyze/events/brno?startDate=${start}&endDate=${end}`);
+        console.log('Response status:', res.status);
         const data = await res.json();
+        console.log('Brno API response:', data);
         setEvents(data.data || []);
       } catch (e: any) {
+        console.error('Error fetching Brno events:', e);
         setError(e.message || 'Failed to fetch');
       } finally {
         setLoading(false);
