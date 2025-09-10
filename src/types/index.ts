@@ -55,6 +55,8 @@ export interface AnalysisRequest {
     start: string;
     end: string;
   };
+  venue?: string;
+  enableAdvancedAnalysis?: boolean;
 }
 
 export interface User {
