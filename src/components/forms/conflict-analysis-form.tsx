@@ -7,7 +7,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar, MapPin, Users, Tag } from "lucide-react";
+import { Calendar, MapPin, Users, Tag, Building, Brain } from "lucide-react";
 import { EVENT_CATEGORIES } from "@/types";
 
 const analysisSchema = z.object({
@@ -19,6 +19,8 @@ const analysisSchema = z.object({
   endDate: z.string().min(1, "End date is required"),
   dateRangeStart: z.string().min(1, "Date range start is required"),
   dateRangeEnd: z.string().min(1, "Date range end is required"),
+  venue: z.string().optional(),
+  enableAdvancedAnalysis: z.boolean().optional(),
 });
 
 type AnalysisForm = z.infer<typeof analysisSchema>;
@@ -33,10 +35,16 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<AnalysisForm>({
     resolver: zodResolver(analysisSchema),
+    defaultValues: {
+      enableAdvancedAnalysis: false,
+    },
   });
+
+  const enableAdvancedAnalysis = watch('enableAdvancedAnalysis');
 
   const onSubmit = async (data: AnalysisForm) => {
     setLoading(true);
@@ -125,6 +133,18 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
       </div>
 
       <div className="space-y-2">
+        <Label htmlFor="venue" className="flex items-center space-x-2">
+          <Building className="h-4 w-4" />
+          <span>Venue (optional)</span>
+        </Label>
+        <Input
+          id="venue"
+          placeholder="e.g., Prague Conference Center, Hotel InterContinental"
+          {...register("venue")}
+        />
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor="expectedAttendees" className="flex items-center space-x-2">
           <Users className="h-4 w-4" />
           <span>Expected Attendees</span>
@@ -198,6 +218,24 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
             )}
           </div>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            id="enableAdvancedAnalysis"
+            {...register("enableAdvancedAnalysis")}
+            className="rounded border-gray-300"
+          />
+          <Label htmlFor="enableAdvancedAnalysis" className="flex items-center space-x-2">
+            <Brain className="h-4 w-4" />
+            <span>Enable Advanced Analysis</span>
+          </Label>
+        </div>
+        <p className="text-sm text-gray-600">
+          Includes AI-powered audience overlap prediction and venue intelligence analysis
+        </p>
       </div>
 
       <Button type="submit" className="w-full" disabled={loading}>

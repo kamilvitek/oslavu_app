@@ -1,4 +1,6 @@
 import { Event } from '@/types';
+import { audienceOverlapService } from './audience-overlap';
+import { venueIntelligenceService } from './venue-intelligence';
 
 export interface ConflictAnalysisResult {
   recommendedDates: DateRecommendation[];
@@ -14,6 +16,17 @@ export interface DateRecommendation {
   riskLevel: 'Low' | 'Medium' | 'High';
   competingEvents: Event[];
   reasons: string[];
+  audienceOverlap?: {
+    averageOverlap: number;
+    highOverlapEvents: Event[];
+    overlapReasoning: string[];
+  };
+  venueIntelligence?: {
+    venueConflictScore: number;
+    capacityUtilization: number;
+    pricingImpact: number;
+    recommendations: string[];
+  };
 }
 
 export interface ConflictAnalysisParams {
@@ -25,6 +38,8 @@ export interface ConflictAnalysisParams {
   endDate: string; // preferred end date
   dateRangeStart: string; // analysis range start
   dateRangeEnd: string; // analysis range end
+  venue?: string; // optional venue name for venue intelligence
+  enableAdvancedAnalysis?: boolean; // enable audience overlap and venue intelligence
 }
 
 export class ConflictAnalysisService {
@@ -40,7 +55,7 @@ export class ConflictAnalysisService {
       console.log(`Total events fetched: ${events.length}`);
       
       // Generate date recommendations
-      const dateRecommendations = this.generateDateRecommendations(
+      const dateRecommendations = await this.generateDateRecommendations(
         params,
         events
       );
@@ -243,10 +258,10 @@ export class ConflictAnalysisService {
   /**
    * Generate date recommendations based on events and parameters
    */
-  private generateDateRecommendations(
+  private async generateDateRecommendations(
     params: ConflictAnalysisParams,
     events: Event[]
-  ): DateRecommendation[] {
+  ): Promise<DateRecommendation[]> {
     const recommendations: DateRecommendation[] = [];
     
     // Generate potential dates around the preferred dates
@@ -260,14 +275,36 @@ export class ConflictAnalysisService {
         params
       );
 
-      const conflictScore = this.calculateConflictScore(
+      const conflictScore = await this.calculateConflictScore(
         competingEvents,
         params.expectedAttendees,
-        params.category
+        params.category,
+        params
       );
 
       const riskLevel = this.determineRiskLevel(conflictScore);
       const reasons = this.generateReasons(competingEvents, conflictScore);
+
+      // Advanced analysis features
+      let audienceOverlap;
+      let venueIntelligence;
+
+      if (params.enableAdvancedAnalysis) {
+        // Calculate audience overlap analysis
+        audienceOverlap = await this.calculateAudienceOverlapAnalysis(
+          competingEvents,
+          params
+        );
+
+        // Calculate venue intelligence if venue is provided
+        if (params.venue) {
+          venueIntelligence = await this.calculateVenueIntelligenceAnalysis(
+            params.venue,
+            dateRange.startDate,
+            params.expectedAttendees
+          );
+        }
+      }
 
       recommendations.push({
         startDate: dateRange.startDate,
@@ -275,7 +312,9 @@ export class ConflictAnalysisService {
         conflictScore,
         riskLevel,
         competingEvents,
-        reasons
+        reasons,
+        audienceOverlap,
+        venueIntelligence
       });
     }
 
@@ -358,11 +397,12 @@ export class ConflictAnalysisService {
   /**
    * Calculate conflict score based on competing events
    */
-  private calculateConflictScore(
+  private async calculateConflictScore(
     competingEvents: Event[],
     expectedAttendees: number,
-    category: string
-  ): number {
+    category: string,
+    params: ConflictAnalysisParams
+  ): Promise<number> {
     if (competingEvents.length === 0) {
       console.log('No competing events, score = 0');
       return 0;
@@ -400,6 +440,34 @@ export class ConflictAnalysisService {
       if (event.description && event.description.length > 50) {
         eventScore += 5;
         console.log(`  "${event.title}": has description +5`);
+      }
+
+      // Advanced analysis: Audience overlap prediction
+      if (params.enableAdvancedAnalysis) {
+        try {
+          // Create a mock event for the user's planned event
+          const plannedEvent: Event = {
+            id: 'planned_event',
+            title: 'Planned Event',
+            date: params.startDate,
+            city: params.city,
+            category: params.category,
+            subcategory: params.subcategory,
+            expectedAttendees: params.expectedAttendees,
+            source: 'manual',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          const audienceOverlap = await audienceOverlapService.predictAudienceOverlap(plannedEvent, event);
+          
+          // Increase score based on audience overlap
+          const overlapMultiplier = 1 + (audienceOverlap.overlapScore * 0.5); // Up to 50% increase
+          eventScore *= overlapMultiplier;
+          console.log(`  "${event.title}": audience overlap multiplier ${overlapMultiplier.toFixed(2)}`);
+        } catch (error) {
+          console.error('Error calculating audience overlap:', error);
+        }
       }
 
       score += eventScore;
@@ -751,6 +819,112 @@ export class ConflictAnalysisService {
     }
 
     return matrix[str2.length][str1.length];
+  }
+
+  /**
+   * Calculate audience overlap analysis for competing events
+   */
+  private async calculateAudienceOverlapAnalysis(
+    competingEvents: Event[],
+    params: ConflictAnalysisParams
+  ): Promise<{
+    averageOverlap: number;
+    highOverlapEvents: Event[];
+    overlapReasoning: string[];
+  }> {
+    if (competingEvents.length === 0) {
+      return {
+        averageOverlap: 0,
+        highOverlapEvents: [],
+        overlapReasoning: ['No competing events to analyze']
+      };
+    }
+
+    // Create a mock event for the user's planned event
+    const plannedEvent: Event = {
+      id: 'planned_event',
+      title: 'Planned Event',
+      date: params.startDate,
+      city: params.city,
+      category: params.category,
+      subcategory: params.subcategory,
+      expectedAttendees: params.expectedAttendees,
+      source: 'manual',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const overlapScores: number[] = [];
+    const highOverlapEvents: Event[] = [];
+    const allReasoning: string[] = [];
+
+    for (const event of competingEvents) {
+      try {
+        const overlap = await audienceOverlapService.predictAudienceOverlap(plannedEvent, event);
+        overlapScores.push(overlap.overlapScore);
+        allReasoning.push(...overlap.reasoning);
+
+        if (overlap.overlapScore > 0.6) {
+          highOverlapEvents.push(event);
+        }
+      } catch (error) {
+        console.error(`Error calculating overlap for event ${event.title}:`, error);
+        overlapScores.push(0);
+      }
+    }
+
+    const averageOverlap = overlapScores.length > 0 
+      ? overlapScores.reduce((sum, score) => sum + score, 0) / overlapScores.length 
+      : 0;
+
+    // Remove duplicate reasoning
+    const uniqueReasoning = [...new Set(allReasoning)];
+
+    return {
+      averageOverlap,
+      highOverlapEvents,
+      overlapReasoning: uniqueReasoning.slice(0, 3) // Limit to top 3 reasons
+    };
+  }
+
+  /**
+   * Calculate venue intelligence analysis
+   */
+  private async calculateVenueIntelligenceAnalysis(
+    venueName: string,
+    date: string,
+    expectedAttendees: number
+  ): Promise<{
+    venueConflictScore: number;
+    capacityUtilization: number;
+    pricingImpact: number;
+    recommendations: string[];
+  }> {
+    try {
+      const venueAnalysis = await venueIntelligenceService.analyzeVenueConflict(
+        venueName,
+        date,
+        expectedAttendees
+      );
+
+      return {
+        venueConflictScore: venueAnalysis.conflictScore,
+        capacityUtilization: venueAnalysis.factors.capacityUtilization,
+        pricingImpact: venueAnalysis.factors.pricingImpact,
+        recommendations: [
+          venueAnalysis.recommendations.pricingStrategy,
+          venueAnalysis.recommendations.marketingAdvice
+        ]
+      };
+    } catch (error) {
+      console.error('Error calculating venue intelligence:', error);
+      return {
+        venueConflictScore: 0.5,
+        capacityUtilization: 0.5,
+        pricingImpact: 0.5,
+        recommendations: ['Unable to analyze venue intelligence']
+      };
+    }
   }
 }
 
