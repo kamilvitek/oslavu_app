@@ -120,22 +120,39 @@ export function AdvancedAnalysisTestComponent() {
         updatedAt: new Date().toISOString()
       };
 
-      // Use OpenAI if available, otherwise fallback to rule-based
-      const overlap = openaiAudienceOverlapService.isAvailable()
-        ? await openaiAudienceOverlapService.predictAudienceOverlap(event1, event2)
-        : await audienceOverlapService.predictAudienceOverlap(event1, event2);
-      
+      // Use API endpoint for audience overlap analysis
+      const response = await fetch('/api/analyze/audience-overlap', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          event1,
+          event2
+        })
+      });
+
+      const data = await response.json();
       const duration = Date.now() - startTime;
 
-      setResults(prev => [{
-        success: true,
-        data: {
-          ...overlap,
-          method: openaiAudienceOverlapService.isAvailable() ? 'AI-powered' : 'rule-based'
-        },
-        error: null,
-        duration
-      }, ...prev]);
+      if (data.success) {
+        setResults(prev => [{
+          success: true,
+          data: {
+            ...data.data,
+            method: data.method
+          },
+          error: null,
+          duration
+        }, ...prev]);
+      } else {
+        setResults(prev => [{
+          success: false,
+          data: null,
+          error: data.error,
+          duration
+        }, ...prev]);
+      }
 
     } catch (error) {
       const duration = Date.now() - startTime;

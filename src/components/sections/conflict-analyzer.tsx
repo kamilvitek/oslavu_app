@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,12 +8,29 @@ import { Label } from "@/components/ui/label";
 import { Calendar, MapPin, Users, Target, AlertTriangle, CheckCircle, Loader2, RefreshCw, Building } from "lucide-react";
 import { ConflictAnalysisForm } from "@/components/forms/conflict-analysis-form";
 import { conflictAnalysisService, ConflictAnalysisResult, DateRecommendation } from "@/lib/services/conflict-analysis";
-import { openaiAudienceOverlapService } from "@/lib/services/openai-audience-overlap";
+// OpenAI service is now accessed via API endpoint
 
 export function ConflictAnalyzer() {
   const [analysisResult, setAnalysisResult] = useState<ConflictAnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openaiAvailable, setOpenaiAvailable] = useState(false);
+
+  useEffect(() => {
+    // Check if OpenAI is available via API
+    const checkOpenAIStatus = async () => {
+      try {
+        const response = await fetch('/api/analyze/audience-overlap');
+        const data = await response.json();
+        setOpenaiAvailable(data.openaiAvailable || false);
+      } catch (error) {
+        console.error('Failed to check OpenAI status:', error);
+        setOpenaiAvailable(false);
+      }
+    };
+    
+    checkOpenAIStatus();
+  }, []);
 
   const handleAnalysisComplete = async (formData: any) => {
     setLoading(true);
@@ -21,8 +38,34 @@ export function ConflictAnalyzer() {
     setAnalysisResult(null);
 
     try {
-      const result = await conflictAnalysisService.analyzeConflicts(formData);
-      setAnalysisResult(result);
+      // Call the API endpoint instead of the service directly
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          city: formData.city,
+          category: formData.category,
+          subcategory: formData.subcategory,
+          expectedAttendees: formData.expectedAttendees,
+          dateRange: {
+            start: formData.dateRangeStart,
+            end: formData.dateRangeEnd
+          },
+          preferredDates: [formData.startDate, formData.endDate],
+          venue: formData.venue,
+          enableAdvancedAnalysis: formData.enableAdvancedAnalysis
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.data) {
+        setAnalysisResult(data.data);
+      } else {
+        setError(data.error || 'Failed to analyze conflicts');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to analyze conflicts');
     } finally {
@@ -165,7 +208,7 @@ export function ConflictAnalyzer() {
                           <span className="font-medium text-blue-800">Analysis Method</span>
                         </div>
                         <div className="flex items-center space-x-2">
-                          {openaiAudienceOverlapService.isAvailable() ? (
+                          {openaiAvailable ? (
                             <>
                               <CheckCircle className="h-4 w-4 text-green-600" />
                               <span className="text-sm text-green-700 font-medium">AI-Powered Analysis</span>
@@ -179,7 +222,7 @@ export function ConflictAnalyzer() {
                         </div>
                       </div>
                       <p className="text-xs text-blue-600 mt-1">
-                        {openaiAudienceOverlapService.isAvailable() 
+                        {openaiAvailable 
                           ? "Using OpenAI for advanced audience overlap prediction and semantic analysis"
                           : "Using algorithmic analysis. Add OpenAI API key for enhanced AI-powered features"
                         }

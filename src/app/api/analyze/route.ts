@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
       endDate: preferredEnd,
       dateRangeStart: body.dateRange.start,
       dateRangeEnd: body.dateRange.end,
+      venue: body.venue,
+      enableAdvancedAnalysis: body.enableAdvancedAnalysis,
     });
     
     console.log('Analysis completed:', {

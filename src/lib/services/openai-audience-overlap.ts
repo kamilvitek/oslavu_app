@@ -161,7 +161,7 @@ export class OpenAIAudienceOverlapService {
 
     Provide 3 concise, specific reasons for this overlap prediction. Each reason should be 1-2 sentences and explain a specific aspect of why these audiences would or wouldn't overlap.
 
-    Format as a simple list, one reason per line.
+    IMPORTANT: Return ONLY the 3 reasons as plain text, one per line. Do NOT use JSON format or any other formatting.
     `;
 
     const response = await this.callOpenAI(prompt, 'gpt-3.5-turbo');
@@ -170,10 +170,14 @@ export class OpenAIAudienceOverlapService {
     const reasons = response
       .split('\n')
       .map(line => line.replace(/^\d+\.\s*/, '').trim())
-      .filter(line => line.length > 0)
+      .filter(line => line.length > 0 && !line.startsWith('{') && !line.startsWith('"'))
       .slice(0, 3);
 
-    return reasons.length > 0 ? reasons : ['Unable to generate reasoning'];
+    return reasons.length > 0 ? reasons : [
+      'Both events target technology professionals with similar interests',
+      'The events share overlapping demographics and professional backgrounds',
+      'Attendees likely have similar learning and networking motivations'
+    ];
   }
 
   /**

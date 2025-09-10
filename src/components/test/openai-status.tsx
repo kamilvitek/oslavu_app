@@ -24,27 +24,29 @@ export function OpenAIStatusComponent() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Check if OpenAI is available
-    setIsAvailable(openaiAudienceOverlapService.isAvailable());
+    // Check if OpenAI is available via API
+    const checkOpenAIStatus = async () => {
+      try {
+        const response = await fetch('/api/analyze/audience-overlap');
+        const data = await response.json();
+        setIsAvailable(data.openaiAvailable || false);
+      } catch (error) {
+        console.error('Failed to check OpenAI status:', error);
+        setIsAvailable(false);
+      }
+    };
+    
+    checkOpenAIStatus();
   }, []);
 
   const testOpenAIConnection = async () => {
-    if (!apiKey) {
-      alert("Please enter an OpenAI API key");
-      return;
-    }
-
     setLoading(true);
     try {
-      // Temporarily set the API key for testing
-      const originalKey = process.env.OPENAI_API_KEY;
-      process.env.OPENAI_API_KEY = apiKey;
-
       // Test with sample events
       const testEvent1 = {
         id: "test1",
-        title: "AI & Machine Learning Conference 2024",
-        date: "2024-06-15",
+        title: "AI & Machine Learning Conference 2025",
+        date: "2025-11-15",
         city: "Prague",
         category: "Technology",
         subcategory: "AI/ML",
@@ -57,7 +59,7 @@ export function OpenAIStatusComponent() {
       const testEvent2 = {
         id: "test2",
         title: "Data Science Workshop",
-        date: "2024-06-16",
+        date: "2025-11-16",
         city: "Prague",
         category: "Technology",
         subcategory: "Data Science",
@@ -67,12 +69,25 @@ export function OpenAIStatusComponent() {
         updatedAt: new Date().toISOString()
       };
 
-      const result = await openaiAudienceOverlapService.predictAudienceOverlap(testEvent1, testEvent2);
-      setTestResult(result);
-      setIsAvailable(true);
+      const response = await fetch('/api/analyze/audience-overlap', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          event1: testEvent1,
+          event2: testEvent2
+        })
+      });
 
-      // Restore original key
-      process.env.OPENAI_API_KEY = originalKey;
+      const data = await response.json();
+      
+      if (data.success) {
+        setTestResult(data.data);
+        setIsAvailable(data.method === 'AI-powered');
+      } else {
+        setTestResult({ error: data.error });
+      }
 
     } catch (error) {
       console.error("OpenAI test failed:", error);
