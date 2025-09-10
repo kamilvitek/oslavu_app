@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar, MapPin, Users, Tag, Building, Brain } from "lucide-react";
 import { EVENT_CATEGORIES } from "@/types";
+import { VenueInput } from "@/components/ui/venue-input";
 
 const analysisSchema = z.object({
   city: z.string().min(2, "City is required"),
@@ -36,6 +37,7 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<AnalysisForm>({
     resolver: zodResolver(analysisSchema),
@@ -45,6 +47,8 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
   });
 
   const enableAdvancedAnalysis = watch('enableAdvancedAnalysis');
+  const city = watch('city');
+  const venue = watch('venue');
 
   const onSubmit = async (data: AnalysisForm) => {
     setLoading(true);
@@ -132,17 +136,12 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="venue" className="flex items-center space-x-2">
-          <Building className="h-4 w-4" />
-          <span>Venue (optional)</span>
-        </Label>
-        <Input
-          id="venue"
-          placeholder="e.g., Prague Conference Center, Hotel InterContinental"
-          {...register("venue")}
-        />
-      </div>
+      <VenueInput
+        value={venue || ''}
+        onChange={(value) => setValue('venue', value)}
+        city={city || ''}
+        placeholder="e.g., Prague Conference Center, Hotel InterContinental"
+      />
 
       <div className="space-y-2">
         <Label htmlFor="expectedAttendees" className="flex items-center space-x-2">

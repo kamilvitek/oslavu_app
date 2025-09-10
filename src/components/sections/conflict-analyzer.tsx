@@ -5,9 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar, MapPin, Users, Target, AlertTriangle, CheckCircle, Loader2, RefreshCw } from "lucide-react";
+import { Calendar, MapPin, Users, Target, AlertTriangle, CheckCircle, Loader2, RefreshCw, Building } from "lucide-react";
 import { ConflictAnalysisForm } from "@/components/forms/conflict-analysis-form";
 import { conflictAnalysisService, ConflictAnalysisResult, DateRecommendation } from "@/lib/services/conflict-analysis";
+import { openaiAudienceOverlapService } from "@/lib/services/openai-audience-overlap";
 
 export function ConflictAnalyzer() {
   const [analysisResult, setAnalysisResult] = useState<ConflictAnalysisResult | null>(null);
@@ -155,6 +156,37 @@ export function ConflictAnalyzer() {
 
               {analysisResult && (
                 <>
+                  {/* Analysis Method Status */}
+                  <Card className="bg-blue-50 border-blue-200">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Target className="h-5 w-5 text-blue-600" />
+                          <span className="font-medium text-blue-800">Analysis Method</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {openaiAudienceOverlapService.isAvailable() ? (
+                            <>
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <span className="text-sm text-green-700 font-medium">AI-Powered Analysis</span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                              <span className="text-sm text-yellow-700 font-medium">Rule-Based Analysis</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-1">
+                        {openaiAudienceOverlapService.isAvailable() 
+                          ? "Using OpenAI for advanced audience overlap prediction and semantic analysis"
+                          : "Using algorithmic analysis. Add OpenAI API key for enhanced AI-powered features"
+                        }
+                      </p>
+                    </CardContent>
+                  </Card>
+
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center space-x-2 text-green-600">
@@ -182,6 +214,43 @@ export function ConflictAnalyzer() {
                               <div className={`text-xs ${getRiskDetailColor(recommendation.riskLevel)} mt-1`}>
                                 {recommendation.reasons.join(' • ')}
                               </div>
+                              
+                              {/* Advanced Analysis Features */}
+                              {recommendation.audienceOverlap && (
+                                <div className="mt-2 p-2 bg-blue-50 rounded border-l-4 border-blue-400">
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <Users className="h-3 w-3 text-blue-600" />
+                                    <span className="text-xs font-medium text-blue-800">
+                                      Audience Overlap: {(recommendation.audienceOverlap.averageOverlap * 100).toFixed(1)}%
+                                    </span>
+                                  </div>
+                                  {recommendation.audienceOverlap.overlapReasoning.length > 0 && (
+                                    <div className="text-xs text-blue-700">
+                                      {recommendation.audienceOverlap.overlapReasoning[0]}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {recommendation.venueIntelligence && (
+                                <div className="mt-2 p-2 bg-green-50 rounded border-l-4 border-green-400">
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <Building className="h-3 w-3 text-green-600" />
+                                    <span className="text-xs font-medium text-green-800">
+                                      Venue Analysis: {(recommendation.venueIntelligence.venueConflictScore * 100).toFixed(1)}% conflict
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-green-700">
+                                    Capacity: {(recommendation.venueIntelligence.capacityUtilization * 100).toFixed(1)}% | 
+                                    Pricing Impact: {(recommendation.venueIntelligence.pricingImpact * 100).toFixed(1)}%
+                                  </div>
+                                  {recommendation.venueIntelligence.recommendations.length > 0 && (
+                                    <div className="text-xs text-green-600 mt-1">
+                                      💡 {recommendation.venueIntelligence.recommendations[0]}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ))
                         ) : (
@@ -222,6 +291,43 @@ export function ConflictAnalyzer() {
                               <div className={`text-xs ${getRiskDetailColor(recommendation.riskLevel)} mt-1`}>
                                 {recommendation.reasons.join(' • ')}
                               </div>
+                              
+                              {/* Advanced Analysis Features for High Risk Dates */}
+                              {recommendation.audienceOverlap && (
+                                <div className="mt-2 p-2 bg-red-50 rounded border-l-4 border-red-400">
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <Users className="h-3 w-3 text-red-600" />
+                                    <span className="text-xs font-medium text-red-800">
+                                      High Audience Overlap: {(recommendation.audienceOverlap.averageOverlap * 100).toFixed(1)}%
+                                    </span>
+                                  </div>
+                                  {recommendation.audienceOverlap.overlapReasoning.length > 0 && (
+                                    <div className="text-xs text-red-700">
+                                      ⚠️ {recommendation.audienceOverlap.overlapReasoning[0]}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {recommendation.venueIntelligence && (
+                                <div className="mt-2 p-2 bg-orange-50 rounded border-l-4 border-orange-400">
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <Building className="h-3 w-3 text-orange-600" />
+                                    <span className="text-xs font-medium text-orange-800">
+                                      Venue Issues: {(recommendation.venueIntelligence.venueConflictScore * 100).toFixed(1)}% conflict
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-orange-700">
+                                    Capacity: {(recommendation.venueIntelligence.capacityUtilization * 100).toFixed(1)}% | 
+                                    Pricing Impact: {(recommendation.venueIntelligence.pricingImpact * 100).toFixed(1)}%
+                                  </div>
+                                  {recommendation.venueIntelligence.recommendations.length > 0 && (
+                                    <div className="text-xs text-orange-600 mt-1">
+                                      💡 {recommendation.venueIntelligence.recommendations[0]}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ))
                         ) : (
