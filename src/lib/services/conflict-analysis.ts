@@ -75,7 +75,7 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Fetch events from multiple APIs (Ticketmaster and Eventbrite)
+   * Fetch events from multiple APIs (Ticketmaster, Eventbrite, PredictHQ, and Brno)
    */
   private async fetchEventsFromAPI(params: ConflictAnalysisParams): Promise<Event[]> {
     // Validate required parameters
@@ -97,10 +97,11 @@ export class ConflictAnalysisService {
 
     console.log('Fetching events with params:', queryParams.toString());
 
-    // Fetch from Ticketmaster, Eventbrite, and Brno ArcGIS in parallel
-    const [ticketmasterResponse, eventbriteResponse, brnoResponse] = await Promise.allSettled([
+    // Fetch from Ticketmaster, Eventbrite, PredictHQ, and Brno ArcGIS in parallel
+    const [ticketmasterResponse, eventbriteResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
       fetch(`/api/analyze/events/ticketmaster?${queryParams.toString()}`),
       fetch(`/api/analyze/events/eventbrite?${queryParams.toString()}`),
+      fetch(`/api/analyze/events/predicthq?${queryParams.toString()}`),
       fetch(`/api/analyze/events/brno?${new URLSearchParams({
         startDate: params.dateRangeStart,
         endDate: params.dateRangeEnd
@@ -169,6 +170,36 @@ export class ConflictAnalysisService {
       console.error('Eventbrite API returned error:', eventbriteResponse.value.status);
     }
 
+    // Process PredictHQ results
+    if (predicthqResponse.status === 'fulfilled' && predicthqResponse.value.ok) {
+      try {
+        const predicthqResult = await predicthqResponse.value.json();
+        console.log('PredictHQ API response structure:', predicthqResult);
+        
+        // Handle different response structures
+        let events = [];
+        if (predicthqResult.data?.events) {
+          events = predicthqResult.data.events;
+        } else if (predicthqResult.data && Array.isArray(predicthqResult.data)) {
+          events = predicthqResult.data;
+        } else if (Array.isArray(predicthqResult)) {
+          events = predicthqResult;
+        } else if (predicthqResult.data) {
+          // Handle case where data is directly the events array
+          events = Array.isArray(predicthqResult.data) ? predicthqResult.data : [];
+        }
+        
+        allEvents.push(...events);
+        console.log(`Fetched ${events.length} events from PredictHQ`);
+      } catch (error) {
+        console.error('Error processing PredictHQ response:', error);
+      }
+    } else if (predicthqResponse.status === 'rejected') {
+      console.error('PredictHQ API request failed:', predicthqResponse.reason);
+    } else {
+      console.error('PredictHQ API returned error:', predicthqResponse.value.status);
+    }
+
     // Process Brno results
     if (brnoResponse.status === 'fulfilled' && brnoResponse.value.ok) {
       try {
@@ -198,8 +229,12 @@ export class ConflictAnalysisService {
       console.error('Brno API returned error:', brnoResponse.value?.status);
     }
 
+    // Filter events by location to remove distant cities
+    const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
+    console.log(`Total events after location filtering: ${locationFilteredEvents.length}`);
+
     // Remove duplicates based on title, date, and venue
-    const uniqueEvents = this.removeDuplicateEvents(allEvents);
+    const uniqueEvents = this.removeDuplicateEvents(locationFilteredEvents);
     console.log(`Total unique events after deduplication: ${uniqueEvents.length}`);
 
     return uniqueEvents;
@@ -464,6 +499,161 @@ export class ConflictAnalysisService {
 
     return relatedCategories[category1]?.includes(category2) || 
            relatedCategories[category2]?.includes(category1) || false;
+  }
+
+  /**
+   * Filter events by location to remove events from distant cities
+   */
+  private filterEventsByLocation(events: Event[], targetCity: string): Event[] {
+    const normalizedTargetCity = targetCity.toLowerCase().trim();
+    
+    // Define city aliases and nearby cities for better matching
+    const cityAliases: Record<string, string[]> = {
+      'prague': ['praha', 'prag', 'prague'],
+      'brno': ['brno', 'brünn'],
+      'london': ['london', 'londres'],
+      'berlin': ['berlin', 'berlín'],
+      'paris': ['paris', 'parís'],
+      'amsterdam': ['amsterdam', 'amsterdam'],
+      'vienna': ['vienna', 'wien', 'vienne'],
+      'warsaw': ['warsaw', 'warszawa'],
+      'budapest': ['budapest', 'budapest'],
+      'zurich': ['zurich', 'zürich'],
+      'munich': ['munich', 'münchen'],
+      'stockholm': ['stockholm', 'stockholm'],
+      'copenhagen': ['copenhagen', 'københavn'],
+      'helsinki': ['helsinki', 'helsingfors'],
+      'oslo': ['oslo', 'oslo'],
+      'madrid': ['madrid', 'madrid'],
+      'barcelona': ['barcelona', 'barcelona'],
+      'rome': ['rome', 'roma'],
+      'milan': ['milan', 'milano'],
+      'athens': ['athens', 'athina'],
+      'lisbon': ['lisbon', 'lisboa'],
+      'dublin': ['dublin', 'dublin'],
+      'edinburgh': ['edinburgh', 'edinburgh'],
+      'glasgow': ['glasgow', 'glasgow'],
+      'manchester': ['manchester', 'manchester'],
+      'birmingham': ['birmingham', 'birmingham'],
+      'liverpool': ['liverpool', 'liverpool'],
+      'leeds': ['leeds', 'leeds'],
+      'sheffield': ['sheffield', 'sheffield'],
+      'bristol': ['bristol', 'bristol'],
+      'newcastle': ['newcastle', 'newcastle'],
+      'nottingham': ['nottingham', 'nottingham'],
+      'leicester': ['leicester', 'leicester'],
+      'hamburg': ['hamburg', 'hamburg'],
+      'cologne': ['cologne', 'köln'],
+      'frankfurt': ['frankfurt', 'frankfurt'],
+      'stuttgart': ['stuttgart', 'stuttgart'],
+      'düsseldorf': ['düsseldorf', 'düsseldorf'],
+      'dortmund': ['dortmund', 'dortmund'],
+      'essen': ['essen', 'essen'],
+      'leipzig': ['leipzig', 'leipzig'],
+      'bremen': ['bremen', 'bremen'],
+      'dresden': ['dresden', 'dresden'],
+      'hannover': ['hannover', 'hannover'],
+      'nuremberg': ['nuremberg', 'nürnberg'],
+      'duisburg': ['duisburg', 'duisburg'],
+      'bochum': ['bochum', 'bochum'],
+      'wuppertal': ['wuppertal', 'wuppertal'],
+      'bielefeld': ['bielefeld', 'bielefeld'],
+      'bonn': ['bonn', 'bonn'],
+      'münster': ['münster', 'münster'],
+      'karlsruhe': ['karlsruhe', 'karlsruhe'],
+      'mannheim': ['mannheim', 'mannheim'],
+      'augsburg': ['augsburg', 'augsburg'],
+      'wiesbaden': ['wiesbaden', 'wiesbaden'],
+      'gelsenkirchen': ['gelsenkirchen', 'gelsenkirchen'],
+      'mönchengladbach': ['mönchengladbach', 'mönchengladbach'],
+      'braunschweig': ['braunschweig', 'braunschweig'],
+      'chemnitz': ['chemnitz', 'chemnitz'],
+      'kiel': ['kiel', 'kiel'],
+      'aachen': ['aachen', 'aachen'],
+      'halle': ['halle', 'halle'],
+      'magdeburg': ['magdeburg', 'magdeburg'],
+      'freiburg': ['freiburg', 'freiburg'],
+      'krefeld': ['krefeld', 'krefeld'],
+      'lübeck': ['lübeck', 'lübeck'],
+      'oberhausen': ['oberhausen', 'oberhausen'],
+      'erfurt': ['erfurt', 'erfurt'],
+      'mainz': ['mainz', 'mainz'],
+      'rostock': ['rostock', 'rostock'],
+      'kassel': ['kassel', 'kassel'],
+      'hagen': ['hagen', 'hagen'],
+      'hamm': ['hamm', 'hamm'],
+      'saarbrücken': ['saarbrücken', 'saarbrücken'],
+      'mülheim': ['mülheim', 'mülheim'],
+      'potsdam': ['potsdam', 'potsdam'],
+      'ludwigshafen': ['ludwigshafen', 'ludwigshafen'],
+      'oldenburg': ['oldenburg', 'oldenburg'],
+      'leverkusen': ['leverkusen', 'leverkusen'],
+      'osnabrück': ['osnabrück', 'osnabrück'],
+      'solingen': ['solingen', 'solingen'],
+      'heidelberg': ['heidelberg', 'heidelberg'],
+      'herne': ['herne', 'herne'],
+      'neuss': ['neuss', 'neuss'],
+      'darmstadt': ['darmstadt', 'darmstadt'],
+      'paderborn': ['paderborn', 'paderborn'],
+      'regensburg': ['regensburg', 'regensburg'],
+      'ingolstadt': ['ingolstadt', 'ingolstadt'],
+      'würzburg': ['würzburg', 'würzburg'],
+      'fürth': ['fürth', 'fürth'],
+      'wolfsburg': ['wolfsburg', 'wolfsburg'],
+      'offenbach': ['offenbach', 'offenbach'],
+      'ulm': ['ulm', 'ulm'],
+      'heilbronn': ['heilbronn', 'heilbronn'],
+      'pforzheim': ['pforzheim', 'pforzheim'],
+      'göttingen': ['göttingen', 'göttingen'],
+      'bottrop': ['bottrop', 'bottrop'],
+      'trier': ['trier', 'trier'],
+      'recklinghausen': ['recklinghausen', 'recklinghausen'],
+      'reutlingen': ['reutlingen', 'reutlingen'],
+      'bremerhaven': ['bremerhaven', 'bremerhaven'],
+      'koblenz': ['koblenz', 'koblenz'],
+      'bergisch gladbach': ['bergisch gladbach', 'bergisch gladbach'],
+      'jena': ['jena', 'jena'],
+      'remscheid': ['remscheid', 'remscheid'],
+      'erlangen': ['erlangen', 'erlangen'],
+      'moers': ['moers', 'moers'],
+      'siegen': ['siegen', 'siegen'],
+      'hildesheim': ['hildesheim', 'hildesheim'],
+      'salzgitter': ['salzgitter', 'salzgitter'],
+    };
+
+    const targetAliases = cityAliases[normalizedTargetCity] || [normalizedTargetCity];
+    
+    return events.filter(event => {
+      const eventCity = event.city?.toLowerCase().trim() || '';
+      
+      // Check if event city matches any of the target city aliases
+      const isMatchingCity = targetAliases.some(alias => 
+        eventCity === alias || 
+        eventCity.includes(alias) || 
+        alias.includes(eventCity)
+      );
+      
+      // If no city match, check if the event has a venue in the target city
+      if (!isMatchingCity && event.venue) {
+        const venue = event.venue.toLowerCase().trim();
+        const isMatchingVenue = targetAliases.some(alias => 
+          venue.includes(alias) || 
+          alias.includes(venue)
+        );
+        
+        if (isMatchingVenue) {
+          console.log(`Event "${event.title}" matched by venue "${event.venue}" for city "${targetCity}"`);
+          return true;
+        }
+      }
+      
+      // Log filtered out events for debugging
+      if (!isMatchingCity) {
+        console.log(`Filtered out event "${event.title}" from "${event.city}" (target: "${targetCity}")`);
+      }
+      
+      return isMatchingCity;
+    });
   }
 
   /**

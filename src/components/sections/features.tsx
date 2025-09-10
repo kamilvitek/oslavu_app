@@ -73,7 +73,7 @@ export function Features() {
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 text-center justify-items-center">
                 <div>
-                  <div className="text-3xl font-bold text-primary">2</div>
+                  <div className="text-3xl font-bold text-primary">4</div>
                   <div className="text-sm text-muted-foreground">Event sources monitored</div>
                 </div>
                 <div>
