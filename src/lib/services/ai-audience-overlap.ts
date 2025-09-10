@@ -208,7 +208,7 @@ export class AIAudienceOverlapService {
     const data = await response.json();
     const reasoning = data.choices[0].message.content;
     
-    return reasoning.split('\n').filter(line => line.trim()).slice(0, 3);
+    return reasoning.split('\n').filter((line: string) => line.trim()).slice(0, 3);
   }
 
   /**
