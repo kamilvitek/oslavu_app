@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { conflictAnalysisService, ConflictAnalysisParams } from "@/lib/services/conflict-analysis";
 import { audienceOverlapService } from "@/lib/services/audience-overlap";
+import { openaiAudienceOverlapService } from "@/lib/services/openai-audience-overlap";
 import { venueIntelligenceService } from "@/lib/services/venue-intelligence";
 import { Event } from "@/types";
 
@@ -119,12 +120,19 @@ export function AdvancedAnalysisTestComponent() {
         updatedAt: new Date().toISOString()
       };
 
-      const overlap = await audienceOverlapService.predictAudienceOverlap(event1, event2);
+      // Use OpenAI if available, otherwise fallback to rule-based
+      const overlap = openaiAudienceOverlapService.isAvailable()
+        ? await openaiAudienceOverlapService.predictAudienceOverlap(event1, event2)
+        : await audienceOverlapService.predictAudienceOverlap(event1, event2);
+      
       const duration = Date.now() - startTime;
 
       setResults(prev => [{
         success: true,
-        data: overlap,
+        data: {
+          ...overlap,
+          method: openaiAudienceOverlapService.isAvailable() ? 'AI-powered' : 'rule-based'
+        },
         error: null,
         duration
       }, ...prev]);
@@ -404,6 +412,11 @@ export function AdvancedAnalysisTestComponent() {
                         <h4 className="font-semibold mb-2 flex items-center space-x-2">
                           <Users className="h-4 w-4" />
                           <span>Audience Overlap Analysis</span>
+                          {result.data.method && (
+                            <Badge className={result.data.method === 'AI-powered' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}>
+                              {result.data.method}
+                            </Badge>
+                          )}
                         </h4>
                         <div className="p-3 border rounded-lg">
                           <div className="flex items-center space-x-2 mb-2">

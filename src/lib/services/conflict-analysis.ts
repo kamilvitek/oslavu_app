@@ -1,5 +1,6 @@
 import { Event } from '@/types';
 import { audienceOverlapService } from './audience-overlap';
+import { openaiAudienceOverlapService } from './openai-audience-overlap';
 import { venueIntelligenceService } from './venue-intelligence';
 
 export interface ConflictAnalysisResult {
@@ -459,12 +460,15 @@ export class ConflictAnalysisService {
             updatedAt: new Date().toISOString()
           };
 
-          const audienceOverlap = await audienceOverlapService.predictAudienceOverlap(plannedEvent, event);
+          // Use OpenAI-powered analysis if available, otherwise fallback to rule-based
+          const audienceOverlap = openaiAudienceOverlapService.isAvailable()
+            ? await openaiAudienceOverlapService.predictAudienceOverlap(plannedEvent, event)
+            : await audienceOverlapService.predictAudienceOverlap(plannedEvent, event);
           
           // Increase score based on audience overlap
           const overlapMultiplier = 1 + (audienceOverlap.overlapScore * 0.5); // Up to 50% increase
           eventScore *= overlapMultiplier;
-          console.log(`  "${event.title}": audience overlap multiplier ${overlapMultiplier.toFixed(2)}`);
+          console.log(`  "${event.title}": audience overlap multiplier ${overlapMultiplier.toFixed(2)} (${openaiAudienceOverlapService.isAvailable() ? 'AI-powered' : 'rule-based'})`);
         } catch (error) {
           console.error('Error calculating audience overlap:', error);
         }
@@ -860,7 +864,11 @@ export class ConflictAnalysisService {
 
     for (const event of competingEvents) {
       try {
-        const overlap = await audienceOverlapService.predictAudienceOverlap(plannedEvent, event);
+        // Use OpenAI-powered analysis if available, otherwise fallback to rule-based
+        const overlap = openaiAudienceOverlapService.isAvailable()
+          ? await openaiAudienceOverlapService.predictAudienceOverlap(plannedEvent, event)
+          : await audienceOverlapService.predictAudienceOverlap(plannedEvent, event);
+        
         overlapScores.push(overlap.overlapScore);
         allReasoning.push(...overlap.reasoning);
 
