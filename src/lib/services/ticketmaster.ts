@@ -230,6 +230,8 @@ export class TicketmasterService {
     const cityCountryMap: Record<string, string> = {
       'Prague': 'CZ',
       'Brno': 'CZ',
+      'Ostrava': 'CZ',
+      'Olomouc': 'CZ',
       'London': 'GB',
       'Berlin': 'DE',
       'Paris': 'FR',

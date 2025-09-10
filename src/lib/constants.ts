@@ -14,6 +14,8 @@ export const EXTERNAL_APIS = {
 export const CITIES = [
   'Prague',
   'Brno',
+  'Ostrava',
+  'Olomouc',
   'London',
   'Berlin',
   'Paris',

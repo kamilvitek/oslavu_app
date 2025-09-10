@@ -511,6 +511,8 @@ export class ConflictAnalysisService {
     const cityAliases: Record<string, string[]> = {
       'prague': ['praha', 'prag', 'prague'],
       'brno': ['brno', 'brünn'],
+      'ostrava': ['ostrava'],
+      'olomouc': ['olomouc'],
       'london': ['london', 'londres'],
       'berlin': ['berlin', 'berlín'],
       'paris': ['paris', 'parís'],
