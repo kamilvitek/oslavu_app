@@ -113,12 +113,19 @@ export class ConflictAnalysisService {
 
     console.log('Fetching events with params:', queryParams.toString());
 
+    // Get base URL for server-side requests
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}`
+        : 'https://your-app.vercel.app' // Replace with your actual Vercel URL
+      : 'http://localhost:3001'; // Use the correct port
+
     // Fetch from Ticketmaster, Eventbrite, PredictHQ, and Brno ArcGIS in parallel
     const [ticketmasterResponse, eventbriteResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
-      fetch(`/api/analyze/events/ticketmaster?${queryParams.toString()}`),
-      fetch(`/api/analyze/events/eventbrite?${queryParams.toString()}`),
-      fetch(`/api/analyze/events/predicthq?${queryParams.toString()}`),
-      fetch(`/api/analyze/events/brno?${new URLSearchParams({
+      fetch(`${baseUrl}/api/analyze/events/ticketmaster?${queryParams.toString()}`),
+      fetch(`${baseUrl}/api/analyze/events/eventbrite?${queryParams.toString()}`),
+      fetch(`${baseUrl}/api/analyze/events/predicthq?${queryParams.toString()}`),
+      fetch(`${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
         startDate: params.dateRangeStart,
         endDate: params.dateRangeEnd
       }).toString()}`)
