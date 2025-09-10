@@ -37,7 +37,11 @@ export async function GET(request: NextRequest) {
     if (!process.env.PREDICTHQ_API_KEY) {
       console.error('PREDICTHQ_API_KEY is not configured');
       return NextResponse.json(
-        { error: 'PredictHQ API key is not configured' },
+        { 
+          success: false,
+          error: 'PredictHQ API key is not configured. Please set the PREDICTHQ_API_KEY environment variable.',
+          source: 'predicthq'
+        },
         { status: 500 }
       );
     }

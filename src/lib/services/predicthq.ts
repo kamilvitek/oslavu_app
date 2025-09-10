@@ -79,14 +79,21 @@ interface PredictHQSearchParams {
 }
 
 export class PredictHQService {
-  private readonly apiKey: string;
+  private apiKey: string | null = null;
   private readonly baseUrl = 'https://api.predicthq.com/v1';
 
   constructor() {
-    this.apiKey = process.env.PREDICTHQ_API_KEY || '';
+    // Don't throw error in constructor - check API key when actually used
+  }
+
+  private getApiKey(): string {
+    if (!this.apiKey) {
+      this.apiKey = process.env.PREDICTHQ_API_KEY || '';
+    }
     if (!this.apiKey) {
       throw new Error('PREDICTHQ_API_KEY environment variable is required');
     }
+    return this.apiKey;
   }
 
   /**
@@ -111,7 +118,7 @@ export class PredictHQService {
       
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.getApiKey()}`,
           'Accept': 'application/json',
         },
       });
@@ -320,7 +327,7 @@ export class PredictHQService {
       const url = `${this.baseUrl}/events/${eventId}/`;
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.getApiKey()}`,
           'Accept': 'application/json',
         },
       });
