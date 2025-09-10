@@ -65,7 +65,7 @@ export function VenueInput({
     
     if (validation.isValid) {
       return <CheckCircle className="h-4 w-4 text-green-600" />;
-    } else if (validation.suggestions.length > 0) {
+    } else if (validation.suggestions && validation.suggestions.length > 0) {
       return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
     } else {
       return <XCircle className="h-4 w-4 text-red-600" />;
@@ -77,7 +77,7 @@ export function VenueInput({
     
     if (validation.isValid) {
       return "border-green-300 focus:border-green-500";
-    } else if (validation.suggestions.length > 0) {
+    } else if (validation.suggestions && validation.suggestions.length > 0) {
       return "border-yellow-300 focus:border-yellow-500";
     } else {
       return "border-red-300 focus:border-red-500";
@@ -104,7 +104,7 @@ export function VenueInput({
         />
         
         {/* Suggestions Dropdown */}
-        {showSuggestions && validation?.suggestions.length > 0 && (
+        {showSuggestions && validation?.suggestions && validation.suggestions.length > 0 && (
           <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
             <div className="p-2 text-xs text-gray-500 border-b">
               <Lightbulb className="h-3 w-3 inline mr-1" />
@@ -142,7 +142,7 @@ export function VenueInput({
           )}
 
           {/* Suggestions */}
-          {validation.suggestions.length > 0 && !validation.isValid && (
+          {validation.suggestions && validation.suggestions.length > 0 && !validation.isValid && (
             <div className="flex items-start space-x-2">
               <Lightbulb className="h-3 w-3 text-blue-600 mt-0.5" />
               <div className="text-xs text-blue-700">
