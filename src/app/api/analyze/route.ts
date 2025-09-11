@@ -26,9 +26,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (startDate < new Date()) {
+    // Allow dates from 30 days ago onwards for testing purposes
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    if (startDate < thirtyDaysAgo) {
       return NextResponse.json(
-        { error: 'Start date cannot be in the past' },
+        { error: 'Start date cannot be more than 30 days in the past' },
         { status: 400 }
       );
     }

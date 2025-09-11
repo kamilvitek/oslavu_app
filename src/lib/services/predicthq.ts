@@ -151,8 +151,11 @@ export class PredictHQService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
+    // Try multiple location parameters for better results
+    const locationParams = this.getCityLocationParams(city);
+    
     const { events } = await this.getEvents({
-      city,
+      ...locationParams,
       'start.gte': `${startDate}T00:00:00`,
       'start.lte': `${endDate}T23:59:59`,
       category: category ? this.mapCategoryToPredictHQ(category) : undefined,
@@ -283,6 +286,41 @@ export class PredictHQService {
     };
 
     return categoryMap[phqCategory] || 'Other';
+  }
+
+  /**
+   * Get location parameters for a city
+   */
+  private getCityLocationParams(city: string): Partial<PredictHQSearchParams> {
+    const cityCoordinates: Record<string, { lat: number; lon: number; country: string }> = {
+      'Prague': { lat: 50.0755, lon: 14.4378, country: 'CZ' },
+      'Brno': { lat: 49.1951, lon: 16.6068, country: 'CZ' },
+      'Ostrava': { lat: 49.8209, lon: 18.2625, country: 'CZ' },
+      'London': { lat: 51.5074, lon: -0.1278, country: 'GB' },
+      'Berlin': { lat: 52.5200, lon: 13.4050, country: 'DE' },
+      'Paris': { lat: 48.8566, lon: 2.3522, country: 'FR' },
+      'Amsterdam': { lat: 52.3676, lon: 4.9041, country: 'NL' },
+      'Vienna': { lat: 48.2082, lon: 16.3738, country: 'AT' },
+      'Warsaw': { lat: 52.2297, lon: 21.0122, country: 'PL' },
+      'Budapest': { lat: 47.4979, lon: 19.0402, country: 'HU' },
+      'Zurich': { lat: 47.3769, lon: 8.5417, country: 'CH' },
+      'Munich': { lat: 48.1351, lon: 11.5820, country: 'DE' },
+      'Stockholm': { lat: 59.3293, lon: 18.0686, country: 'SE' },
+      'Copenhagen': { lat: 55.6761, lon: 12.5683, country: 'DK' },
+      'Helsinki': { lat: 60.1699, lon: 24.9384, country: 'FI' },
+      'Oslo': { lat: 59.9139, lon: 10.7522, country: 'NO' },
+    };
+
+    const cityData = cityCoordinates[city];
+    if (cityData) {
+      return {
+        place: `${cityData.lat},${cityData.lon}`,
+        country: cityData.country,
+      };
+    }
+
+    // Fallback to city name
+    return { city };
   }
 
   /**

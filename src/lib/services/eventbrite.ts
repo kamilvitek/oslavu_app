@@ -110,13 +110,13 @@ interface EventbriteCategory {
 }
 
 export class EventbriteService {
-  private readonly apiKey: string;
+  private readonly privateToken: string;
   private readonly baseUrl = 'https://www.eventbriteapi.com/v3';
 
   constructor() {
-    this.apiKey = process.env.EVENTBRITE_API_KEY || '';
-    if (!this.apiKey) {
-      throw new Error('EVENTBRITE_API_KEY environment variable is required');
+    this.privateToken = process.env.EVENTBRITE_PRIVATE_TOKEN || '';
+    if (!this.privateToken) {
+      throw new Error('EVENTBRITE_PRIVATE_TOKEN environment variable is required');
     }
   }
 
@@ -138,7 +138,6 @@ export class EventbriteService {
   }): Promise<{ events: Event[]; total: number }> {
     try {
       const searchParams = new URLSearchParams({
-        token: this.apiKey,
         page_size: (params.page_size || 50).toString(),
         page: (params.page || 1).toString(),
         sort_by: params.sort_by || 'date',
@@ -159,7 +158,7 @@ export class EventbriteService {
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.privateToken}`,
         },
       });
 
@@ -317,7 +316,7 @@ export class EventbriteService {
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.privateToken}`,
         },
       });
       
@@ -342,7 +341,7 @@ export class EventbriteService {
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.privateToken}`,
         },
       });
       
@@ -366,7 +365,7 @@ export class EventbriteService {
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.privateToken}`,
         },
       });
       

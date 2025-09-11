@@ -23,11 +23,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if API key is configured
-    if (!process.env.EVENTBRITE_API_KEY) {
-      console.error('EVENTBRITE_API_KEY is not configured');
+    // Check if private token is configured
+    if (!process.env.EVENTBRITE_PRIVATE_TOKEN) {
+      console.error('EVENTBRITE_PRIVATE_TOKEN is not configured');
       return NextResponse.json(
-        { error: 'Eventbrite API key is not configured' },
+        { error: 'Eventbrite private token is not configured' },
         { status: 500 }
       );
     }
