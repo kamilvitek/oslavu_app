@@ -16,12 +16,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate date range
-    const startDate = new Date(body.dateRange.start);
-    const endDate = new Date(body.dateRange.end);
+    const analysisStartDate = new Date(body.dateRange.start);
+    const analysisEndDate = new Date(body.dateRange.end);
     
-    if (startDate >= endDate) {
+    if (analysisStartDate >= analysisEndDate) {
       return NextResponse.json(
-        { error: 'Start date must be before end date' },
+        { error: 'Analysis start date must be before analysis end date' },
         { status: 400 }
       );
     }
@@ -30,9 +30,9 @@ export async function POST(request: NextRequest) {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    if (startDate < thirtyDaysAgo) {
+    if (analysisStartDate < thirtyDaysAgo) {
       return NextResponse.json(
-        { error: 'Start date cannot be more than 30 days in the past' },
+        { error: 'Analysis start date cannot be more than 30 days in the past' },
         { status: 400 }
       );
     }
