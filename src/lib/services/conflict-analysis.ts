@@ -48,19 +48,24 @@ export class ConflictAnalysisService {
    * Analyze conflicts for event dates
    */
   async analyzeConflicts(params: ConflictAnalysisParams): Promise<ConflictAnalysisResult> {
+    const startTime = Date.now();
     try {
       console.log('Starting conflict analysis with params:', params);
       
       // Fetch events from multiple APIs
+      const fetchStartTime = Date.now();
       const events = await this.fetchEventsFromAPI(params);
-      console.log(`Total events fetched: ${events.length}`);
+      const fetchTime = Date.now() - fetchStartTime;
+      console.log(`Total events fetched: ${events.length} (took ${fetchTime}ms)`);
       
       // Generate date recommendations
+      const analysisStartTime = Date.now();
       const dateRecommendations = await this.generateDateRecommendations(
         params,
         events
       );
-      console.log(`Generated ${dateRecommendations.length} date recommendations`);
+      const analysisTime = Date.now() - analysisStartTime;
+      console.log(`Generated ${dateRecommendations.length} date recommendations (took ${analysisTime}ms)`);
 
       // Log all recommendations with their scores
       dateRecommendations.forEach((rec, index) => {
@@ -78,6 +83,9 @@ export class ConflictAnalysisService {
 
       console.log(`Final results: ${recommendedDates.length} low risk dates, ${highRiskDates.length} high risk dates`);
 
+      const totalTime = Date.now() - startTime;
+      console.log(`🎯 Conflict analysis completed in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`);
+
       return {
         recommendedDates,
         highRiskDates,
@@ -85,7 +93,8 @@ export class ConflictAnalysisService {
         analysisDate: new Date().toISOString()
       };
     } catch (error) {
-      console.error('Error in conflict analysis:', error);
+      const totalTime = Date.now() - startTime;
+      console.error(`❌ Error in conflict analysis after ${totalTime}ms:`, error);
       throw error;
     }
   }
@@ -117,8 +126,8 @@ export class ConflictAnalysisService {
     const baseUrl = process.env.NODE_ENV === 'production' 
       ? process.env.VERCEL_URL 
         ? `https://${process.env.VERCEL_URL}`
-        : 'https://your-app.vercel.app' // Replace with your actual Vercel URL
-      : 'http://localhost:3001'; // Use the correct port
+        : 'https://oslavu-app.vercel.app' // Replace with your actual Vercel URL
+      : 'http://localhost:3000'; // Use the correct port
 
     // Fetch from Ticketmaster, Eventbrite, PredictHQ, and Brno ArcGIS in parallel
     const [ticketmasterResponse, eventbriteResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
@@ -274,8 +283,12 @@ export class ConflictAnalysisService {
     
     // Generate potential dates around the preferred dates
     const potentialDates = this.generatePotentialDates(params);
+    console.log(`Generated ${potentialDates.length} potential date ranges to analyze`);
     
-    for (const dateRange of potentialDates) {
+    for (let i = 0; i < potentialDates.length; i++) {
+      const dateRange = potentialDates[i];
+      const dateStartTime = Date.now();
+      console.log(`Analyzing date range ${i + 1}/${potentialDates.length}: ${dateRange.startDate} to ${dateRange.endDate}`);
       const competingEvents = this.findCompetingEvents(
         dateRange.startDate,
         dateRange.endDate,
@@ -324,6 +337,9 @@ export class ConflictAnalysisService {
         audienceOverlap,
         venueIntelligence
       });
+
+      const dateTime = Date.now() - dateStartTime;
+      console.log(`✅ Date range ${i + 1} analyzed in ${dateTime}ms (Score: ${conflictScore}, Risk: ${riskLevel}, Events: ${competingEvents.length})`);
     }
 
     // Sort by conflict score (ascending for recommendations, descending for high risk)
@@ -339,8 +355,8 @@ export class ConflictAnalysisService {
     const preferredEnd = new Date(params.endDate);
     const eventDuration = Math.ceil((preferredEnd.getTime() - preferredStart.getTime()) / (1000 * 60 * 60 * 24));
 
-    // Generate dates ±7 days around preferred dates
-    for (let i = -7; i <= 7; i++) {
+    // Generate dates ±3 days around preferred dates (reduced for performance)
+    for (let i = -3; i <= 3; i++) {
       const startDate = new Date(preferredStart);
       startDate.setDate(startDate.getDate() + i);
       
@@ -419,7 +435,18 @@ export class ConflictAnalysisService {
     let score = 0;
     console.log(`Calculating conflict score for ${competingEvents.length} competing events`);
 
-    for (const event of competingEvents) {
+    // Limit to top 5 most significant events for performance (prioritize events with venues and images)
+    const eventsToProcess = competingEvents
+      .sort((a, b) => {
+        const scoreA = (a.venue ? 2 : 0) + (a.imageUrl ? 1 : 0) + (a.description && a.description.length > 50 ? 1 : 0);
+        const scoreB = (b.venue ? 2 : 0) + (b.imageUrl ? 1 : 0) + (b.description && b.description.length > 50 ? 1 : 0);
+        return scoreB - scoreA;
+      })
+      .slice(0, 5);
+
+    console.log(`Processing top ${eventsToProcess.length} most significant events for detailed analysis`);
+
+    for (const event of eventsToProcess) {
       let eventScore = 0;
       
       // Base score for any competing event
@@ -450,7 +477,7 @@ export class ConflictAnalysisService {
         console.log(`  "${event.title}": has description +5`);
       }
 
-      // Advanced analysis: Audience overlap prediction
+      // Advanced analysis: Audience overlap prediction (with timeout)
       if (params.enableAdvancedAnalysis) {
         try {
           // Create a mock event for the user's planned event
@@ -467,22 +494,59 @@ export class ConflictAnalysisService {
             updatedAt: new Date().toISOString()
           };
 
-          // Use OpenAI-powered analysis if available, otherwise fallback to rule-based
-          const audienceOverlap = openaiAudienceOverlapService.isAvailable()
-            ? await openaiAudienceOverlapService.predictAudienceOverlap(plannedEvent, event)
-            : await audienceOverlapService.predictAudienceOverlap(plannedEvent, event);
+          // Use OpenAI-powered analysis with timeout (5 seconds max)
+          const audienceOverlap = await Promise.race([
+            openaiAudienceOverlapService.isAvailable()
+              ? openaiAudienceOverlapService.predictAudienceOverlap(plannedEvent, event)
+              : audienceOverlapService.predictAudienceOverlap(plannedEvent, event),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Audience overlap analysis timeout')), 5000)
+            )
+          ]) as any;
           
           // Increase score based on audience overlap
           const overlapMultiplier = 1 + (audienceOverlap.overlapScore * 0.5); // Up to 50% increase
           eventScore *= overlapMultiplier;
           console.log(`  "${event.title}": audience overlap multiplier ${overlapMultiplier.toFixed(2)} (${openaiAudienceOverlapService.isAvailable() ? 'AI-powered' : 'rule-based'})`);
         } catch (error) {
-          console.error('Error calculating audience overlap:', error);
+          console.error('Error calculating audience overlap (using fallback):', error);
+          // Fallback: use rule-based analysis without timeout
+          try {
+            const { audienceOverlapService } = await import('./audience-overlap');
+            const fallbackOverlap = await audienceOverlapService.predictAudienceOverlap(
+              {
+                id: 'planned_event',
+                title: 'Planned Event',
+                date: params.startDate,
+                city: params.city,
+                category: params.category,
+                subcategory: params.subcategory,
+                expectedAttendees: params.expectedAttendees,
+                source: 'manual',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              },
+              event
+            );
+            const overlapMultiplier = 1 + (fallbackOverlap.overlapScore * 0.3); // Reduced multiplier for fallback
+            eventScore *= overlapMultiplier;
+            console.log(`  "${event.title}": fallback audience overlap multiplier ${overlapMultiplier.toFixed(2)}`);
+          } catch (fallbackError) {
+            console.error('Fallback audience overlap also failed:', fallbackError);
+          }
         }
       }
 
       score += eventScore;
       console.log(`  "${event.title}": total contribution = ${eventScore}`);
+    }
+
+    // Add base score for remaining events (not processed in detail for performance)
+    const remainingEvents = competingEvents.length - eventsToProcess.length;
+    if (remainingEvents > 0) {
+      const remainingScore = remainingEvents * 15; // Lower base score for unprocessed events
+      score += remainingScore;
+      console.log(`Added base score for ${remainingEvents} remaining events: +${remainingScore}`);
     }
 
     console.log(`Base score before attendee adjustment: ${score}`);

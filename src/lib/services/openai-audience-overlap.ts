@@ -86,7 +86,14 @@ export class OpenAIAudienceOverlapService {
     const response = await this.callOpenAI(prompt, 'gpt-3.5-turbo');
     
     try {
-      return JSON.parse(response);
+      // Clean the response by removing markdown code blocks if present
+      let cleanResponse = response.trim();
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      return JSON.parse(cleanResponse);
     } catch (error) {
       console.error('Failed to parse OpenAI response:', error);
       return this.getDefaultEventAnalysis(event1, event2);
@@ -139,7 +146,14 @@ export class OpenAIAudienceOverlapService {
     const response = await this.callOpenAI(prompt, 'gpt-3.5-turbo');
     
     try {
-      return JSON.parse(response);
+      // Clean the response by removing markdown code blocks if present
+      let cleanResponse = response.trim();
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      return JSON.parse(cleanResponse);
     } catch (error) {
       console.error('Failed to parse overlap prediction:', error);
       return this.getDefaultOverlapPrediction();
@@ -181,39 +195,53 @@ export class OpenAIAudienceOverlapService {
   }
 
   /**
-   * Call OpenAI API
+   * Call OpenAI API with timeout
    */
   private async callOpenAI(prompt: string, model: string = 'gpt-3.5-turbo'): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert event analyst specializing in audience overlap prediction. Provide accurate, data-driven analysis in JSON format when requested.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: 1000,
-        temperature: 0.3, // Lower temperature for more consistent results
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert event analyst specializing in audience overlap prediction. Provide accurate, data-driven analysis in JSON format when requested.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 1000,
+          temperature: 0.3, // Lower temperature for more consistent results
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
+      }
+
+      const data = await response.json();
+      return data.choices[0].message.content.trim();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('OpenAI API request timed out after 10 seconds');
+      }
+      throw error;
     }
-
-    const data = await response.json();
-    return data.choices[0].message.content.trim();
   }
 
   /**
