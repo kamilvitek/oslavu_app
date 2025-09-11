@@ -237,7 +237,7 @@ export class OpenAIAudienceOverlapService {
       return data.choices[0].message.content.trim();
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
+      if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('OpenAI API request timed out after 10 seconds');
       }
       throw error;
