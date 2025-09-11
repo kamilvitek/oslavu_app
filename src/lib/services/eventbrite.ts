@@ -312,7 +312,7 @@ export class EventbriteService {
    */
   async getCategories(): Promise<EventbriteCategory[]> {
     try {
-      const url = `${this.baseUrl}/categories/?token=${this.apiKey}`;
+      const url = `${this.baseUrl}/categories/?token=${this.privateToken}`;
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
@@ -337,7 +337,7 @@ export class EventbriteService {
    */
   async getEvent(eventId: string): Promise<EventbriteEvent> {
     try {
-      const url = `${this.baseUrl}/events/${eventId}/?token=${this.apiKey}`;
+      const url = `${this.baseUrl}/events/${eventId}/?token=${this.privateToken}`;
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
@@ -361,7 +361,7 @@ export class EventbriteService {
    */
   async getVenue(venueId: string) {
     try {
-      const url = `${this.baseUrl}/venues/${venueId}/?token=${this.apiKey}`;
+      const url = `${this.baseUrl}/venues/${venueId}/?token=${this.privateToken}`;
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
