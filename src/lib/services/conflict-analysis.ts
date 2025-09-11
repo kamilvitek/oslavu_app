@@ -127,7 +127,7 @@ export class ConflictAnalysisService {
       ? process.env.VERCEL_URL 
         ? `https://${process.env.VERCEL_URL}`
         : 'https://oslavu-app.vercel.app' // Replace with your actual Vercel URL
-      : 'http://localhost:3000'; // Use the correct port
+      : `http://localhost:${process.env.PORT || 3001}`; // Use the correct port (3001 for dev)
 
     // Fetch from Ticketmaster, Eventbrite, PredictHQ, and Brno ArcGIS in parallel
     const [ticketmasterResponse, eventbriteResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
