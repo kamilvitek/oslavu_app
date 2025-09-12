@@ -123,11 +123,10 @@ export class ConflictAnalysisService {
     console.log('Fetching events with params:', queryParams.toString());
 
     // Get base URL for server-side requests
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}`
-        : 'https://oslavu-app.vercel.app' // Replace with your actual Vercel URL
-      : `http://localhost:${process.env.PORT || 3001}`; // Use the correct port (3001 for dev)
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+      (process.env.NODE_ENV === 'production' 
+        ? 'https://oslavu-app.vercel.app'
+        : `http://localhost:${process.env.PORT || 3000}`);
 
     // Fetch from Ticketmaster, Eventbrite, PredictHQ, and Brno ArcGIS in parallel
     const [ticketmasterResponse, eventbriteResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
