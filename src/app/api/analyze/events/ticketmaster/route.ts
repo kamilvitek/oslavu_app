@@ -16,6 +16,17 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '0');
     const size = parseInt(searchParams.get('size') || '200'); // Ticketmaster's maximum page size
 
+    // Validate radius parameter
+    if (radius) {
+      const radiusValue = parseInt(radius);
+      if (isNaN(radiusValue) || radiusValue < 0 || radiusValue > 19999) {
+        return NextResponse.json(
+          { error: 'Radius must be a number between 0 and 19,999' },
+          { status: 400 }
+        );
+      }
+    }
+
     console.log('API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
 
     if (!city && !keyword) {
@@ -103,10 +114,19 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Ticketmaster API error:', error);
     
+    // Log additional context for debugging
+    console.error('Ticketmaster API Error Context:', {
+      url: request.url,
+      searchParams: Object.fromEntries(new URL(request.url).searchParams),
+      timestamp: new Date().toISOString()
+    });
+    
     return NextResponse.json(
       { 
         error: 'Failed to fetch events',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error instanceof Error ? error.message : 'Unknown error',
+        source: 'ticketmaster',
+        timestamp: new Date().toISOString()
       },
       { status: 500 }
     );

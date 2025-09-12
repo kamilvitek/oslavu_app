@@ -165,7 +165,6 @@ export class PredictHQService {
     category?: string
   ): Promise<Event[]> {
     const locationParams = this.getCityLocationParams(city);
-    const radiusParams = this.getRadiusParams(city, radius);
     
     console.log(`🔮 PredictHQ: Searching ${city} with radius ${radius}`);
     
@@ -179,7 +178,6 @@ export class PredictHQService {
       
       const { events, total } = await this.getEvents({
         ...locationParams,
-        ...radiusParams,
         'start.gte': `${startDate}T00:00:00`,
         'start.lte': `${endDate}T23:59:59`,
         category: category ? this.mapCategoryToPredictHQ(category) : undefined,
@@ -458,39 +456,6 @@ export class PredictHQService {
     return { city };
   }
 
-  /**
-   * Get radius parameters for PredictHQ API
-   */
-  private getRadiusParams(city: string, radius: string): Partial<PredictHQSearchParams> {
-    // Parse radius (e.g., "50km", "25km", "100km")
-    const radiusMatch = radius.match(/(\d+)(km|miles?)?/i);
-    if (!radiusMatch) {
-      return {};
-    }
-
-    const radiusValue = parseInt(radiusMatch[1]);
-    const radiusUnit = radiusMatch[2]?.toLowerCase() || 'km';
-    
-    // Convert to kilometers if needed
-    const radiusKm = radiusUnit.includes('mile') ? radiusValue * 1.60934 : radiusValue;
-    
-    // PredictHQ uses place.scope parameter for geographic scope
-    // The scope can be 'city', 'metro', 'region', 'country'
-    let scope = 'city';
-    if (radiusKm <= 25) {
-      scope = 'city';
-    } else if (radiusKm <= 50) {
-      scope = 'metro';
-    } else if (radiusKm <= 100) {
-      scope = 'region';
-    } else {
-      scope = 'country';
-    }
-
-    return {
-      'place.scope': scope,
-    };
-  }
 
   /**
    * Get available categories from PredictHQ

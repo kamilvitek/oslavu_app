@@ -155,6 +155,9 @@ export class EventbriteService {
 
       const url = `${this.baseUrl}/events/search/?${searchParams.toString()}`;
       
+      console.log('Eventbrite API Request URL:', url);
+      console.log('Eventbrite API Request Params:', Object.fromEntries(searchParams.entries()));
+      
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',

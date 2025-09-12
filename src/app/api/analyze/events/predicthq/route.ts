@@ -161,11 +161,19 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('PredictHQ API Error:', error);
     
+    // Log additional context for debugging
+    console.error('PredictHQ API Error Context:', {
+      url: request.url,
+      searchParams: Object.fromEntries(new URL(request.url).searchParams),
+      timestamp: new Date().toISOString()
+    });
+    
     return NextResponse.json(
       { 
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
-        source: 'predicthq'
+        source: 'predicthq',
+        timestamp: new Date().toISOString()
       },
       { status: 500 }
     );

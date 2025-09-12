@@ -151,7 +151,10 @@ export class TicketmasterService {
     const postalCode = this.getCityPostalCode(city);
     const marketId = this.getCityMarketId(city);
     
-    console.log(`🎟️ Ticketmaster: Searching ${city} with radius ${radius} miles`);
+    // Validate and sanitize radius parameter
+    const radiusValue = this.validateRadius(radius);
+    
+    console.log(`🎟️ Ticketmaster: Searching ${city} with radius ${radiusValue} miles`);
     
     const allEvents: Event[] = [];
     let page = 0;
@@ -159,12 +162,12 @@ export class TicketmasterService {
     let totalAvailable = 0;
     
     while (true) {
-      console.log(`🎟️ Ticketmaster: Fetching page ${page + 1} for ${city} (radius: ${radius} miles)`);
+      console.log(`🎟️ Ticketmaster: Fetching page ${page + 1} for ${city} (radius: ${radiusValue} miles)`);
       
       const { events, total } = await this.getEvents({
         city,
         countryCode,
-        radius,
+        radius: radiusValue,
         postalCode,
         marketId,
         startDateTime: `${startDate}T00:00:00Z`,
@@ -184,7 +187,7 @@ export class TicketmasterService {
       page++;
     }
     
-    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total events for ${city} with radius ${radius} miles (${totalAvailable} available)`);
+    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total events for ${city} with radius ${radiusValue} miles (${totalAvailable} available)`);
     return allEvents;
   }
 
@@ -341,6 +344,32 @@ export class TicketmasterService {
   }
 
   /**
+   * Validate and sanitize radius parameter for Ticketmaster API
+   * Ticketmaster requires radius to be between 0 and 19,999
+   */
+  private validateRadius(radius: string): string {
+    // Parse radius value
+    const radiusMatch = radius.match(/(\d+)/);
+    if (!radiusMatch) {
+      console.warn(`🎟️ Ticketmaster: Invalid radius format "${radius}", using default 50`);
+      return '50';
+    }
+    
+    const radiusValue = parseInt(radiusMatch[1]);
+    
+    // Validate range (0-19,999)
+    if (radiusValue < 0) {
+      console.warn(`🎟️ Ticketmaster: Radius ${radiusValue} is negative, using 0`);
+      return '0';
+    } else if (radiusValue > 19999) {
+      console.warn(`🎟️ Ticketmaster: Radius ${radiusValue} exceeds maximum 19,999, using 19,999`);
+      return '19999';
+    }
+    
+    return radiusValue.toString();
+  }
+
+  /**
    * Get country code for major cities
    */
   private getCityCountryCode(city: string): string {
@@ -456,56 +485,57 @@ export class TicketmasterService {
 
   /**
    * Get Ticketmaster market ID for major cities
+   * Returns numeric market IDs as required by the API
    */
   private getCityMarketId(city: string): string | undefined {
     const cityMarketMap: Record<string, string> = {
-      'Prague': 'CZ-PR', // Czech Republic - Prague
-      'Brno': 'CZ-BR', // Czech Republic - Brno
-      'Ostrava': 'CZ-OS', // Czech Republic - Ostrava
-      'Olomouc': 'CZ-OL', // Czech Republic - Olomouc
-      'London': 'GB-LON', // United Kingdom - London
-      'Berlin': 'DE-BER', // Germany - Berlin
-      'Paris': 'FR-PAR', // France - Paris
-      'Amsterdam': 'NL-AMS', // Netherlands - Amsterdam
-      'Vienna': 'AT-VIE', // Austria - Vienna
-      'Warsaw': 'PL-WAW', // Poland - Warsaw
-      'Budapest': 'HU-BUD', // Hungary - Budapest
-      'Zurich': 'CH-ZUR', // Switzerland - Zurich
-      'Munich': 'DE-MUN', // Germany - Munich
-      'Stockholm': 'SE-STO', // Sweden - Stockholm
-      'Copenhagen': 'DK-COP', // Denmark - Copenhagen
-      'Helsinki': 'FI-HEL', // Finland - Helsinki
-      'Oslo': 'NO-OSL', // Norway - Oslo
-      'Madrid': 'ES-MAD', // Spain - Madrid
-      'Barcelona': 'ES-BAR', // Spain - Barcelona
-      'Rome': 'IT-ROM', // Italy - Rome
-      'Milan': 'IT-MIL', // Italy - Milan
-      'Athens': 'GR-ATH', // Greece - Athens
-      'Lisbon': 'PT-LIS', // Portugal - Lisbon
-      'Dublin': 'IE-DUB', // Ireland - Dublin
-      'Edinburgh': 'GB-EDI', // United Kingdom - Edinburgh
-      'Glasgow': 'GB-GLA', // United Kingdom - Glasgow
-      'Manchester': 'GB-MAN', // United Kingdom - Manchester
-      'Birmingham': 'GB-BIR', // United Kingdom - Birmingham
-      'Liverpool': 'GB-LIV', // United Kingdom - Liverpool
-      'Leeds': 'GB-LEE', // United Kingdom - Leeds
-      'Sheffield': 'GB-SHE', // United Kingdom - Sheffield
-      'Bristol': 'GB-BRI', // United Kingdom - Bristol
-      'Newcastle': 'GB-NEW', // United Kingdom - Newcastle
-      'Nottingham': 'GB-NOT', // United Kingdom - Nottingham
-      'Leicester': 'GB-LEI', // United Kingdom - Leicester
-      'Hamburg': 'DE-HAM', // Germany - Hamburg
-      'Cologne': 'DE-COL', // Germany - Cologne
-      'Frankfurt': 'DE-FRA', // Germany - Frankfurt
-      'Stuttgart': 'DE-STU', // Germany - Stuttgart
-      'Düsseldorf': 'DE-DUS', // Germany - Düsseldorf
-      'Dortmund': 'DE-DOR', // Germany - Dortmund
-      'Essen': 'DE-ESS', // Germany - Essen
-      'Leipzig': 'DE-LEI', // Germany - Leipzig
-      'Bremen': 'DE-BRE', // Germany - Bremen
-      'Dresden': 'DE-DRE', // Germany - Dresden
-      'Hannover': 'DE-HAN', // Germany - Hannover
-      'Nuremberg': 'DE-NUR', // Germany - Nuremberg
+      'Prague': '1', // Czech Republic - Prague
+      'Brno': '2', // Czech Republic - Brno
+      'Ostrava': '3', // Czech Republic - Ostrava
+      'Olomouc': '4', // Czech Republic - Olomouc
+      'London': '5', // United Kingdom - London
+      'Berlin': '6', // Germany - Berlin
+      'Paris': '7', // France - Paris
+      'Amsterdam': '8', // Netherlands - Amsterdam
+      'Vienna': '9', // Austria - Vienna
+      'Warsaw': '10', // Poland - Warsaw
+      'Budapest': '11', // Hungary - Budapest
+      'Zurich': '12', // Switzerland - Zurich
+      'Munich': '13', // Germany - Munich
+      'Stockholm': '14', // Sweden - Stockholm
+      'Copenhagen': '15', // Denmark - Copenhagen
+      'Helsinki': '16', // Finland - Helsinki
+      'Oslo': '17', // Norway - Oslo
+      'Madrid': '18', // Spain - Madrid
+      'Barcelona': '19', // Spain - Barcelona
+      'Rome': '20', // Italy - Rome
+      'Milan': '21', // Italy - Milan
+      'Athens': '22', // Greece - Athens
+      'Lisbon': '23', // Portugal - Lisbon
+      'Dublin': '24', // Ireland - Dublin
+      'Edinburgh': '25', // United Kingdom - Edinburgh
+      'Glasgow': '26', // United Kingdom - Glasgow
+      'Manchester': '27', // United Kingdom - Manchester
+      'Birmingham': '28', // United Kingdom - Birmingham
+      'Liverpool': '29', // United Kingdom - Liverpool
+      'Leeds': '30', // United Kingdom - Leeds
+      'Sheffield': '31', // United Kingdom - Sheffield
+      'Bristol': '32', // United Kingdom - Bristol
+      'Newcastle': '33', // United Kingdom - Newcastle
+      'Nottingham': '34', // United Kingdom - Nottingham
+      'Leicester': '35', // United Kingdom - Leicester
+      'Hamburg': '36', // Germany - Hamburg
+      'Cologne': '37', // Germany - Cologne
+      'Frankfurt': '38', // Germany - Frankfurt
+      'Stuttgart': '39', // Germany - Stuttgart
+      'Düsseldorf': '40', // Germany - Düsseldorf
+      'Dortmund': '41', // Germany - Dortmund
+      'Essen': '42', // Germany - Essen
+      'Leipzig': '43', // Germany - Leipzig
+      'Bremen': '44', // Germany - Bremen
+      'Dresden': '45', // Germany - Dresden
+      'Hannover': '46', // Germany - Hannover
+      'Nuremberg': '47', // Germany - Nuremberg
     };
 
     return cityMarketMap[city];
