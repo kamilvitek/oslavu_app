@@ -128,6 +128,24 @@ export class ConflictAnalysisService {
         ? 'https://oslavu-app.vercel.app'
         : `http://localhost:${process.env.PORT || 3000}`);
 
+    // Add this debug logging block right after: console.log('Fetching events with params:', queryParams.toString());
+    console.log('🔍 Production Debug Info:');
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('NEXT_PUBLIC_BASE_URL:', process.env.NEXT_PUBLIC_BASE_URL);
+    console.log('Final baseUrl:', baseUrl);
+    console.log('API Keys availability:');
+    console.log('- TICKETMASTER_API_KEY:', !!process.env.TICKETMASTER_API_KEY);
+    console.log('- PREDICTHQ_API_KEY:', !!process.env.PREDICTHQ_API_KEY);
+    console.log('- EVENTBRITE_API_KEY:', !!process.env.EVENTBRITE_API_KEY);
+    console.log('API URLs being called:');
+    console.log('- Ticketmaster:', `${baseUrl}/api/analyze/events/ticketmaster?${queryParams.toString()}`);
+    console.log('- Eventbrite:', `${baseUrl}/api/analyze/events/eventbrite?${queryParams.toString()}`);
+    console.log('- PredictHQ:', `${baseUrl}/api/analyze/events/predicthq?${queryParams.toString()}`);
+    console.log('- Brno:', `${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
+      startDate: params.dateRangeStart,
+      endDate: params.dateRangeEnd
+    }).toString()}`);
+
     // Fetch from Ticketmaster, Eventbrite, PredictHQ, and Brno ArcGIS in parallel
     const [ticketmasterResponse, eventbriteResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
       fetch(`${baseUrl}/api/analyze/events/ticketmaster?${queryParams.toString()}`),
