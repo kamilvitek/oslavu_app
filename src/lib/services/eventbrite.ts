@@ -285,22 +285,49 @@ export class EventbriteService {
 
   /**
    * Map our categories to Eventbrite category IDs
+   * Returns undefined for broader searches when no specific mapping exists
    */
-  private mapCategoryToEventbrite(category: string): string {
-    const categoryMap: Record<string, string> = {
+  private mapCategoryToEventbrite(category: string): string | undefined {
+    const categoryMap: Record<string, string | undefined> = {
+      // Business and professional events
       'Technology': '102', // Science & Technology
       'Business': '101', // Business & Professional
       'Marketing': '101', // Business & Professional
+      'Finance': '101', // Business & Professional
+      'Professional Development': '101', // Business & Professional
+      'Networking': '101', // Business & Professional
+      
+      // Conferences and trade shows
+      'Conferences': '101', // Business & Professional (most conferences are business events)
+      'Trade Shows': '101', // Business & Professional
+      'Expos': '101', // Business & Professional
+      
+      // Healthcare and education
       'Healthcare': '108', // Health & Wellness
       'Education': '110', // Education
-      'Finance': '101', // Business & Professional
+      'Academic': '110', // Education
+      
+      // Entertainment and culture
       'Entertainment': '103', // Music
-      'Sports': '108', // Health & Wellness (closest to sports)
       'Arts & Culture': '105', // Arts
-      'Other': '199', // Other
+      'Music': '103', // Music
+      'Film': '104', // Film & Media
+      
+      // Sports and fitness
+      'Sports': '108', // Health & Wellness (closest to sports)
+      
+      // For categories that might benefit from broader search
+      'Other': undefined, // Return undefined to search without category filter
     };
 
-    return categoryMap[category] || '199';
+    const mappedCategory = categoryMap[category];
+    
+    // Log when we're using fallback (undefined) for debugging
+    if (mappedCategory === undefined) {
+      console.log(`🎫 Eventbrite: Using broader search for category "${category}" (no specific mapping)`);
+    }
+    
+    return mappedCategory;
   }
 
   /**
@@ -411,6 +438,95 @@ export class EventbriteService {
       console.error('Error fetching Eventbrite venue:', error);
       throw error;
     }
+  }
+
+  /**
+   * Test category effectiveness by comparing results with and without category filtering
+   */
+  async testCategoryEffectiveness(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category: string
+  ): Promise<{
+    withCategory: number;
+    withoutCategory: number;
+    effectiveness: number;
+    categoryUsed: string | undefined;
+  }> {
+    const mappedCategory = this.mapCategoryToEventbrite(category);
+    
+    // Get events with category filter
+    const { total: withCategory } = await this.getEvents({
+      location: city,
+      location_radius: '50km',
+      start_date: `${startDate}T00:00:00`,
+      end_date: `${endDate}T23:59:59`,
+      categories: mappedCategory,
+      page_size: 200,
+      page: 1,
+    });
+
+    // Get events without category filter
+    const { total: withoutCategory } = await this.getEvents({
+      location: city,
+      location_radius: '50km',
+      start_date: `${startDate}T00:00:00`,
+      end_date: `${endDate}T23:59:59`,
+      page_size: 200,
+      page: 1,
+    });
+
+    const effectiveness = withoutCategory > 0 ? (withCategory / withoutCategory) * 100 : 0;
+
+    console.log(`🎫 Eventbrite Category Test for "${category}":`);
+    console.log(`  - With category filter (${mappedCategory || 'none'}): ${withCategory} events`);
+    console.log(`  - Without category filter: ${withoutCategory} events`);
+    console.log(`  - Effectiveness: ${effectiveness.toFixed(1)}%`);
+
+    return {
+      withCategory,
+      withoutCategory,
+      effectiveness,
+      categoryUsed: mappedCategory,
+    };
+  }
+
+  /**
+   * Get events with fallback strategy - tries specific category first, then broader search
+   */
+  async getEventsWithFallback(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    if (!category) {
+      return this.getEventsForCity(city, startDate, endDate);
+    }
+
+    const mappedCategory = this.mapCategoryToEventbrite(category);
+    
+    // If we have a specific mapping, try it first
+    if (mappedCategory) {
+      try {
+        const events = await this.getEventsForCity(city, startDate, endDate, category);
+        
+        // If we got a reasonable number of events, return them
+        if (events.length >= 5) {
+          console.log(`🎫 Eventbrite: Found ${events.length} events for "${category}" using category ID "${mappedCategory}"`);
+          return events;
+        }
+        
+        console.log(`🎫 Eventbrite: Only ${events.length} events found for "${category}" with category ID "${mappedCategory}", trying broader search`);
+      } catch (error) {
+        console.log(`🎫 Eventbrite: Error with category "${category}": ${error}, trying broader search`);
+      }
+    }
+
+    // Fallback to broader search without category filter
+    console.log(`🎫 Eventbrite: Using broader search for "${category}"`);
+    return this.getEventsForCity(city, startDate, endDate);
   }
 }
 

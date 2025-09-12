@@ -223,21 +223,49 @@ export class TicketmasterService {
 
   /**
    * Map our categories to Ticketmaster classification names
+   * Returns undefined for broader searches when no specific mapping exists
    */
-  private mapCategoryToTicketmaster(category: string): string {
-    const categoryMap: Record<string, string> = {
-      'Technology': 'Miscellaneous',
-      'Business': 'Miscellaneous',
+  private mapCategoryToTicketmaster(category: string): string | undefined {
+    const categoryMap: Record<string, string | undefined> = {
+      // Business and professional events
+      'Technology': 'Miscellaneous', // Ticketmaster doesn't have specific tech category
+      'Business': 'Miscellaneous', // Business events often fall under Miscellaneous
       'Marketing': 'Miscellaneous',
+      'Finance': 'Miscellaneous',
+      'Professional Development': 'Miscellaneous',
+      'Networking': 'Miscellaneous',
+      
+      // Conferences and trade shows
+      'Conferences': 'Miscellaneous', // Most conferences are in Miscellaneous
+      'Trade Shows': 'Miscellaneous', // Trade shows typically in Miscellaneous
+      'Expos': 'Miscellaneous',
+      
+      // Healthcare and education
       'Healthcare': 'Miscellaneous',
       'Education': 'Miscellaneous',
-      'Finance': 'Miscellaneous',
+      'Academic': 'Miscellaneous',
+      
+      // Entertainment and culture
       'Entertainment': 'Arts & Theatre',
-      'Sports': 'Sports',
       'Arts & Culture': 'Arts & Theatre',
+      'Music': 'Music',
+      'Film': 'Film',
+      
+      // Sports
+      'Sports': 'Sports',
+      
+      // For categories that might benefit from broader search
+      'Other': undefined, // Return undefined to search without category filter
     };
 
-    return categoryMap[category] || 'Miscellaneous';
+    const mappedCategory = categoryMap[category];
+    
+    // Log when we're using fallback (undefined) for debugging
+    if (mappedCategory === undefined) {
+      console.log(`🎟️ Ticketmaster: Using broader search for category "${category}" (no specific mapping)`);
+    }
+    
+    return mappedCategory;
   }
 
   /**
@@ -318,6 +346,96 @@ export class TicketmasterService {
       console.error('Error fetching classifications:', error);
       throw error;
     }
+  }
+
+  /**
+   * Test category effectiveness by comparing results with and without category filtering
+   */
+  async testCategoryEffectiveness(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category: string
+  ): Promise<{
+    withCategory: number;
+    withoutCategory: number;
+    effectiveness: number;
+    categoryUsed: string | undefined;
+  }> {
+    const countryCode = this.getCityCountryCode(city);
+    const mappedCategory = this.mapCategoryToTicketmaster(category);
+    
+    // Get events with category filter
+    const { total: withCategory } = await this.getEvents({
+      city,
+      countryCode,
+      startDateTime: `${startDate}T00:00:00Z`,
+      endDateTime: `${endDate}T23:59:59Z`,
+      classificationName: mappedCategory,
+      size: 200,
+      page: 0,
+    });
+
+    // Get events without category filter
+    const { total: withoutCategory } = await this.getEvents({
+      city,
+      countryCode,
+      startDateTime: `${startDate}T00:00:00Z`,
+      endDateTime: `${endDate}T23:59:59Z`,
+      size: 200,
+      page: 0,
+    });
+
+    const effectiveness = withoutCategory > 0 ? (withCategory / withoutCategory) * 100 : 0;
+
+    console.log(`🎟️ Ticketmaster Category Test for "${category}":`);
+    console.log(`  - With category filter (${mappedCategory || 'none'}): ${withCategory} events`);
+    console.log(`  - Without category filter: ${withoutCategory} events`);
+    console.log(`  - Effectiveness: ${effectiveness.toFixed(1)}%`);
+
+    return {
+      withCategory,
+      withoutCategory,
+      effectiveness,
+      categoryUsed: mappedCategory,
+    };
+  }
+
+  /**
+   * Get events with fallback strategy - tries specific category first, then broader search
+   */
+  async getEventsWithFallback(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    if (!category) {
+      return this.getEventsForCity(city, startDate, endDate);
+    }
+
+    const mappedCategory = this.mapCategoryToTicketmaster(category);
+    
+    // If we have a specific mapping, try it first
+    if (mappedCategory) {
+      try {
+        const events = await this.getEventsForCity(city, startDate, endDate, category);
+        
+        // If we got a reasonable number of events, return them
+        if (events.length >= 5) {
+          console.log(`🎟️ Ticketmaster: Found ${events.length} events for "${category}" using classification "${mappedCategory}"`);
+          return events;
+        }
+        
+        console.log(`🎟️ Ticketmaster: Only ${events.length} events found for "${category}" with classification "${mappedCategory}", trying broader search`);
+      } catch (error) {
+        console.log(`🎟️ Ticketmaster: Error with category "${category}": ${error}, trying broader search`);
+      }
+    }
+
+    // Fallback to broader search without category filter
+    console.log(`🎟️ Ticketmaster: Using broader search for "${category}"`);
+    return this.getEventsForCity(city, startDate, endDate);
   }
 }
 

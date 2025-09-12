@@ -266,22 +266,49 @@ export class PredictHQService {
 
   /**
    * Map our categories to PredictHQ category names
+   * Returns undefined for broader searches when no specific mapping exists
    */
-  private mapCategoryToPredictHQ(category: string): string {
-    const categoryMap: Record<string, string> = {
-      'Technology': 'conferences',
-      'Business': 'conferences',
-      'Marketing': 'conferences',
-      'Healthcare': 'conferences',
-      'Education': 'conferences',
-      'Finance': 'conferences',
-      'Entertainment': 'concerts',
-      'Sports': 'sports',
-      'Arts & Culture': 'festivals',
-      'Other': 'community',
+  private mapCategoryToPredictHQ(category: string): string | undefined {
+    const categoryMap: Record<string, string | undefined> = {
+      // Business and professional events - use conferences for most business events
+      'Technology': 'conferences', // Tech conferences and events
+      'Business': 'conferences', // Business conferences and meetings
+      'Marketing': 'conferences', // Marketing conferences and events
+      'Finance': 'conferences', // Financial conferences and events
+      'Professional Development': 'conferences', // Professional development events
+      'Networking': 'conferences', // Networking events and meetups
+      
+      // Conferences and trade shows
+      'Conferences': 'conferences', // Direct mapping
+      'Trade Shows': 'expos', // Trade shows and exhibitions
+      'Expos': 'expos', // Direct mapping
+      
+      // Healthcare and education
+      'Healthcare': 'conferences', // Healthcare conferences and events
+      'Education': 'academic', // Educational events and academic conferences
+      'Academic': 'academic', // Direct mapping
+      
+      // Entertainment and culture
+      'Entertainment': 'concerts', // Music and entertainment events
+      'Music': 'concerts', // Direct mapping
+      'Arts & Culture': 'festivals', // Cultural festivals and events
+      'Film': 'performing-arts', // Film events and screenings
+      
+      // Sports
+      'Sports': 'sports', // Direct mapping
+      
+      // For categories that might benefit from broader search
+      'Other': undefined, // Return undefined to search without category filter
     };
 
-    return categoryMap[category] || 'community';
+    const mappedCategory = categoryMap[category];
+    
+    // Log when we're using fallback (undefined) for debugging
+    if (mappedCategory === undefined) {
+      console.log(`🔮 PredictHQ: Using broader search for category "${category}" (no specific mapping)`);
+    }
+    
+    return mappedCategory;
   }
 
   /**
@@ -452,6 +479,94 @@ export class PredictHQService {
     });
 
     return events;
+  }
+
+  /**
+   * Test category effectiveness by comparing results with and without category filtering
+   */
+  async testCategoryEffectiveness(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category: string
+  ): Promise<{
+    withCategory: number;
+    withoutCategory: number;
+    effectiveness: number;
+    categoryUsed: string | undefined;
+  }> {
+    const locationParams = this.getCityLocationParams(city);
+    const mappedCategory = this.mapCategoryToPredictHQ(category);
+    
+    // Get events with category filter
+    const { total: withCategory } = await this.getEvents({
+      ...locationParams,
+      'start.gte': `${startDate}T00:00:00`,
+      'start.lte': `${endDate}T23:59:59`,
+      category: mappedCategory,
+      limit: 500,
+      offset: 0,
+    });
+
+    // Get events without category filter
+    const { total: withoutCategory } = await this.getEvents({
+      ...locationParams,
+      'start.gte': `${startDate}T00:00:00`,
+      'start.lte': `${endDate}T23:59:59`,
+      limit: 500,
+      offset: 0,
+    });
+
+    const effectiveness = withoutCategory > 0 ? (withCategory / withoutCategory) * 100 : 0;
+
+    console.log(`🔮 PredictHQ Category Test for "${category}":`);
+    console.log(`  - With category filter (${mappedCategory || 'none'}): ${withCategory} events`);
+    console.log(`  - Without category filter: ${withoutCategory} events`);
+    console.log(`  - Effectiveness: ${effectiveness.toFixed(1)}%`);
+
+    return {
+      withCategory,
+      withoutCategory,
+      effectiveness,
+      categoryUsed: mappedCategory,
+    };
+  }
+
+  /**
+   * Get events with fallback strategy - tries specific category first, then broader search
+   */
+  async getEventsWithFallback(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    if (!category) {
+      return this.getEventsForCity(city, startDate, endDate);
+    }
+
+    const mappedCategory = this.mapCategoryToPredictHQ(category);
+    
+    // If we have a specific mapping, try it first
+    if (mappedCategory) {
+      try {
+        const events = await this.getEventsForCity(city, startDate, endDate, category);
+        
+        // If we got a reasonable number of events, return them
+        if (events.length >= 5) {
+          console.log(`🔮 PredictHQ: Found ${events.length} events for "${category}" using category "${mappedCategory}"`);
+          return events;
+        }
+        
+        console.log(`🔮 PredictHQ: Only ${events.length} events found for "${category}" with category "${mappedCategory}", trying broader search`);
+      } catch (error) {
+        console.log(`🔮 PredictHQ: Error with category "${category}": ${error}, trying broader search`);
+      }
+    }
+
+    // Fallback to broader search without category filter
+    console.log(`🔮 PredictHQ: Using broader search for "${category}"`);
+    return this.getEventsForCity(city, startDate, endDate);
   }
 }
 
