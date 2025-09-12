@@ -80,7 +80,7 @@ export class TicketmasterService {
     try {
       const searchParams = new URLSearchParams({
         apikey: this.apiKey,
-        size: (params.size || 500).toString(), // Increased from 200 to 500 for better event coverage
+        size: (params.size || 200).toString(), // Ticketmaster's maximum page size
         page: (params.page || 0).toString(),
       });
 
@@ -120,7 +120,7 @@ export class TicketmasterService {
   }
 
   /**
-   * Get events for a specific city and date range
+   * Get events for a specific city and date range with pagination support
    */
   async getEventsForCity(
     city: string,
@@ -128,18 +128,50 @@ export class TicketmasterService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
-    const countryCode = this.getCityCountryCode(city);
-    
-    const { events } = await this.getEvents({
-      city,
-      countryCode,
-      startDateTime: `${startDate}T00:00:00Z`,
-      endDateTime: `${endDate}T23:59:59Z`,
-      classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
-      size: 500, // Increased from 200 to 500 for better event coverage
-    });
+    return this.getEventsForCityPaginated(city, startDate, endDate, category);
+  }
 
-    return events;
+  /**
+   * Get all events for a specific city and date range by paginating through all pages
+   */
+  private async getEventsForCityPaginated(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    let page = 0;
+    const pageSize = 200; // Ticketmaster's maximum page size
+    const countryCode = this.getCityCountryCode(city);
+    let totalAvailable = 0;
+    
+    while (true) {
+      console.log(`🎟️ Ticketmaster: Fetching page ${page + 1} for ${city}`);
+      
+      const { events, total } = await this.getEvents({
+        city,
+        countryCode,
+        startDateTime: `${startDate}T00:00:00Z`,
+        endDateTime: `${endDate}T23:59:59Z`,
+        classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
+        size: pageSize,
+        page,
+      });
+
+      allEvents.push(...events);
+      totalAvailable = total; // Store the total for logging
+      
+      // Check if we've fetched all available events or reached the safety limit
+      if (events.length < pageSize || allEvents.length >= total || page >= 9) {
+        break;
+      }
+      
+      page++;
+    }
+    
+    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total events for ${city} (${totalAvailable} available)`);
+    return allEvents;
   }
 
   /**
@@ -156,7 +188,7 @@ export class TicketmasterService {
       city,
       startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
       endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
-      size: 500, // Increased from 200 to 500 for better event coverage
+      size: 200, // Ticketmaster's maximum page size
     });
 
     return events;

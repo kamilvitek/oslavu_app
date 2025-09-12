@@ -182,7 +182,7 @@ export class EventbriteService {
   }
 
   /**
-   * Get events for a specific city and date range
+   * Get events for a specific city and date range with pagination support
    */
   async getEventsForCity(
     city: string,
@@ -190,16 +190,49 @@ export class EventbriteService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
-    const { events } = await this.getEvents({
-      location: city,
-      location_radius: '50km',
-      start_date: `${startDate}T00:00:00`,
-      end_date: `${endDate}T23:59:59`,
-      categories: category ? this.mapCategoryToEventbrite(category) : undefined,
-      page_size: 200, // Using Eventbrite's maximum page size for better event coverage
-    });
+    return this.getEventsForCityPaginated(city, startDate, endDate, category);
+  }
 
-    return events;
+  /**
+   * Get all events for a specific city and date range by paginating through all pages
+   */
+  private async getEventsForCityPaginated(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    let page = 1; // Eventbrite uses 1-based pagination
+    const pageSize = 200; // Eventbrite's maximum page size
+    let totalAvailable = 0;
+    
+    while (true) {
+      console.log(`🎫 Eventbrite: Fetching page ${page} for ${city}`);
+      
+      const { events, total } = await this.getEvents({
+        location: city,
+        location_radius: '50km',
+        start_date: `${startDate}T00:00:00`,
+        end_date: `${endDate}T23:59:59`,
+        categories: category ? this.mapCategoryToEventbrite(category) : undefined,
+        page_size: pageSize,
+        page,
+      });
+
+      allEvents.push(...events);
+      totalAvailable = total; // Store the total for logging
+      
+      // Check if we've fetched all available events or reached the safety limit
+      if (events.length < pageSize || allEvents.length >= total || page >= 10) {
+        break;
+      }
+      
+      page++;
+    }
+    
+    console.log(`🎫 Eventbrite: Retrieved ${allEvents.length} total events for ${city} (${totalAvailable} available)`);
+    return allEvents;
   }
 
   /**

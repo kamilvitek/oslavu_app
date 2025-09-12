@@ -143,7 +143,7 @@ export class PredictHQService {
   }
 
   /**
-   * Get events for a specific city and date range
+   * Get events for a specific city and date range with pagination support
    */
   async getEventsForCity(
     city: string,
@@ -151,18 +151,49 @@ export class PredictHQService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
-    // Try multiple location parameters for better results
-    const locationParams = this.getCityLocationParams(city);
-    
-    const { events } = await this.getEvents({
-      ...locationParams,
-      'start.gte': `${startDate}T00:00:00`,
-      'start.lte': `${endDate}T23:59:59`,
-      category: category ? this.mapCategoryToPredictHQ(category) : undefined,
-      limit: 500, // Increased from 200 to 500 for better event coverage
-    });
+    return this.getEventsForCityPaginated(city, startDate, endDate, category);
+  }
 
-    return events;
+  /**
+   * Get all events for a specific city and date range by paginating through all pages
+   */
+  private async getEventsForCityPaginated(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    let offset = 0;
+    const limit = 500; // PredictHQ's maximum limit
+    const locationParams = this.getCityLocationParams(city);
+    let totalAvailable = 0;
+    
+    while (true) {
+      console.log(`🔮 PredictHQ: Fetching offset ${offset} for ${city}`);
+      
+      const { events, total } = await this.getEvents({
+        ...locationParams,
+        'start.gte': `${startDate}T00:00:00`,
+        'start.lte': `${endDate}T23:59:59`,
+        category: category ? this.mapCategoryToPredictHQ(category) : undefined,
+        limit,
+        offset,
+      });
+
+      allEvents.push(...events);
+      totalAvailable = total; // Store the total for logging
+      
+      // Check if we've fetched all available events or reached the safety limit
+      if (events.length < limit || allEvents.length >= total || offset >= 4500) { // 10 pages * 500 limit
+        break;
+      }
+      
+      offset += limit;
+    }
+    
+    console.log(`🔮 PredictHQ: Retrieved ${allEvents.length} total events for ${city} (${totalAvailable} available)`);
+    return allEvents;
   }
 
   /**
