@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const keyword = searchParams.get('keyword');
     const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '50');
+    const pageSize = parseInt(searchParams.get('pageSize') || '200'); // Increased from 50 to 200 (Eventbrite's max) for better event coverage
 
     console.log('Eventbrite API Request params:', { city, startDate, endDate, category, keyword, page, pageSize });
 

@@ -138,7 +138,7 @@ export class EventbriteService {
   }): Promise<{ events: Event[]; total: number }> {
     try {
       const searchParams = new URLSearchParams({
-        page_size: (params.page_size || 50).toString(),
+        page_size: (params.page_size || 200).toString(), // Increased from 50 to 200 (Eventbrite's max) for better event coverage
         page: (params.page || 1).toString(),
         sort_by: params.sort_by || 'date',
         time_filter: params.time_filter || 'current_future',
@@ -196,7 +196,7 @@ export class EventbriteService {
       start_date: `${startDate}T00:00:00`,
       end_date: `${endDate}T23:59:59`,
       categories: category ? this.mapCategoryToEventbrite(category) : undefined,
-      page_size: 200,
+      page_size: 200, // Using Eventbrite's maximum page size for better event coverage
     });
 
     return events;
@@ -217,7 +217,7 @@ export class EventbriteService {
       location_radius: city ? '50km' : undefined,
       start_date: startDate ? `${startDate}T00:00:00` : undefined,
       end_date: endDate ? `${endDate}T23:59:59` : undefined,
-      page_size: 200,
+      page_size: 200, // Using Eventbrite's maximum page size for better event coverage
     });
 
     return events;

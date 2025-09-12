@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const keyword = searchParams.get('keyword');
     const page = parseInt(searchParams.get('page') || '0');
-    const size = parseInt(searchParams.get('size') || '20');
+    const size = parseInt(searchParams.get('size') || '500'); // Increased from 20 to 500 for better event coverage
 
     console.log('API Request params:', { city, startDate, endDate, category, keyword, page, size });
 

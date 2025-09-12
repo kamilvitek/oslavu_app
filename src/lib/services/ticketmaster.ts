@@ -80,7 +80,7 @@ export class TicketmasterService {
     try {
       const searchParams = new URLSearchParams({
         apikey: this.apiKey,
-        size: (params.size || 200).toString(),
+        size: (params.size || 500).toString(), // Increased from 200 to 500 for better event coverage
         page: (params.page || 0).toString(),
       });
 
@@ -136,7 +136,7 @@ export class TicketmasterService {
       startDateTime: `${startDate}T00:00:00Z`,
       endDateTime: `${endDate}T23:59:59Z`,
       classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
-      size: 200,
+      size: 500, // Increased from 200 to 500 for better event coverage
     });
 
     return events;
@@ -156,7 +156,7 @@ export class TicketmasterService {
       city,
       startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
       endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
-      size: 200,
+      size: 500, // Increased from 200 to 500 for better event coverage
     });
 
     return events;

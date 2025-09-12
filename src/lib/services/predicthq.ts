@@ -111,7 +111,7 @@ export class PredictHQService {
       });
 
       // Set default parameters
-      if (!params.limit) searchParams.append('limit', '200');
+      if (!params.limit) searchParams.append('limit', '500'); // Increased from 200 to 500 for better event coverage
       if (!params.sort) searchParams.append('sort', 'start');
 
       const url = `${this.baseUrl}/events/?${searchParams.toString()}`;
@@ -159,7 +159,7 @@ export class PredictHQService {
       'start.gte': `${startDate}T00:00:00`,
       'start.lte': `${endDate}T23:59:59`,
       category: category ? this.mapCategoryToPredictHQ(category) : undefined,
-      limit: 200,
+      limit: 500, // Increased from 200 to 500 for better event coverage
     });
 
     return events;
@@ -179,7 +179,7 @@ export class PredictHQService {
       city,
       'start.gte': startDate ? `${startDate}T00:00:00` : undefined,
       'start.lte': endDate ? `${endDate}T23:59:59` : undefined,
-      limit: 200,
+      limit: 500, // Increased from 200 to 500 for better event coverage
     });
 
     return events;
@@ -199,7 +199,7 @@ export class PredictHQService {
       'start.gte': `${startDate}T00:00:00`,
       'start.lte': `${endDate}T23:59:59`,
       'phq_attendance.gte': minAttendance,
-      limit: 200,
+      limit: 500, // Increased from 200 to 500 for better event coverage
     });
 
     return events;
@@ -396,7 +396,7 @@ export class PredictHQService {
       'start.lte': `${endDate}T23:59:59`,
       'phq_attendance.gte': minAttendance,
       sort: '-phq_attendance',
-      limit: 200,
+      limit: 500, // Increased from 200 to 500 for better event coverage
     });
 
     return events;
@@ -417,7 +417,7 @@ export class PredictHQService {
       'start.lte': `${endDate}T23:59:59`,
       'local_rank.gte': minRank,
       sort: '-local_rank',
-      limit: 200,
+      limit: 500, // Increased from 200 to 500 for better event coverage
     });
 
     return events;

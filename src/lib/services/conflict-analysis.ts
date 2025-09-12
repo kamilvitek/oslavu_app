@@ -117,7 +117,7 @@ export class ConflictAnalysisService {
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
-      size: '100'
+      size: '500' // Increased from 100 to 500 for better event coverage
     });
 
     console.log('Fetching events with params:', queryParams.toString());
