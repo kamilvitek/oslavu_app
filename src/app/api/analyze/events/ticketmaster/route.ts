@@ -11,10 +11,12 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const category = searchParams.get('category');
     const keyword = searchParams.get('keyword');
+    const radius = searchParams.get('radius');
+    const useComprehensiveFallback = searchParams.get('useComprehensiveFallback') === 'true';
     const page = parseInt(searchParams.get('page') || '0');
     const size = parseInt(searchParams.get('size') || '200'); // Ticketmaster's maximum page size
 
-    console.log('API Request params:', { city, startDate, endDate, category, keyword, page, size });
+    console.log('API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
 
     if (!city && !keyword) {
       return NextResponse.json(
@@ -43,13 +45,31 @@ export async function GET(request: NextRequest) {
         endDate || undefined
       );
     } else if (city && startDate && endDate) {
-      // Get events for city and date range
-      events = await ticketmasterService.getEventsForCity(
-        city,
-        startDate,
-        endDate,
-        category || undefined
-      );
+      // Get events for city and date range with radius and fallback options
+      if (useComprehensiveFallback) {
+        events = await ticketmasterService.getEventsWithComprehensiveFallback(
+          city,
+          startDate,
+          endDate,
+          category || undefined,
+          radius || '50'
+        );
+      } else if (radius) {
+        events = await ticketmasterService.getEventsWithRadius(
+          city,
+          startDate,
+          endDate,
+          radius,
+          category || undefined
+        );
+      } else {
+        events = await ticketmasterService.getEventsForCity(
+          city,
+          startDate,
+          endDate,
+          category || undefined
+        );
+      }
     } else {
       // Get general events
       const result = await ticketmasterService.getEvents({

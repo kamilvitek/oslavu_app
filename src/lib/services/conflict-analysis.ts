@@ -41,6 +41,8 @@ export interface ConflictAnalysisParams {
   dateRangeEnd: string; // analysis range end
   venue?: string; // optional venue name for venue intelligence
   enableAdvancedAnalysis?: boolean; // enable audience overlap and venue intelligence
+  searchRadius?: string; // search radius for geographic coverage (e.g., "50km", "25miles")
+  useComprehensiveFallback?: boolean; // use comprehensive fallback strategies
 }
 
 export class ConflictAnalysisService {
@@ -117,7 +119,9 @@ export class ConflictAnalysisService {
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
-      size: '500' // Increased from 100 to 500 for better event coverage
+      size: '500', // Increased from 100 to 500 for better event coverage
+      radius: params.searchRadius || '50km', // Default radius
+      useComprehensiveFallback: params.useComprehensiveFallback ? 'true' : 'false'
     });
 
     console.log('Fetching events with params:', queryParams.toString());

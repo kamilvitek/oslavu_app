@@ -70,6 +70,9 @@ export class TicketmasterService {
   async getEvents(params: {
     city?: string;
     countryCode?: string;
+    radius?: string;
+    postalCode?: string;
+    marketId?: string;
     startDateTime?: string;
     endDateTime?: string;
     classificationName?: string;
@@ -87,6 +90,9 @@ export class TicketmasterService {
       // Add optional parameters
       if (params.city) searchParams.append('city', params.city);
       if (params.countryCode) searchParams.append('countryCode', params.countryCode);
+      if (params.radius) searchParams.append('radius', params.radius);
+      if (params.postalCode) searchParams.append('postalCode', params.postalCode);
+      if (params.marketId) searchParams.append('marketId', params.marketId);
       if (params.startDateTime) searchParams.append('startDateTime', params.startDateTime);
       if (params.endDateTime) searchParams.append('endDateTime', params.endDateTime);
       if (params.classificationName) searchParams.append('classificationName', params.classificationName);
@@ -129,6 +135,57 @@ export class TicketmasterService {
     category?: string
   ): Promise<Event[]> {
     return this.getEventsForCityPaginated(city, startDate, endDate, category);
+  }
+
+  /**
+   * Get events with radius-based search for better geographic coverage
+   */
+  async getEventsWithRadius(
+    city: string,
+    startDate: string,
+    endDate: string,
+    radius: string = '50',
+    category?: string
+  ): Promise<Event[]> {
+    const countryCode = this.getCityCountryCode(city);
+    const postalCode = this.getCityPostalCode(city);
+    const marketId = this.getCityMarketId(city);
+    
+    console.log(`🎟️ Ticketmaster: Searching ${city} with radius ${radius} miles`);
+    
+    const allEvents: Event[] = [];
+    let page = 0;
+    const pageSize = 200;
+    let totalAvailable = 0;
+    
+    while (true) {
+      console.log(`🎟️ Ticketmaster: Fetching page ${page + 1} for ${city} (radius: ${radius} miles)`);
+      
+      const { events, total } = await this.getEvents({
+        city,
+        countryCode,
+        radius,
+        postalCode,
+        marketId,
+        startDateTime: `${startDate}T00:00:00Z`,
+        endDateTime: `${endDate}T23:59:59Z`,
+        classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
+        size: pageSize,
+        page,
+      });
+
+      allEvents.push(...events);
+      totalAvailable = total;
+      
+      if (events.length < pageSize || allEvents.length >= total || page >= 9) {
+        break;
+      }
+      
+      page++;
+    }
+    
+    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total events for ${city} with radius ${radius} miles (${totalAvailable} available)`);
+    return allEvents;
   }
 
   /**
@@ -305,9 +362,153 @@ export class TicketmasterService {
       'Copenhagen': 'DK',
       'Helsinki': 'FI',
       'Oslo': 'NO',
+      'Madrid': 'ES',
+      'Barcelona': 'ES',
+      'Rome': 'IT',
+      'Milan': 'IT',
+      'Athens': 'GR',
+      'Lisbon': 'PT',
+      'Dublin': 'IE',
+      'Edinburgh': 'GB',
+      'Glasgow': 'GB',
+      'Manchester': 'GB',
+      'Birmingham': 'GB',
+      'Liverpool': 'GB',
+      'Leeds': 'GB',
+      'Sheffield': 'GB',
+      'Bristol': 'GB',
+      'Newcastle': 'GB',
+      'Nottingham': 'GB',
+      'Leicester': 'GB',
+      'Hamburg': 'DE',
+      'Cologne': 'DE',
+      'Frankfurt': 'DE',
+      'Stuttgart': 'DE',
+      'Düsseldorf': 'DE',
+      'Dortmund': 'DE',
+      'Essen': 'DE',
+      'Leipzig': 'DE',
+      'Bremen': 'DE',
+      'Dresden': 'DE',
+      'Hannover': 'DE',
+      'Nuremberg': 'DE',
     };
 
     return cityCountryMap[city] || 'US';
+  }
+
+  /**
+   * Get postal code for major cities (for more precise location targeting)
+   */
+  private getCityPostalCode(city: string): string | undefined {
+    const cityPostalMap: Record<string, string> = {
+      'Prague': '11000',
+      'Brno': '60200',
+      'Ostrava': '70030',
+      'Olomouc': '77900',
+      'London': 'SW1A 1AA', // Central London
+      'Berlin': '10115', // Central Berlin
+      'Paris': '75001', // Central Paris
+      'Amsterdam': '1012', // Central Amsterdam
+      'Vienna': '1010', // Central Vienna
+      'Warsaw': '00-001', // Central Warsaw
+      'Budapest': '1051', // Central Budapest
+      'Zurich': '8001', // Central Zurich
+      'Munich': '80331', // Central Munich
+      'Stockholm': '11129', // Central Stockholm
+      'Copenhagen': '1050', // Central Copenhagen
+      'Helsinki': '00100', // Central Helsinki
+      'Oslo': '0150', // Central Oslo
+      'Madrid': '28001', // Central Madrid
+      'Barcelona': '08001', // Central Barcelona
+      'Rome': '00100', // Central Rome
+      'Milan': '20100', // Central Milan
+      'Athens': '10557', // Central Athens
+      'Lisbon': '1100-001', // Central Lisbon
+      'Dublin': 'D01', // Central Dublin
+      'Edinburgh': 'EH1 1YZ', // Central Edinburgh
+      'Glasgow': 'G1 1AA', // Central Glasgow
+      'Manchester': 'M1 1AA', // Central Manchester
+      'Birmingham': 'B1 1AA', // Central Birmingham
+      'Liverpool': 'L1 1AA', // Central Liverpool
+      'Leeds': 'LS1 1AA', // Central Leeds
+      'Sheffield': 'S1 1AA', // Central Sheffield
+      'Bristol': 'BS1 1AA', // Central Bristol
+      'Newcastle': 'NE1 1AA', // Central Newcastle
+      'Nottingham': 'NG1 1AA', // Central Nottingham
+      'Leicester': 'LE1 1AA', // Central Leicester
+      'Hamburg': '20095', // Central Hamburg
+      'Cologne': '50667', // Central Cologne
+      'Frankfurt': '60311', // Central Frankfurt
+      'Stuttgart': '70173', // Central Stuttgart
+      'Düsseldorf': '40213', // Central Düsseldorf
+      'Dortmund': '44135', // Central Dortmund
+      'Essen': '45127', // Central Essen
+      'Leipzig': '04109', // Central Leipzig
+      'Bremen': '28195', // Central Bremen
+      'Dresden': '01067', // Central Dresden
+      'Hannover': '30159', // Central Hannover
+      'Nuremberg': '90402', // Central Nuremberg
+    };
+
+    return cityPostalMap[city];
+  }
+
+  /**
+   * Get Ticketmaster market ID for major cities
+   */
+  private getCityMarketId(city: string): string | undefined {
+    const cityMarketMap: Record<string, string> = {
+      'Prague': 'CZ-PR', // Czech Republic - Prague
+      'Brno': 'CZ-BR', // Czech Republic - Brno
+      'Ostrava': 'CZ-OS', // Czech Republic - Ostrava
+      'Olomouc': 'CZ-OL', // Czech Republic - Olomouc
+      'London': 'GB-LON', // United Kingdom - London
+      'Berlin': 'DE-BER', // Germany - Berlin
+      'Paris': 'FR-PAR', // France - Paris
+      'Amsterdam': 'NL-AMS', // Netherlands - Amsterdam
+      'Vienna': 'AT-VIE', // Austria - Vienna
+      'Warsaw': 'PL-WAW', // Poland - Warsaw
+      'Budapest': 'HU-BUD', // Hungary - Budapest
+      'Zurich': 'CH-ZUR', // Switzerland - Zurich
+      'Munich': 'DE-MUN', // Germany - Munich
+      'Stockholm': 'SE-STO', // Sweden - Stockholm
+      'Copenhagen': 'DK-COP', // Denmark - Copenhagen
+      'Helsinki': 'FI-HEL', // Finland - Helsinki
+      'Oslo': 'NO-OSL', // Norway - Oslo
+      'Madrid': 'ES-MAD', // Spain - Madrid
+      'Barcelona': 'ES-BAR', // Spain - Barcelona
+      'Rome': 'IT-ROM', // Italy - Rome
+      'Milan': 'IT-MIL', // Italy - Milan
+      'Athens': 'GR-ATH', // Greece - Athens
+      'Lisbon': 'PT-LIS', // Portugal - Lisbon
+      'Dublin': 'IE-DUB', // Ireland - Dublin
+      'Edinburgh': 'GB-EDI', // United Kingdom - Edinburgh
+      'Glasgow': 'GB-GLA', // United Kingdom - Glasgow
+      'Manchester': 'GB-MAN', // United Kingdom - Manchester
+      'Birmingham': 'GB-BIR', // United Kingdom - Birmingham
+      'Liverpool': 'GB-LIV', // United Kingdom - Liverpool
+      'Leeds': 'GB-LEE', // United Kingdom - Leeds
+      'Sheffield': 'GB-SHE', // United Kingdom - Sheffield
+      'Bristol': 'GB-BRI', // United Kingdom - Bristol
+      'Newcastle': 'GB-NEW', // United Kingdom - Newcastle
+      'Nottingham': 'GB-NOT', // United Kingdom - Nottingham
+      'Leicester': 'GB-LEI', // United Kingdom - Leicester
+      'Hamburg': 'DE-HAM', // Germany - Hamburg
+      'Cologne': 'DE-COL', // Germany - Cologne
+      'Frankfurt': 'DE-FRA', // Germany - Frankfurt
+      'Stuttgart': 'DE-STU', // Germany - Stuttgart
+      'Düsseldorf': 'DE-DUS', // Germany - Düsseldorf
+      'Dortmund': 'DE-DOR', // Germany - Dortmund
+      'Essen': 'DE-ESS', // Germany - Essen
+      'Leipzig': 'DE-LEI', // Germany - Leipzig
+      'Bremen': 'DE-BRE', // Germany - Bremen
+      'Dresden': 'DE-DRE', // Germany - Dresden
+      'Hannover': 'DE-HAN', // Germany - Hannover
+      'Nuremberg': 'DE-NUR', // Germany - Nuremberg
+    };
+
+    return cityMarketMap[city];
   }
 
   /**
@@ -436,6 +637,109 @@ export class TicketmasterService {
     // Fallback to broader search without category filter
     console.log(`🎟️ Ticketmaster: Using broader search for "${category}"`);
     return this.getEventsForCity(city, startDate, endDate);
+  }
+
+  /**
+   * Get events with comprehensive fallback strategy including radius search
+   */
+  async getEventsWithComprehensiveFallback(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string,
+    radius: string = '50'
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    const seenEvents = new Set<string>();
+
+    // Strategy 1: Exact city match with category
+    if (category) {
+      try {
+        console.log(`🎟️ Ticketmaster: Strategy 1 - Exact city match with category "${category}"`);
+        const categoryEvents = await this.getEventsForCity(city, startDate, endDate, category);
+        this.addUniqueEvents(allEvents, categoryEvents, seenEvents);
+        
+        if (allEvents.length >= 10) {
+          console.log(`🎟️ Ticketmaster: Found ${allEvents.length} events with exact city match, returning early`);
+          return allEvents;
+        }
+      } catch (error) {
+        console.log(`🎟️ Ticketmaster: Strategy 1 failed: ${error}`);
+      }
+    }
+
+    // Strategy 2: Exact city match without category
+    try {
+      console.log(`🎟️ Ticketmaster: Strategy 2 - Exact city match without category`);
+      const cityEvents = await this.getEventsForCity(city, startDate, endDate);
+      this.addUniqueEvents(allEvents, cityEvents, seenEvents);
+      
+      if (allEvents.length >= 15) {
+        console.log(`🎟️ Ticketmaster: Found ${allEvents.length} events with exact city match, returning early`);
+        return allEvents;
+      }
+    } catch (error) {
+      console.log(`🎟️ Ticketmaster: Strategy 2 failed: ${error}`);
+    }
+
+    // Strategy 3: Radius search with category
+    if (category) {
+      try {
+        console.log(`🎟️ Ticketmaster: Strategy 3 - Radius search (${radius} miles) with category "${category}"`);
+        const radiusCategoryEvents = await this.getEventsWithRadius(city, startDate, endDate, radius, category);
+        this.addUniqueEvents(allEvents, radiusCategoryEvents, seenEvents);
+        
+        if (allEvents.length >= 20) {
+          console.log(`🎟️ Ticketmaster: Found ${allEvents.length} events with radius search, returning early`);
+          return allEvents;
+        }
+      } catch (error) {
+        console.log(`🎟️ Ticketmaster: Strategy 3 failed: ${error}`);
+      }
+    }
+
+    // Strategy 4: Radius search without category
+    try {
+      console.log(`🎟️ Ticketmaster: Strategy 4 - Radius search (${radius} miles) without category`);
+      const radiusEvents = await this.getEventsWithRadius(city, startDate, endDate, radius);
+      this.addUniqueEvents(allEvents, radiusEvents, seenEvents);
+    } catch (error) {
+      console.log(`🎟️ Ticketmaster: Strategy 4 failed: ${error}`);
+    }
+
+    // Strategy 5: Market-based search (if market ID is available)
+    const marketId = this.getCityMarketId(city);
+    if (marketId) {
+      try {
+        console.log(`🎟️ Ticketmaster: Strategy 5 - Market-based search (${marketId})`);
+        const marketEvents = await this.getEvents({
+          marketId,
+          startDateTime: `${startDate}T00:00:00Z`,
+          endDateTime: `${endDate}T23:59:59Z`,
+          classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
+          size: 200,
+        });
+        this.addUniqueEvents(allEvents, marketEvents.events, seenEvents);
+      } catch (error) {
+        console.log(`🎟️ Ticketmaster: Strategy 5 failed: ${error}`);
+      }
+    }
+
+    console.log(`🎟️ Ticketmaster: Comprehensive fallback completed - found ${allEvents.length} unique events`);
+    return allEvents;
+  }
+
+  /**
+   * Add unique events to the collection, avoiding duplicates
+   */
+  private addUniqueEvents(allEvents: Event[], newEvents: Event[], seenEvents: Set<string>): void {
+    for (const event of newEvents) {
+      const eventKey = `${event.title}-${event.date}-${event.venue || ''}`;
+      if (!seenEvents.has(eventKey)) {
+        allEvents.push(event);
+        seenEvents.add(eventKey);
+      }
+    }
   }
 }
 

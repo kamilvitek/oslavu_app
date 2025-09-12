@@ -11,10 +11,12 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const category = searchParams.get('category');
     const keyword = searchParams.get('keyword');
+    const radius = searchParams.get('radius');
+    const useComprehensiveFallback = searchParams.get('useComprehensiveFallback') === 'true';
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '200'); // Increased from 50 to 200 (Eventbrite's max) for better event coverage
 
-    console.log('Eventbrite API Request params:', { city, startDate, endDate, category, keyword, page, pageSize });
+    console.log('Eventbrite API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, pageSize });
 
     if (!city && !keyword) {
       return NextResponse.json(
@@ -51,12 +53,31 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      events = await eventbriteService.getEventsForCity(
-        city!,
-        startDate,
-        endDate,
-        category || undefined
-      );
+      // Get events for city and date range with radius and fallback options
+      if (useComprehensiveFallback) {
+        events = await eventbriteService.getEventsWithComprehensiveFallback(
+          city!,
+          startDate,
+          endDate,
+          category || undefined,
+          radius || '50km'
+        );
+      } else if (radius) {
+        events = await eventbriteService.getEventsWithRadius(
+          city!,
+          startDate,
+          endDate,
+          radius,
+          category || undefined
+        );
+      } else {
+        events = await eventbriteService.getEventsForCity(
+          city!,
+          startDate,
+          endDate,
+          category || undefined
+        );
+      }
     }
 
     console.log(`Found ${events.length} Eventbrite events`);

@@ -11,6 +11,8 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const category = searchParams.get('category');
     const keyword = searchParams.get('keyword');
+    const radius = searchParams.get('radius');
+    const useComprehensiveFallback = searchParams.get('useComprehensiveFallback') === 'true';
     const minAttendance = searchParams.get('minAttendance');
     const minRank = searchParams.get('minRank');
     const limit = parseInt(searchParams.get('limit') || '200');
@@ -21,6 +23,8 @@ export async function GET(request: NextRequest) {
       endDate, 
       category, 
       keyword, 
+      radius,
+      useComprehensiveFallback,
       minAttendance, 
       minRank, 
       limit 
@@ -95,12 +99,31 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      events = await predicthqService.getEventsForCity(
-        city!,
-        startDate,
-        endDate,
-        category || undefined
-      );
+      // Get events for city and date range with radius and fallback options
+      if (useComprehensiveFallback) {
+        events = await predicthqService.getEventsWithComprehensiveFallback(
+          city!,
+          startDate,
+          endDate,
+          category || undefined,
+          radius || '50km'
+        );
+      } else if (radius) {
+        events = await predicthqService.getEventsWithRadius(
+          city!,
+          startDate,
+          endDate,
+          radius,
+          category || undefined
+        );
+      } else {
+        events = await predicthqService.getEventsForCity(
+          city!,
+          startDate,
+          endDate,
+          category || undefined
+        );
+      }
     }
 
     console.log(`Found ${events.length} PredictHQ events`);

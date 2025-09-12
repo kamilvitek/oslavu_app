@@ -194,6 +194,50 @@ export class EventbriteService {
   }
 
   /**
+   * Get events with configurable radius for better geographic coverage
+   */
+  async getEventsWithRadius(
+    city: string,
+    startDate: string,
+    endDate: string,
+    radius: string = '50km',
+    category?: string
+  ): Promise<Event[]> {
+    console.log(`🎫 Eventbrite: Searching ${city} with radius ${radius}`);
+    
+    const allEvents: Event[] = [];
+    let page = 1;
+    const pageSize = 200;
+    let totalAvailable = 0;
+    
+    while (true) {
+      console.log(`🎫 Eventbrite: Fetching page ${page} for ${city} (radius: ${radius})`);
+      
+      const { events, total } = await this.getEvents({
+        location: city,
+        location_radius: radius,
+        start_date: `${startDate}T00:00:00`,
+        end_date: `${endDate}T23:59:59`,
+        categories: category ? this.mapCategoryToEventbrite(category) : undefined,
+        page_size: pageSize,
+        page,
+      });
+
+      allEvents.push(...events);
+      totalAvailable = total;
+      
+      if (events.length < pageSize || allEvents.length >= total || page >= 10) {
+        break;
+      }
+      
+      page++;
+    }
+    
+    console.log(`🎫 Eventbrite: Retrieved ${allEvents.length} total events for ${city} with radius ${radius} (${totalAvailable} available)`);
+    return allEvents;
+  }
+
+  /**
    * Get all events for a specific city and date range by paginating through all pages
    */
   private async getEventsForCityPaginated(
@@ -527,6 +571,100 @@ export class EventbriteService {
     // Fallback to broader search without category filter
     console.log(`🎫 Eventbrite: Using broader search for "${category}"`);
     return this.getEventsForCity(city, startDate, endDate);
+  }
+
+  /**
+   * Get events with comprehensive fallback strategy including radius search
+   */
+  async getEventsWithComprehensiveFallback(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string,
+    radius: string = '50km'
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    const seenEvents = new Set<string>();
+
+    // Strategy 1: Exact city match with category
+    if (category) {
+      try {
+        console.log(`🎫 Eventbrite: Strategy 1 - Exact city match with category "${category}"`);
+        const categoryEvents = await this.getEventsForCity(city, startDate, endDate, category);
+        this.addUniqueEvents(allEvents, categoryEvents, seenEvents);
+        
+        if (allEvents.length >= 10) {
+          console.log(`🎫 Eventbrite: Found ${allEvents.length} events with exact city match, returning early`);
+          return allEvents;
+        }
+      } catch (error) {
+        console.log(`🎫 Eventbrite: Strategy 1 failed: ${error}`);
+      }
+    }
+
+    // Strategy 2: Exact city match without category
+    try {
+      console.log(`🎫 Eventbrite: Strategy 2 - Exact city match without category`);
+      const cityEvents = await this.getEventsForCity(city, startDate, endDate);
+      this.addUniqueEvents(allEvents, cityEvents, seenEvents);
+      
+      if (allEvents.length >= 15) {
+        console.log(`🎫 Eventbrite: Found ${allEvents.length} events with exact city match, returning early`);
+        return allEvents;
+      }
+    } catch (error) {
+      console.log(`🎫 Eventbrite: Strategy 2 failed: ${error}`);
+    }
+
+    // Strategy 3: Radius search with category
+    if (category) {
+      try {
+        console.log(`🎫 Eventbrite: Strategy 3 - Radius search (${radius}) with category "${category}"`);
+        const radiusCategoryEvents = await this.getEventsWithRadius(city, startDate, endDate, radius, category);
+        this.addUniqueEvents(allEvents, radiusCategoryEvents, seenEvents);
+        
+        if (allEvents.length >= 20) {
+          console.log(`🎫 Eventbrite: Found ${allEvents.length} events with radius search, returning early`);
+          return allEvents;
+        }
+      } catch (error) {
+        console.log(`🎫 Eventbrite: Strategy 3 failed: ${error}`);
+      }
+    }
+
+    // Strategy 4: Radius search without category
+    try {
+      console.log(`🎫 Eventbrite: Strategy 4 - Radius search (${radius}) without category`);
+      const radiusEvents = await this.getEventsWithRadius(city, startDate, endDate, radius);
+      this.addUniqueEvents(allEvents, radiusEvents, seenEvents);
+    } catch (error) {
+      console.log(`🎫 Eventbrite: Strategy 4 failed: ${error}`);
+    }
+
+    // Strategy 5: Extended radius search (100km) for broader coverage
+    try {
+      console.log(`🎫 Eventbrite: Strategy 5 - Extended radius search (100km)`);
+      const extendedRadiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '100km', category);
+      this.addUniqueEvents(allEvents, extendedRadiusEvents, seenEvents);
+    } catch (error) {
+      console.log(`🎫 Eventbrite: Strategy 5 failed: ${error}`);
+    }
+
+    console.log(`🎫 Eventbrite: Comprehensive fallback completed - found ${allEvents.length} unique events`);
+    return allEvents;
+  }
+
+  /**
+   * Add unique events to the collection, avoiding duplicates
+   */
+  private addUniqueEvents(allEvents: Event[], newEvents: Event[], seenEvents: Set<string>): void {
+    for (const event of newEvents) {
+      const eventKey = `${event.title}-${event.date}-${event.venue || ''}`;
+      if (!seenEvents.has(eventKey)) {
+        allEvents.push(event);
+        seenEvents.add(eventKey);
+      }
+    }
   }
 }
 

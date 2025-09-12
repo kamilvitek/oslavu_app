@@ -155,6 +155,53 @@ export class PredictHQService {
   }
 
   /**
+   * Get events with radius-based search for better geographic coverage
+   */
+  async getEventsWithRadius(
+    city: string,
+    startDate: string,
+    endDate: string,
+    radius: string = '50km',
+    category?: string
+  ): Promise<Event[]> {
+    const locationParams = this.getCityLocationParams(city);
+    const radiusParams = this.getRadiusParams(city, radius);
+    
+    console.log(`🔮 PredictHQ: Searching ${city} with radius ${radius}`);
+    
+    const allEvents: Event[] = [];
+    let offset = 0;
+    const limit = 500;
+    let totalAvailable = 0;
+    
+    while (true) {
+      console.log(`🔮 PredictHQ: Fetching offset ${offset} for ${city} (radius: ${radius})`);
+      
+      const { events, total } = await this.getEvents({
+        ...locationParams,
+        ...radiusParams,
+        'start.gte': `${startDate}T00:00:00`,
+        'start.lte': `${endDate}T23:59:59`,
+        category: category ? this.mapCategoryToPredictHQ(category) : undefined,
+        limit,
+        offset,
+      });
+
+      allEvents.push(...events);
+      totalAvailable = total;
+      
+      if (events.length < limit || allEvents.length >= total || offset >= 4500) {
+        break;
+      }
+      
+      offset += limit;
+    }
+    
+    console.log(`🔮 PredictHQ: Retrieved ${allEvents.length} total events for ${city} with radius ${radius} (${totalAvailable} available)`);
+    return allEvents;
+  }
+
+  /**
    * Get all events for a specific city and date range by paginating through all pages
    */
   private async getEventsForCityPaginated(
@@ -367,6 +414,36 @@ export class PredictHQService {
       'Copenhagen': { lat: 55.6761, lon: 12.5683, country: 'DK' },
       'Helsinki': { lat: 60.1699, lon: 24.9384, country: 'FI' },
       'Oslo': { lat: 59.9139, lon: 10.7522, country: 'NO' },
+      'Madrid': { lat: 40.4168, lon: -3.7038, country: 'ES' },
+      'Barcelona': { lat: 41.3851, lon: 2.1734, country: 'ES' },
+      'Rome': { lat: 41.9028, lon: 12.4964, country: 'IT' },
+      'Milan': { lat: 45.4642, lon: 9.1900, country: 'IT' },
+      'Athens': { lat: 37.9755, lon: 23.7348, country: 'GR' },
+      'Lisbon': { lat: 38.7223, lon: -9.1393, country: 'PT' },
+      'Dublin': { lat: 53.3498, lon: -6.2603, country: 'IE' },
+      'Edinburgh': { lat: 55.9533, lon: -3.1883, country: 'GB' },
+      'Glasgow': { lat: 55.8642, lon: -4.2518, country: 'GB' },
+      'Manchester': { lat: 53.4808, lon: -2.2426, country: 'GB' },
+      'Birmingham': { lat: 52.4862, lon: -1.8904, country: 'GB' },
+      'Liverpool': { lat: 53.4084, lon: -2.9916, country: 'GB' },
+      'Leeds': { lat: 53.8008, lon: -1.5491, country: 'GB' },
+      'Sheffield': { lat: 53.3811, lon: -1.4701, country: 'GB' },
+      'Bristol': { lat: 51.4545, lon: -2.5879, country: 'GB' },
+      'Newcastle': { lat: 54.9783, lon: -1.6178, country: 'GB' },
+      'Nottingham': { lat: 52.9548, lon: -1.1581, country: 'GB' },
+      'Leicester': { lat: 52.6369, lon: -1.1398, country: 'GB' },
+      'Hamburg': { lat: 53.5511, lon: 9.9937, country: 'DE' },
+      'Cologne': { lat: 50.9375, lon: 6.9603, country: 'DE' },
+      'Frankfurt': { lat: 50.1109, lon: 8.6821, country: 'DE' },
+      'Stuttgart': { lat: 48.7758, lon: 9.1829, country: 'DE' },
+      'Düsseldorf': { lat: 51.2277, lon: 6.7735, country: 'DE' },
+      'Dortmund': { lat: 51.5136, lon: 7.4653, country: 'DE' },
+      'Essen': { lat: 51.4556, lon: 7.0116, country: 'DE' },
+      'Leipzig': { lat: 51.3397, lon: 12.3731, country: 'DE' },
+      'Bremen': { lat: 53.0793, lon: 8.8017, country: 'DE' },
+      'Dresden': { lat: 51.0504, lon: 13.7373, country: 'DE' },
+      'Hannover': { lat: 52.3759, lon: 9.7320, country: 'DE' },
+      'Nuremberg': { lat: 49.4521, lon: 11.0767, country: 'DE' },
     };
 
     const cityData = cityCoordinates[city];
@@ -379,6 +456,40 @@ export class PredictHQService {
 
     // Fallback to city name
     return { city };
+  }
+
+  /**
+   * Get radius parameters for PredictHQ API
+   */
+  private getRadiusParams(city: string, radius: string): Partial<PredictHQSearchParams> {
+    // Parse radius (e.g., "50km", "25km", "100km")
+    const radiusMatch = radius.match(/(\d+)(km|miles?)?/i);
+    if (!radiusMatch) {
+      return {};
+    }
+
+    const radiusValue = parseInt(radiusMatch[1]);
+    const radiusUnit = radiusMatch[2]?.toLowerCase() || 'km';
+    
+    // Convert to kilometers if needed
+    const radiusKm = radiusUnit.includes('mile') ? radiusValue * 1.60934 : radiusValue;
+    
+    // PredictHQ uses place.scope parameter for geographic scope
+    // The scope can be 'city', 'metro', 'region', 'country'
+    let scope = 'city';
+    if (radiusKm <= 25) {
+      scope = 'city';
+    } else if (radiusKm <= 50) {
+      scope = 'metro';
+    } else if (radiusKm <= 100) {
+      scope = 'region';
+    } else {
+      scope = 'country';
+    }
+
+    return {
+      'place.scope': scope,
+    };
   }
 
   /**
@@ -567,6 +678,117 @@ export class PredictHQService {
     // Fallback to broader search without category filter
     console.log(`🔮 PredictHQ: Using broader search for "${category}"`);
     return this.getEventsForCity(city, startDate, endDate);
+  }
+
+  /**
+   * Get events with comprehensive fallback strategy including radius search
+   */
+  async getEventsWithComprehensiveFallback(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string,
+    radius: string = '50km'
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    const seenEvents = new Set<string>();
+
+    // Strategy 1: Exact city match with category
+    if (category) {
+      try {
+        console.log(`🔮 PredictHQ: Strategy 1 - Exact city match with category "${category}"`);
+        const categoryEvents = await this.getEventsForCity(city, startDate, endDate, category);
+        this.addUniqueEvents(allEvents, categoryEvents, seenEvents);
+        
+        if (allEvents.length >= 10) {
+          console.log(`🔮 PredictHQ: Found ${allEvents.length} events with exact city match, returning early`);
+          return allEvents;
+        }
+      } catch (error) {
+        console.log(`🔮 PredictHQ: Strategy 1 failed: ${error}`);
+      }
+    }
+
+    // Strategy 2: Exact city match without category
+    try {
+      console.log(`🔮 PredictHQ: Strategy 2 - Exact city match without category`);
+      const cityEvents = await this.getEventsForCity(city, startDate, endDate);
+      this.addUniqueEvents(allEvents, cityEvents, seenEvents);
+      
+      if (allEvents.length >= 15) {
+        console.log(`🔮 PredictHQ: Found ${allEvents.length} events with exact city match, returning early`);
+        return allEvents;
+      }
+    } catch (error) {
+      console.log(`🔮 PredictHQ: Strategy 2 failed: ${error}`);
+    }
+
+    // Strategy 3: Radius search with category
+    if (category) {
+      try {
+        console.log(`🔮 PredictHQ: Strategy 3 - Radius search (${radius}) with category "${category}"`);
+        const radiusCategoryEvents = await this.getEventsWithRadius(city, startDate, endDate, radius, category);
+        this.addUniqueEvents(allEvents, radiusCategoryEvents, seenEvents);
+        
+        if (allEvents.length >= 20) {
+          console.log(`🔮 PredictHQ: Found ${allEvents.length} events with radius search, returning early`);
+          return allEvents;
+        }
+      } catch (error) {
+        console.log(`🔮 PredictHQ: Strategy 3 failed: ${error}`);
+      }
+    }
+
+    // Strategy 4: Radius search without category
+    try {
+      console.log(`🔮 PredictHQ: Strategy 4 - Radius search (${radius}) without category`);
+      const radiusEvents = await this.getEventsWithRadius(city, startDate, endDate, radius);
+      this.addUniqueEvents(allEvents, radiusEvents, seenEvents);
+    } catch (error) {
+      console.log(`🔮 PredictHQ: Strategy 4 failed: ${error}`);
+    }
+
+    // Strategy 5: Extended radius search (100km) for broader coverage
+    try {
+      console.log(`🔮 PredictHQ: Strategy 5 - Extended radius search (100km)`);
+      const extendedRadiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '100km', category);
+      this.addUniqueEvents(allEvents, extendedRadiusEvents, seenEvents);
+    } catch (error) {
+      console.log(`🔮 PredictHQ: Strategy 5 failed: ${error}`);
+    }
+
+    // Strategy 6: Country-wide search for high-impact events
+    try {
+      console.log(`🔮 PredictHQ: Strategy 6 - Country-wide search for high-impact events`);
+      const locationParams = this.getCityLocationParams(city);
+      const { events: countryEvents } = await this.getEvents({
+        country: locationParams.country,
+        'start.gte': `${startDate}T00:00:00`,
+        'start.lte': `${endDate}T23:59:59`,
+        'phq_attendance.gte': 1000, // Only high-attendance events
+        category: category ? this.mapCategoryToPredictHQ(category) : undefined,
+        limit: 200,
+      });
+      this.addUniqueEvents(allEvents, countryEvents, seenEvents);
+    } catch (error) {
+      console.log(`🔮 PredictHQ: Strategy 6 failed: ${error}`);
+    }
+
+    console.log(`🔮 PredictHQ: Comprehensive fallback completed - found ${allEvents.length} unique events`);
+    return allEvents;
+  }
+
+  /**
+   * Add unique events to the collection, avoiding duplicates
+   */
+  private addUniqueEvents(allEvents: Event[], newEvents: Event[], seenEvents: Set<string>): void {
+    for (const event of newEvents) {
+      const eventKey = `${event.title}-${event.date}-${event.venue || ''}`;
+      if (!seenEvents.has(eventKey)) {
+        allEvents.push(event);
+        seenEvents.add(eventKey);
+      }
+    }
   }
 }
 
