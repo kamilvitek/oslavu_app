@@ -36,7 +36,18 @@ export async function GET(request: NextRequest) {
 
     let events;
 
-    if (keyword) {
+    // Check if this is a comprehensive search request
+    const isComprehensiveSearch = searchParams.get('comprehensive') === 'true';
+
+    if (isComprehensiveSearch && city && startDate && endDate) {
+      // Use the new comprehensive multi-strategy search
+      events = await eventbriteService.getEventsComprehensive(
+        city,
+        startDate,
+        endDate,
+        category || undefined
+      );
+    } else if (keyword) {
       // Search by keyword
       events = await eventbriteService.searchEvents(
         keyword,

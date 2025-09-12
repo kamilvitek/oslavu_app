@@ -655,6 +655,125 @@ export class EventbriteService {
   }
 
   /**
+   * Comprehensive multi-strategy search approach to maximize event discovery coverage
+   */
+  async getEventsComprehensive(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    const strategyResults: Array<{ strategy: string; events: number; time: number }> = [];
+    
+    console.log(`🎫 Eventbrite: Starting comprehensive search for ${city} (${startDate} to ${endDate})`);
+    
+    // Strategy 1: Location-based search
+    try {
+      const startTime = Date.now();
+      console.log(`🎫 Eventbrite: Strategy 1 - Location-based search`);
+      const locationEvents = await this.getEventsForCityPaginated(city, startDate, endDate, category);
+      allEvents.push(...locationEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'Location-based search', events: locationEvents.length, time });
+      console.log(`🎫 Eventbrite: Strategy 1 found ${locationEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🎫 Eventbrite: Strategy 1 failed:`, error);
+      strategyResults.push({ strategy: 'Location-based search', events: 0, time: 0 });
+    }
+    
+    // Strategy 2: Keyword search within location
+    if (category) {
+      try {
+        const startTime = Date.now();
+        console.log(`🎫 Eventbrite: Strategy 2 - Keyword search for "${category}"`);
+        const keywordEvents = await this.searchEvents(category, city, startDate, endDate);
+        allEvents.push(...keywordEvents);
+        const time = Date.now() - startTime;
+        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: keywordEvents.length, time });
+        console.log(`🎫 Eventbrite: Strategy 2 found ${keywordEvents.length} events in ${time}ms`);
+      } catch (error) {
+        console.error(`🎫 Eventbrite: Strategy 2 failed:`, error);
+        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: 0, time: 0 });
+      }
+    }
+    
+    // Strategy 3: Category-specific search
+    if (category) {
+      try {
+        const startTime = Date.now();
+        console.log(`🎫 Eventbrite: Strategy 3 - Category-specific search`);
+        const categoryEvents = await this.getEventsWithRadius(city, startDate, endDate, '50km', category);
+        allEvents.push(...categoryEvents);
+        const time = Date.now() - startTime;
+        strategyResults.push({ strategy: 'Category-specific search', events: categoryEvents.length, time });
+        console.log(`🎫 Eventbrite: Strategy 3 found ${categoryEvents.length} events in ${time}ms`);
+      } catch (error) {
+        console.error(`🎫 Eventbrite: Strategy 3 failed:`, error);
+        strategyResults.push({ strategy: 'Category-specific search', events: 0, time: 0 });
+      }
+    }
+    
+    // Strategy 4: Broader regional search
+    try {
+      const startTime = Date.now();
+      console.log(`🎫 Eventbrite: Strategy 4 - Broader regional search (100km)`);
+      const regionalEvents = await this.getEventsWithRadius(city, startDate, endDate, '100km', category);
+      allEvents.push(...regionalEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'Broader regional search (100km)', events: regionalEvents.length, time });
+      console.log(`🎫 Eventbrite: Strategy 4 found ${regionalEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🎫 Eventbrite: Strategy 4 failed:`, error);
+      strategyResults.push({ strategy: 'Broader regional search (100km)', events: 0, time: 0 });
+    }
+    
+    // Strategy 5: Extended regional search (200km)
+    try {
+      const startTime = Date.now();
+      console.log(`🎫 Eventbrite: Strategy 5 - Extended regional search (200km)`);
+      const extendedRegionalEvents = await this.getEventsWithRadius(city, startDate, endDate, '200km', category);
+      allEvents.push(...extendedRegionalEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'Extended regional search (200km)', events: extendedRegionalEvents.length, time });
+      console.log(`🎫 Eventbrite: Strategy 5 found ${extendedRegionalEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🎫 Eventbrite: Strategy 5 failed:`, error);
+      strategyResults.push({ strategy: 'Extended regional search (200km)', events: 0, time: 0 });
+    }
+    
+    // Deduplicate and log results
+    const uniqueEvents = this.deduplicateEvents(allEvents);
+    
+    // Log strategy effectiveness
+    console.log(`🎫 Eventbrite: Comprehensive search completed`);
+    console.log(`🎫 Eventbrite: Strategy Results:`);
+    strategyResults.forEach(result => {
+      console.log(`  - ${result.strategy}: ${result.events} events in ${result.time}ms`);
+    });
+    console.log(`🎫 Eventbrite: Total events before deduplication: ${allEvents.length}`);
+    console.log(`🎫 Eventbrite: Total unique events after deduplication: ${uniqueEvents.length}`);
+    
+    return uniqueEvents;
+  }
+
+  /**
+   * Deduplicate events based on title, date, and venue
+   */
+  private deduplicateEvents(events: Event[]): Event[] {
+    const seen = new Set<string>();
+    return events.filter(event => {
+      // Create unique identifier from title, date, and venue
+      const identifier = `${event.title.toLowerCase()}_${event.date}_${event.venue?.toLowerCase() || ''}`;
+      if (seen.has(identifier)) {
+        return false;
+      }
+      seen.add(identifier);
+      return true;
+    });
+  }
+
+  /**
    * Add unique events to the collection, avoiding duplicates
    */
   private addUniqueEvents(allEvents: Event[], newEvents: Event[], seenEvents: Set<string>): void {

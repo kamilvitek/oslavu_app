@@ -150,11 +150,25 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd
     }).toString()}`);
 
+    // Use comprehensive search if enabled
+    const useComprehensiveSearch = params.useComprehensiveFallback || false;
+    
+    // Create comprehensive search query params
+    const comprehensiveQueryParams = new URLSearchParams({
+      city: params.city,
+      startDate: params.dateRangeStart,
+      endDate: params.dateRangeEnd,
+      category: params.category,
+      comprehensive: 'true', // Enable comprehensive search
+      size: '500',
+      radius: params.searchRadius || '50km'
+    });
+
     // Fetch from Ticketmaster, Eventbrite, PredictHQ, and Brno ArcGIS in parallel
     const [ticketmasterResponse, eventbriteResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
-      fetch(`${baseUrl}/api/analyze/events/ticketmaster?${queryParams.toString()}`),
-      fetch(`${baseUrl}/api/analyze/events/eventbrite?${queryParams.toString()}`),
-      fetch(`${baseUrl}/api/analyze/events/predicthq?${queryParams.toString()}`),
+      fetch(`${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveQueryParams.toString() : queryParams.toString()}`),
+      fetch(`${baseUrl}/api/analyze/events/eventbrite?${useComprehensiveSearch ? comprehensiveQueryParams.toString() : queryParams.toString()}`),
+      fetch(`${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensiveQueryParams.toString() : queryParams.toString()}`),
       fetch(`${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
         startDate: params.dateRangeStart,
         endDate: params.dateRangeEnd
@@ -167,7 +181,7 @@ export class ConflictAnalysisService {
     if (ticketmasterResponse.status === 'fulfilled' && ticketmasterResponse.value.ok) {
       try {
         const ticketmasterResult = await ticketmasterResponse.value.json();
-        console.log('Ticketmaster API response structure:', ticketmasterResult);
+        console.log('🎟️ Ticketmaster API response structure:', ticketmasterResult);
         
         // Handle different response structures
         let events = [];
@@ -183,21 +197,21 @@ export class ConflictAnalysisService {
         }
         
         allEvents.push(...events);
-        console.log(`Fetched ${events.length} events from Ticketmaster`);
+        console.log(`🎟️ Ticketmaster: Fetched ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
       } catch (error) {
-        console.error('Error processing Ticketmaster response:', error);
+        console.error('🎟️ Ticketmaster: Error processing response:', error);
       }
     } else if (ticketmasterResponse.status === 'rejected') {
-      console.error('Ticketmaster API request failed:', ticketmasterResponse.reason);
+      console.error('🎟️ Ticketmaster: API request failed:', ticketmasterResponse.reason);
     } else {
-      console.error('Ticketmaster API returned error:', ticketmasterResponse.value.status);
+      console.error('🎟️ Ticketmaster: API returned error:', ticketmasterResponse.value.status);
     }
 
     // Process Eventbrite results
     if (eventbriteResponse.status === 'fulfilled' && eventbriteResponse.value.ok) {
       try {
         const eventbriteResult = await eventbriteResponse.value.json();
-        console.log('Eventbrite API response structure:', eventbriteResult);
+        console.log('🎫 Eventbrite API response structure:', eventbriteResult);
         
         // Handle different response structures
         let events = [];
@@ -213,21 +227,21 @@ export class ConflictAnalysisService {
         }
         
         allEvents.push(...events);
-        console.log(`Fetched ${events.length} events from Eventbrite`);
+        console.log(`🎫 Eventbrite: Fetched ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
       } catch (error) {
-        console.error('Error processing Eventbrite response:', error);
+        console.error('🎫 Eventbrite: Error processing response:', error);
       }
     } else if (eventbriteResponse.status === 'rejected') {
-      console.error('Eventbrite API request failed:', eventbriteResponse.reason);
+      console.error('🎫 Eventbrite: API request failed:', eventbriteResponse.reason);
     } else {
-      console.error('Eventbrite API returned error:', eventbriteResponse.value.status);
+      console.error('🎫 Eventbrite: API returned error:', eventbriteResponse.value.status);
     }
 
     // Process PredictHQ results
     if (predicthqResponse.status === 'fulfilled' && predicthqResponse.value.ok) {
       try {
         const predicthqResult = await predicthqResponse.value.json();
-        console.log('PredictHQ API response structure:', predicthqResult);
+        console.log('🔮 PredictHQ API response structure:', predicthqResult);
         
         // Handle different response structures
         let events = [];
@@ -243,21 +257,21 @@ export class ConflictAnalysisService {
         }
         
         allEvents.push(...events);
-        console.log(`Fetched ${events.length} events from PredictHQ`);
+        console.log(`🔮 PredictHQ: Fetched ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
       } catch (error) {
-        console.error('Error processing PredictHQ response:', error);
+        console.error('🔮 PredictHQ: Error processing response:', error);
       }
     } else if (predicthqResponse.status === 'rejected') {
-      console.error('PredictHQ API request failed:', predicthqResponse.reason);
+      console.error('🔮 PredictHQ: API request failed:', predicthqResponse.reason);
     } else {
-      console.error('PredictHQ API returned error:', predicthqResponse.value.status);
+      console.error('🔮 PredictHQ: API returned error:', predicthqResponse.value.status);
     }
 
     // Process Brno results
     if (brnoResponse.status === 'fulfilled' && brnoResponse.value.ok) {
       try {
         const brnoResult = await brnoResponse.value.json();
-        console.log('Brno API response structure:', brnoResult);
+        console.log('🏛️ Brno API response structure:', brnoResult);
 
         let events = [] as any[];
         if (brnoResult.data?.events) {
@@ -271,24 +285,41 @@ export class ConflictAnalysisService {
         }
 
         allEvents.push(...events);
-        console.log(`Fetched ${events.length} events from Brno`);
+        console.log(`🏛️ Brno: Fetched ${events.length} events`);
       } catch (error) {
-        console.error('Error processing Brno response:', error);
+        console.error('🏛️ Brno: Error processing response:', error);
       }
     } else if (brnoResponse.status === 'rejected') {
-      console.error('Brno API request failed:', brnoResponse.reason);
+      console.error('🏛️ Brno: API request failed:', brnoResponse.reason);
     } else {
       // @ts-ignore
-      console.error('Brno API returned error:', brnoResponse.value?.status);
+      console.error('🏛️ Brno: API returned error:', brnoResponse.value?.status);
     }
 
     // Filter events by location to remove distant cities
     const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
-    console.log(`Total events after location filtering: ${locationFilteredEvents.length}`);
+    console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
 
     // Remove duplicates based on title, date, and venue
     const uniqueEvents = this.removeDuplicateEvents(locationFilteredEvents);
-    console.log(`Total unique events after deduplication: ${uniqueEvents.length}`);
+    console.log(`🔄 Total unique events after deduplication: ${uniqueEvents.length}`);
+
+    // Log comprehensive search strategy summary
+    if (useComprehensiveSearch) {
+      console.log(`🎯 COMPREHENSIVE SEARCH SUMMARY:`);
+      console.log(`  - Search Type: Multi-strategy comprehensive search`);
+      console.log(`  - Total Events Found: ${allEvents.length}`);
+      console.log(`  - After Location Filtering: ${locationFilteredEvents.length}`);
+      console.log(`  - After Deduplication: ${uniqueEvents.length}`);
+      console.log(`  - Deduplication Rate: ${((allEvents.length - uniqueEvents.length) / allEvents.length * 100).toFixed(1)}%`);
+      console.log(`  - Search Strategies Used: Multiple strategies per API`);
+    } else {
+      console.log(`🎯 STANDARD SEARCH SUMMARY:`);
+      console.log(`  - Search Type: Standard single-strategy search`);
+      console.log(`  - Total Events Found: ${allEvents.length}`);
+      console.log(`  - After Location Filtering: ${locationFilteredEvents.length}`);
+      console.log(`  - After Deduplication: ${uniqueEvents.length}`);
+    }
 
     return uniqueEvents;
   }

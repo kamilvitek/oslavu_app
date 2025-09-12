@@ -730,6 +730,166 @@ export class TicketmasterService {
   }
 
   /**
+   * Comprehensive multi-strategy search approach to maximize event discovery coverage
+   */
+  async getEventsComprehensive(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    const strategyResults: Array<{ strategy: string; events: number; time: number }> = [];
+    
+    console.log(`🎟️ Ticketmaster: Starting comprehensive search for ${city} (${startDate} to ${endDate})`);
+    
+    // Strategy 1: Direct city search
+    try {
+      const startTime = Date.now();
+      console.log(`🎟️ Ticketmaster: Strategy 1 - Direct city search`);
+      const cityEvents = await this.getEventsForCityPaginated(city, startDate, endDate, category);
+      allEvents.push(...cityEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'Direct city search', events: cityEvents.length, time });
+      console.log(`🎟️ Ticketmaster: Strategy 1 found ${cityEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🎟️ Ticketmaster: Strategy 1 failed:`, error);
+      strategyResults.push({ strategy: 'Direct city search', events: 0, time: 0 });
+    }
+    
+    // Strategy 2: Radius search  
+    try {
+      const startTime = Date.now();
+      console.log(`🎟️ Ticketmaster: Strategy 2 - Radius search (50 miles)`);
+      const radiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '50', category);
+      allEvents.push(...radiusEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'Radius search (50 miles)', events: radiusEvents.length, time });
+      console.log(`🎟️ Ticketmaster: Strategy 2 found ${radiusEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🎟️ Ticketmaster: Strategy 2 failed:`, error);
+      strategyResults.push({ strategy: 'Radius search (50 miles)', events: 0, time: 0 });
+    }
+    
+    // Strategy 3: Market-based search for major cities
+    const marketId = this.getCityMarketId(city);
+    if (marketId) {
+      try {
+        const startTime = Date.now();
+        console.log(`🎟️ Ticketmaster: Strategy 3 - Market-based search (${marketId})`);
+        const marketEvents = await this.getEventsForMarket(marketId, startDate, endDate, category);
+        allEvents.push(...marketEvents);
+        const time = Date.now() - startTime;
+        strategyResults.push({ strategy: `Market-based search (${marketId})`, events: marketEvents.length, time });
+        console.log(`🎟️ Ticketmaster: Strategy 3 found ${marketEvents.length} events in ${time}ms`);
+      } catch (error) {
+        console.error(`🎟️ Ticketmaster: Strategy 3 failed:`, error);
+        strategyResults.push({ strategy: `Market-based search (${marketId})`, events: 0, time: 0 });
+      }
+    }
+    
+    // Strategy 4: Keyword-based search for category
+    if (category) {
+      try {
+        const startTime = Date.now();
+        console.log(`🎟️ Ticketmaster: Strategy 4 - Keyword search for "${category}"`);
+        const keywordEvents = await this.searchEvents(category, city, startDate, endDate);
+        allEvents.push(...keywordEvents);
+        const time = Date.now() - startTime;
+        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: keywordEvents.length, time });
+        console.log(`🎟️ Ticketmaster: Strategy 4 found ${keywordEvents.length} events in ${time}ms`);
+      } catch (error) {
+        console.error(`🎟️ Ticketmaster: Strategy 4 failed:`, error);
+        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: 0, time: 0 });
+      }
+    }
+    
+    // Strategy 5: Extended radius search (100 miles)
+    try {
+      const startTime = Date.now();
+      console.log(`🎟️ Ticketmaster: Strategy 5 - Extended radius search (100 miles)`);
+      const extendedRadiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '100', category);
+      allEvents.push(...extendedRadiusEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'Extended radius search (100 miles)', events: extendedRadiusEvents.length, time });
+      console.log(`🎟️ Ticketmaster: Strategy 5 found ${extendedRadiusEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🎟️ Ticketmaster: Strategy 5 failed:`, error);
+      strategyResults.push({ strategy: 'Extended radius search (100 miles)', events: 0, time: 0 });
+    }
+    
+    // Deduplicate and log results
+    const uniqueEvents = this.deduplicateEvents(allEvents);
+    
+    // Log strategy effectiveness
+    console.log(`🎟️ Ticketmaster: Comprehensive search completed`);
+    console.log(`🎟️ Ticketmaster: Strategy Results:`);
+    strategyResults.forEach(result => {
+      console.log(`  - ${result.strategy}: ${result.events} events in ${result.time}ms`);
+    });
+    console.log(`🎟️ Ticketmaster: Total events before deduplication: ${allEvents.length}`);
+    console.log(`🎟️ Ticketmaster: Total unique events after deduplication: ${uniqueEvents.length}`);
+    
+    return uniqueEvents;
+  }
+
+  /**
+   * Get events for a specific market ID
+   */
+  private async getEventsForMarket(
+    marketId: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    let page = 0;
+    const pageSize = 200;
+    let totalAvailable = 0;
+    
+    while (true) {
+      console.log(`🎟️ Ticketmaster: Fetching market page ${page + 1} for ${marketId}`);
+      
+      const { events, total } = await this.getEvents({
+        marketId,
+        startDateTime: `${startDate}T00:00:00Z`,
+        endDateTime: `${endDate}T23:59:59Z`,
+        classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
+        size: pageSize,
+        page,
+      });
+
+      allEvents.push(...events);
+      totalAvailable = total;
+      
+      if (events.length < pageSize || allEvents.length >= total || page >= 9) {
+        break;
+      }
+      
+      page++;
+    }
+    
+    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total events for market ${marketId} (${totalAvailable} available)`);
+    return allEvents;
+  }
+
+  /**
+   * Deduplicate events based on title, date, and venue
+   */
+  private deduplicateEvents(events: Event[]): Event[] {
+    const seen = new Set<string>();
+    return events.filter(event => {
+      // Create unique identifier from title, date, and venue
+      const identifier = `${event.title.toLowerCase()}_${event.date}_${event.venue?.toLowerCase() || ''}`;
+      if (seen.has(identifier)) {
+        return false;
+      }
+      seen.add(identifier);
+      return true;
+    });
+  }
+
+  /**
    * Add unique events to the collection, avoiding duplicates
    */
   private addUniqueEvents(allEvents: Event[], newEvents: Event[], seenEvents: Set<string>): void {

@@ -779,6 +779,139 @@ export class PredictHQService {
   }
 
   /**
+   * Comprehensive multi-strategy search approach to maximize event discovery coverage
+   */
+  async getEventsComprehensive(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    const strategyResults: Array<{ strategy: string; events: number; time: number }> = [];
+    
+    console.log(`🔮 PredictHQ: Starting comprehensive search for ${city} (${startDate} to ${endDate})`);
+    
+    // Strategy 1: City-based search
+    try {
+      const startTime = Date.now();
+      console.log(`🔮 PredictHQ: Strategy 1 - City-based search`);
+      const cityEvents = await this.getEventsForCityPaginated(city, startDate, endDate, category);
+      allEvents.push(...cityEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'City-based search', events: cityEvents.length, time });
+      console.log(`🔮 PredictHQ: Strategy 1 found ${cityEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🔮 PredictHQ: Strategy 1 failed:`, error);
+      strategyResults.push({ strategy: 'City-based search', events: 0, time: 0 });
+    }
+    
+    // Strategy 2: Keyword search
+    if (category) {
+      try {
+        const startTime = Date.now();
+        console.log(`🔮 PredictHQ: Strategy 2 - Keyword search for "${category}"`);
+        const keywordEvents = await this.searchEvents(category, city, startDate, endDate);
+        allEvents.push(...keywordEvents);
+        const time = Date.now() - startTime;
+        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: keywordEvents.length, time });
+        console.log(`🔮 PredictHQ: Strategy 2 found ${keywordEvents.length} events in ${time}ms`);
+      } catch (error) {
+        console.error(`🔮 PredictHQ: Strategy 2 failed:`, error);
+        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: 0, time: 0 });
+      }
+    }
+    
+    // Strategy 3: High attendance events filter
+    try {
+      const startTime = Date.now();
+      console.log(`🔮 PredictHQ: Strategy 3 - High attendance events (1000+ attendees)`);
+      const highAttendanceEvents = await this.getHighAttendanceEvents(city, startDate, endDate, 1000);
+      allEvents.push(...highAttendanceEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'High attendance events (1000+ attendees)', events: highAttendanceEvents.length, time });
+      console.log(`🔮 PredictHQ: Strategy 3 found ${highAttendanceEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🔮 PredictHQ: Strategy 3 failed:`, error);
+      strategyResults.push({ strategy: 'High attendance events (1000+ attendees)', events: 0, time: 0 });
+    }
+    
+    // Strategy 4: High local rank events filter
+    try {
+      const startTime = Date.now();
+      console.log(`🔮 PredictHQ: Strategy 4 - High local rank events (rank 50+)`);
+      const highRankEvents = await this.getHighRankEvents(city, startDate, endDate, 50);
+      allEvents.push(...highRankEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'High local rank events (rank 50+)', events: highRankEvents.length, time });
+      console.log(`🔮 PredictHQ: Strategy 4 found ${highRankEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🔮 PredictHQ: Strategy 4 failed:`, error);
+      strategyResults.push({ strategy: 'High local rank events (rank 50+)', events: 0, time: 0 });
+    }
+    
+    // Strategy 5: Radius search with category
+    if (category) {
+      try {
+        const startTime = Date.now();
+        console.log(`🔮 PredictHQ: Strategy 5 - Radius search (50km) with category`);
+        const radiusCategoryEvents = await this.getEventsWithRadius(city, startDate, endDate, '50km', category);
+        allEvents.push(...radiusCategoryEvents);
+        const time = Date.now() - startTime;
+        strategyResults.push({ strategy: 'Radius search (50km) with category', events: radiusCategoryEvents.length, time });
+        console.log(`🔮 PredictHQ: Strategy 5 found ${radiusCategoryEvents.length} events in ${time}ms`);
+      } catch (error) {
+        console.error(`🔮 PredictHQ: Strategy 5 failed:`, error);
+        strategyResults.push({ strategy: 'Radius search (50km) with category', events: 0, time: 0 });
+      }
+    }
+    
+    // Strategy 6: Extended radius search (100km)
+    try {
+      const startTime = Date.now();
+      console.log(`🔮 PredictHQ: Strategy 6 - Extended radius search (100km)`);
+      const extendedRadiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '100km', category);
+      allEvents.push(...extendedRadiusEvents);
+      const time = Date.now() - startTime;
+      strategyResults.push({ strategy: 'Extended radius search (100km)', events: extendedRadiusEvents.length, time });
+      console.log(`🔮 PredictHQ: Strategy 6 found ${extendedRadiusEvents.length} events in ${time}ms`);
+    } catch (error) {
+      console.error(`🔮 PredictHQ: Strategy 6 failed:`, error);
+      strategyResults.push({ strategy: 'Extended radius search (100km)', events: 0, time: 0 });
+    }
+    
+    // Deduplicate and log results
+    const uniqueEvents = this.deduplicateEvents(allEvents);
+    
+    // Log strategy effectiveness
+    console.log(`🔮 PredictHQ: Comprehensive search completed`);
+    console.log(`🔮 PredictHQ: Strategy Results:`);
+    strategyResults.forEach(result => {
+      console.log(`  - ${result.strategy}: ${result.events} events in ${result.time}ms`);
+    });
+    console.log(`🔮 PredictHQ: Total events before deduplication: ${allEvents.length}`);
+    console.log(`🔮 PredictHQ: Total unique events after deduplication: ${uniqueEvents.length}`);
+    
+    return uniqueEvents;
+  }
+
+  /**
+   * Deduplicate events based on title, date, and venue
+   */
+  private deduplicateEvents(events: Event[]): Event[] {
+    const seen = new Set<string>();
+    return events.filter(event => {
+      // Create unique identifier from title, date, and venue
+      const identifier = `${event.title.toLowerCase()}_${event.date}_${event.venue?.toLowerCase() || ''}`;
+      if (seen.has(identifier)) {
+        return false;
+      }
+      seen.add(identifier);
+      return true;
+    });
+  }
+
+  /**
    * Add unique events to the collection, avoiding duplicates
    */
   private addUniqueEvents(allEvents: Event[], newEvents: Event[], seenEvents: Set<string>): void {

@@ -60,3 +60,54 @@ export const SUBSCRIPTION_PLANS = {
     features: ['Unlimited analyses', 'White-label API', 'Custom integrations', 'Dedicated support'],
   },
 } as const;
+
+export const SEARCH_STRATEGIES = {
+  TICKETMASTER: {
+    enabled: true,
+    strategies: {
+      directCity: { enabled: true, timeout: 10000 },
+      radiusSearch: { enabled: true, timeout: 15000, radius: '50' },
+      marketBased: { enabled: true, timeout: 12000 },
+      keywordSearch: { enabled: true, timeout: 10000 },
+      extendedRadius: { enabled: true, timeout: 20000, radius: '100' },
+    },
+    maxConcurrentStrategies: 3,
+    deduplicationEnabled: true,
+  },
+  EVENTBRITE: {
+    enabled: true,
+    strategies: {
+      locationBased: { enabled: true, timeout: 10000 },
+      keywordSearch: { enabled: true, timeout: 10000 },
+      categorySpecific: { enabled: true, timeout: 12000 },
+      regionalSearch: { enabled: true, timeout: 15000, radius: '100km' },
+      extendedRegional: { enabled: true, timeout: 20000, radius: '200km' },
+    },
+    maxConcurrentStrategies: 3,
+    deduplicationEnabled: true,
+  },
+  PREDICTHQ: {
+    enabled: true,
+    strategies: {
+      cityBased: { enabled: true, timeout: 10000 },
+      keywordSearch: { enabled: true, timeout: 10000 },
+      highAttendance: { enabled: true, timeout: 12000, minAttendance: 1000 },
+      highRank: { enabled: true, timeout: 12000, minRank: 50 },
+      radiusSearch: { enabled: true, timeout: 15000, radius: '50km' },
+      extendedRadius: { enabled: true, timeout: 20000, radius: '100km' },
+    },
+    maxConcurrentStrategies: 4,
+    deduplicationEnabled: true,
+  },
+} as const;
+
+export const SEARCH_CONFIG = {
+  defaultTimeout: 15000,
+  maxRetries: 2,
+  enableStrategyLogging: true,
+  enablePerformanceMonitoring: true,
+  deduplicationThreshold: 0.8, // String similarity threshold for deduplication
+  maxEventsPerStrategy: 1000,
+  enableEarlyReturn: true, // Return early if enough events found
+  earlyReturnThreshold: 50, // Return early if this many events found
+} as const;
