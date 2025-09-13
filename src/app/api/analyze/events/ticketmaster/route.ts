@@ -77,27 +77,9 @@ export async function GET(request: NextRequest) {
     try {
       // Apply input optimizations for Ticketmaster API
       let transformedParams = null;
-      if (city && category && startDate && endDate) {
-        try {
-          console.log('🔧 Applying input optimizations for Ticketmaster API');
-          
-          // Dynamic import to avoid module loading issues
-          const { aiInputTransformerService } = await import('@/lib/services/ai-input-transformer');
-          
-          transformedParams = await aiInputTransformerService.transformForTicketmaster({
-            city,
-            category,
-            startDate,
-            endDate,
-            expectedAttendees: parseInt(searchParams.get('expectedAttendees') || '0') || undefined,
-            venue: searchParams.get('venue') || undefined
-          });
-          console.log('🤖 Transformed Ticketmaster params:', transformedParams);
-        } catch (transformError) {
-          console.error('🤖 Error in input transformation, using original params:', transformError);
-          transformedParams = null; // Fall back to original params
-        }
-      }
+      // Note: AI transformer temporarily disabled to ensure basic Ticketmaster integration works
+      // TODO: Re-enable and optimize AI transformer after confirming basic functionality
+      console.log('🔧 Using basic Ticketmaster integration (AI transformer disabled)');
 
       // Check if this is a comprehensive search request
       const isComprehensiveSearch = searchParams.get('comprehensive') === 'true';

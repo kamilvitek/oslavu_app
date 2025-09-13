@@ -468,12 +468,14 @@ export class TicketmasterService {
       // Arts and culture variations
       'Arts & Culture': 'Arts & Theatre',
       'Arts and Culture': 'Arts & Theatre',
-      'Entertainment': 'Arts & Theatre', // Most entertainment falls under Arts & Theatre
       'Theater': 'Arts & Theatre',
       'Theatre': 'Arts & Theatre',
       'Comedy': 'Arts & Theatre',
       'Dance': 'Arts & Theatre',
       'Opera': 'Arts & Theatre',
+      
+      // Entertainment - use broader search since it can span multiple categories
+      'Entertainment': undefined, // Entertainment can be Music, Arts & Theatre, or other categories
       
       // Music variations
       'Concerts': 'Music',
