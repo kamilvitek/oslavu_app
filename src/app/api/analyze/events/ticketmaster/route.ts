@@ -1,6 +1,7 @@
 // src/app/api/analyze/events/ticketmaster/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { ticketmasterService } from '@/lib/services/ticketmaster';
+import { Event } from '@/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let events = [];
+    let events: Event[] = [];
 
     try {
       // Apply input optimizations for Ticketmaster API
@@ -106,12 +107,18 @@ export async function GET(request: NextRequest) {
         const searchKeyword = transformedParams?.keyword || keyword;
         const searchCity = transformedParams?.city || city;
         
-        events = await ticketmasterService.searchEvents(
-          searchKeyword,
-          searchCity || undefined,
-          startDate || undefined,
-          endDate || undefined
-        );
+        // Ensure we have a valid keyword string before calling searchEvents
+        if (searchKeyword) {
+          events = await ticketmasterService.searchEvents(
+            searchKeyword,
+            searchCity || undefined,
+            startDate || undefined,
+            endDate || undefined
+          );
+        } else {
+          // If no valid keyword, return empty results
+          events = [];
+        }
       } else if (city && startDate && endDate) {
         // Get events for city and date range with radius and fallback options
         const searchCity = transformedParams?.city || city;

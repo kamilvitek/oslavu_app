@@ -1,6 +1,7 @@
 // src/app/api/analyze/events/eventbrite/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { eventbriteService } from '@/lib/services/eventbrite';
+import { Event } from '@/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    let events;
+    let events: Event[];
 
     // Apply input optimizations for Eventbrite API
     let transformedParams = null;
@@ -93,12 +94,18 @@ export async function GET(request: NextRequest) {
       const searchKeyword = transformedParams?.q || keyword;
       const searchCity = transformedParams?.location || city;
       
-      events = await eventbriteService.searchEvents(
-        searchKeyword,
-        searchCity || undefined,
-        startDate || undefined,
-        endDate || undefined
-      );
+      // Ensure we have a valid keyword string before calling searchEvents
+      if (searchKeyword) {
+        events = await eventbriteService.searchEvents(
+          searchKeyword,
+          searchCity || undefined,
+          startDate || undefined,
+          endDate || undefined
+        );
+      } else {
+        // If no valid keyword, return empty results
+        events = [];
+      }
     } else {
       // Search by city and date range
       if (!startDate || !endDate) {
