@@ -550,7 +550,7 @@ export class ConflictAnalysisService {
       const isCompeting = overlaps && (sameCategory || isSignificant);
 
       if (overlaps) {
-        console.log(`Event "${event.title}" on ${event.date}: overlaps=${overlaps}, sameCategory=${sameCategory}, isSignificant=${isSignificant}, isCompeting=${isCompeting}`);
+        console.log(`Event "${event.title}" on ${event.date}: category="${event.category}", overlaps=${overlaps}, sameCategory=${sameCategory}, isSignificant=${isSignificant}, isCompeting=${isCompeting}`);
       }
 
       return isCompeting;
@@ -771,15 +771,20 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Check if two categories are related
+   * Check if two categories are related (more restrictive to reduce false positives)
    */
   private isRelatedCategory(category1: string, category2: string): boolean {
     const relatedCategories: Record<string, string[]> = {
-      'Technology': ['Business', 'Education'],
-      'Business': ['Technology', 'Finance', 'Marketing'],
-      'Entertainment': ['Arts & Culture'],
-      'Arts & Culture': ['Entertainment'],
-      'Sports': ['Entertainment'],
+      // Only very closely related categories should compete
+      'Technology': ['Technology'], // Only compete with other tech events
+      'Business': ['Business', 'Finance', 'Marketing'], // Business-related only
+      'Entertainment': ['Arts & Culture', 'Entertainment'],
+      'Arts & Culture': ['Entertainment', 'Arts & Culture'],
+      'Sports': ['Sports'], // Sports only compete with sports
+      'Healthcare': ['Healthcare'], // Healthcare only competes with healthcare
+      'Education': ['Education'], // Education only competes with education
+      'Finance': ['Business', 'Finance'],
+      'Marketing': ['Business', 'Marketing'],
     };
 
     return relatedCategories[category1]?.includes(category2) || 

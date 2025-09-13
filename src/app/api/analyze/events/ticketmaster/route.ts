@@ -103,18 +103,25 @@ export async function GET(request: NextRequest) {
           searchCategory || undefined
         );
       } else if (keyword || transformedParams?.keyword) {
-        // Search by keyword (use transformed keyword if available)
+        // Search by keyword with full transformed parameters
         const searchKeyword = transformedParams?.keyword || keyword;
         const searchCity = transformedParams?.city || city;
         
         // Ensure we have a valid keyword string before calling searchEvents
         if (searchKeyword) {
-          events = await ticketmasterService.searchEvents(
-            searchKeyword,
-            searchCity || undefined,
-            startDate || undefined,
-            endDate || undefined
-          );
+          // Use getEvents with full parameters instead of limited searchEvents
+          const result = await ticketmasterService.getEvents({
+            city: searchCity || undefined,
+            countryCode: transformedParams?.countryCode,
+            radius: transformedParams?.radius || radius?.replace(/[^\d]/g, '') || undefined,
+            startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
+            endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
+            classificationName: transformedParams?.classificationName || category,
+            keyword: searchKeyword,
+            page,
+            size,
+          });
+          events = result.events;
         } else {
           // If no valid keyword, return empty results
           events = [];

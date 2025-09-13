@@ -316,7 +316,7 @@ export class PredictHQService {
       endDate: endDate?.toISOString().split('T')[0],
       city: city,
       venue: location?.name || phqEvent.place?.name,
-      category: this.mapPredictHQCategory(phqEvent.category),
+      category: this.mapPredictHQCategory(phqEvent.category, phqEvent.title, phqEvent.description),
       subcategory: phqEvent.subcategory,
       expectedAttendees: phqEvent.phq_attendance,
       source: 'predicthq',
@@ -378,7 +378,43 @@ export class PredictHQService {
   /**
    * Map PredictHQ categories to our standard categories
    */
-  private mapPredictHQCategory(phqCategory: string): string {
+  private mapPredictHQCategory(phqCategory: string, title?: string, description?: string): string {
+    // First check for specific keywords in title/description for better categorization
+    const content = `${title || ''} ${description || ''}`.toLowerCase();
+    
+    // Technology-specific keywords
+    if (content.includes('tech') || content.includes('digital') || content.includes('software') || 
+        content.includes('ai') || content.includes('data') || content.includes('coding') ||
+        content.includes('programming') || content.includes('cyber') || content.includes('cloud')) {
+      console.log(`🔮 PredictHQ: Mapped "${title}" to Technology based on content keywords`);
+      return 'Technology';
+    }
+    
+    // Healthcare-specific keywords
+    if (content.includes('medical') || content.includes('health') || content.includes('clinical') ||
+        content.includes('doctor') || content.includes('nurse') || content.includes('patient') ||
+        content.includes('hospital') || content.includes('pharma') || content.includes('drug') ||
+        content.includes('surgery') || content.includes('anaesth') || content.includes('o&g') ||
+        content.includes('gems study')) {
+      console.log(`🔮 PredictHQ: Mapped "${title}" to Healthcare based on content keywords`);
+      return 'Healthcare';
+    }
+    
+    // Finance-specific keywords
+    if (content.includes('finance') || content.includes('banking') || content.includes('investment') ||
+        content.includes('trading') || content.includes('fintech') || content.includes('crypto')) {
+      console.log(`🔮 PredictHQ: Mapped "${title}" to Finance based on content keywords`);
+      return 'Finance';
+    }
+    
+    // Marketing-specific keywords
+    if (content.includes('marketing') || content.includes('advertising') || content.includes('brand') ||
+        content.includes('social media') || content.includes('seo') || content.includes('digital marketing')) {
+      console.log(`🔮 PredictHQ: Mapped "${title}" to Marketing based on content keywords`);
+      return 'Marketing';
+    }
+    
+    // Fall back to category-based mapping
     const categoryMap: Record<string, string> = {
       'conferences': 'Business',
       'concerts': 'Entertainment',

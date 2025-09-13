@@ -363,17 +363,25 @@ export class TicketmasterService {
   }
 
   /**
-   * Search events by keyword
+   * Search events by keyword with enhanced parameters
    */
   async searchEvents(
     keyword: string,
     city?: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    options?: {
+      countryCode?: string;
+      radius?: string;
+      classificationName?: string;
+    }
   ): Promise<Event[]> {
     const { events } = await this.getEvents({
       keyword,
       city,
+      countryCode: options?.countryCode || (city ? this.getCityCountryCode(city) : undefined),
+      radius: options?.radius,
+      classificationName: options?.classificationName,
       startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
       endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
       size: 200, // Ticketmaster's maximum page size
