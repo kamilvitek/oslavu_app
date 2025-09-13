@@ -330,6 +330,7 @@ export class TicketmasterService {
 
   /**
    * Get all events for a specific city and date range by paginating through all pages
+   * Now searches multiple city variations to handle district names like "Praha 9"
    */
   private async getEventsForCityPaginated(
     city: string,
@@ -338,36 +339,55 @@ export class TicketmasterService {
     category?: string
   ): Promise<Event[]> {
     const allEvents: Event[] = [];
-    let page = 0;
-    const pageSize = 199; // Ticketmaster's maximum page size
+    const seenEventIds = new Set<string>();
     const countryCode = this.getCityCountryCode(city);
-    let totalAvailable = 0;
+    const cityVariations = this.mapCityForTicketmaster(city);
     
-    while (true) {
-      console.log(`🎟️ Ticketmaster: Fetching page ${page + 1} for ${city}`);
+    console.log(`🎟️ Ticketmaster: Searching ${city} using variations: ${cityVariations.join(', ')}`);
+    
+    // Search each city variation
+    for (const cityVariation of cityVariations) {
+      let page = 0;
+      const pageSize = 199;
+      let totalAvailable = 0;
       
-      const { events, total } = await this.getEvents({
-        city,
-        countryCode,
-        startDateTime: `${startDate}T00:00:00Z`,
-        endDateTime: `${endDate}T23:59:59Z`,
-        classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
-        size: pageSize,
-        page,
-      });
+      console.log(`🎟️ Ticketmaster: Searching city variation "${cityVariation}"`);
+      
+      while (true) {
+        console.log(`🎟️ Ticketmaster: Fetching page ${page + 1} for ${cityVariation}`);
+        
+        const { events, total } = await this.getEvents({
+          city: cityVariation,
+          countryCode,
+          startDateTime: `${startDate}T00:00:00Z`,
+          endDateTime: `${endDate}T23:59:59Z`,
+          classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
+          size: pageSize,
+          page,
+        });
 
-      allEvents.push(...events);
-      totalAvailable = total; // Store the total for logging
-      
-      // Check if we've fetched all available events or reached the safety limit
-      if (events.length < pageSize || allEvents.length >= total || page >= 9) {
-        break;
+        // Add unique events only
+        for (const event of events) {
+          if (!seenEventIds.has(event.sourceId)) {
+            allEvents.push(event);
+            seenEventIds.add(event.sourceId);
+          }
+        }
+        
+        totalAvailable = total;
+        
+        // Check if we've fetched all available events or reached the safety limit
+        if (events.length < pageSize || events.length >= total || page >= 9) {
+          break;
+        }
+        
+        page++;
       }
       
-      page++;
+      console.log(`🎟️ Ticketmaster: Found ${totalAvailable} events for city variation "${cityVariation}"`);
     }
     
-    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total events for ${city} (${totalAvailable} available)`);
+    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total unique events for ${city} across all variations`);
     return allEvents;
   }
 
@@ -561,6 +581,20 @@ export class TicketmasterService {
     }
     
     return radiusValue.toString();
+  }
+
+  /**
+   * Map city names to Ticketmaster-compatible variations
+   */
+  private mapCityForTicketmaster(city: string): string[] {
+    const cityVariations: Record<string, string[]> = {
+      'Prague': ['Prague', 'Praha', 'Praha 1', 'Praha 2', 'Praha 3', 'Praha 4', 'Praha 5', 'Praha 6', 'Praha 7', 'Praha 8', 'Praha 9', 'Praha 10'],
+      'Brno': ['Brno', 'Brno-město', 'Brno-střed'],
+      'Ostrava': ['Ostrava', 'Ostrava-město'],
+      'Olomouc': ['Olomouc'],
+    };
+    
+    return cityVariations[city] || [city];
   }
 
   /**
