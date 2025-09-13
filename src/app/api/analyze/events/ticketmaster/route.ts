@@ -38,9 +38,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if API key is configured
-    if (!process.env.TICKETMASTER_API_KEY) {
-      console.error('TICKETMASTER_API_KEY is not configured');
+    // Check if API key is configured and valid
+    const apiKey = process.env.TICKETMASTER_API_KEY;
+    const isValidKey = !!(apiKey && apiKey.length > 10 && !apiKey.includes('your_') && !apiKey.includes('here'));
+    
+    if (!isValidKey) {
+      console.error('🎟️ Ticketmaster API key is not properly configured');
+      console.error('🎟️ Current key status:', {
+        exists: !!apiKey,
+        length: apiKey?.length || 0,
+        isPlaceholder: apiKey?.includes('your_') || apiKey?.includes('here') || false
+      });
+      console.error('🎟️ Please set TICKETMASTER_API_KEY in your .env.local file');
+      console.error('🎟️ Get your API key from: https://developer.ticketmaster.com/');
+      
       return NextResponse.json(
         { 
           success: true,
@@ -48,7 +59,13 @@ export async function GET(request: NextRequest) {
             events: [],
             total: 0,
             source: 'ticketmaster',
-            message: 'Ticketmaster API key not configured - using empty results'
+            message: 'Ticketmaster API key not configured - please set TICKETMASTER_API_KEY in .env.local',
+            debug: {
+              keyExists: !!apiKey,
+              keyLength: apiKey?.length || 0,
+              isPlaceholder: apiKey?.includes('your_') || apiKey?.includes('here') || false,
+              setupUrl: 'https://developer.ticketmaster.com/'
+            }
           }
         },
         { status: 200 }

@@ -70,6 +70,13 @@ export class TicketmasterService {
   }
 
   /**
+   * Check if API key is properly configured and valid
+   */
+  private isApiKeyValid(): boolean {
+    return !!(this.apiKey && this.apiKey.length > 10 && !this.apiKey.includes('your_') && !this.apiKey.includes('here'));
+  }
+
+  /**
    * Rate limiting wrapper for API requests
    * Ensures compliance with Ticketmaster's 5 requests/second limit
    */
@@ -145,9 +152,11 @@ export class TicketmasterService {
     includeTBD?: boolean; // Include TBD events
     includeTest?: boolean; // Include test events (usually false)
   }): Promise<{ events: Event[]; total: number }> {
-    // Check if API key is available
-    if (!this.apiKey) {
-      console.warn('Ticketmaster API key is not configured - returning empty results');
+    // Check if API key is available and valid
+    if (!this.isApiKeyValid()) {
+      console.warn('🎟️ Ticketmaster API key is not properly configured - returning empty results');
+      console.warn('🎟️ Please set TICKETMASTER_API_KEY in your .env.local file');
+      console.warn('🎟️ Get your API key from: https://developer.ticketmaster.com/');
       return { events: [], total: 0 };
     }
     
