@@ -265,11 +265,18 @@ export class ConflictAnalysisService {
     if (predicthqResponse.status === 'fulfilled' && predicthqResponse.value.ok) {
       try {
         const predicthqResult = await predicthqResponse.value.json();
-        console.log('🔮 PredictHQ API response structure:', predicthqResult);
+        console.log('🔮 PredictHQ API response structure:', {
+          success: predicthqResult.success,
+          hasData: !!predicthqResult.data,
+          hasEvents: !!predicthqResult.data?.events,
+          eventsLength: predicthqResult.data?.events?.length || 0
+        });
         
         // Handle different response structures
         let events = [];
-        if (predicthqResult.data?.events) {
+        if (predicthqResult.success && predicthqResult.data?.events) {
+          events = predicthqResult.data.events;
+        } else if (predicthqResult.data?.events) {
           events = predicthqResult.data.events;
         } else if (predicthqResult.data && Array.isArray(predicthqResult.data)) {
           events = predicthqResult.data;
@@ -288,7 +295,17 @@ export class ConflictAnalysisService {
     } else if (predicthqResponse.status === 'rejected') {
       console.error('🔮 PredictHQ: API request failed:', predicthqResponse.reason);
     } else {
-      console.error('🔮 PredictHQ: API returned error:', predicthqResponse.value.status);
+      console.error('🔮 PredictHQ: API returned error:', predicthqResponse.value?.status || 'Unknown error');
+      // Try to get the error message from response
+      try {
+        const errorResult = await predicthqResponse.value.json();
+        if (errorResult.success === false && errorResult.data?.events) {
+          // API returned error but still has data structure - use empty events
+          console.log('🔮 PredictHQ: Using empty events due to API error');
+        }
+      } catch (parseError) {
+        console.error('🔮 PredictHQ: Could not parse error response');
+      }
     }
 
     // Process Brno results
@@ -321,6 +338,9 @@ export class ConflictAnalysisService {
     }
 
     // Filter events by location to remove distant cities
+    console.log(`📍 Events before location filtering: ${allEvents.length}`);
+    console.log(`📍 Sample event cities:`, allEvents.slice(0, 5).map(e => ({ title: e.title, city: e.city, venue: e.venue })));
+    
     const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
     console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
 

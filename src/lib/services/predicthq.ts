@@ -132,7 +132,7 @@ export class PredictHQService {
 
       const data: PredictHQResponse = await response.json();
       
-      const events = data.results?.map(this.transformEvent) || [];
+      const events = data.results?.map(event => this.transformEvent(event, params.city)) || [];
       const total = data.count;
 
       return { events, total };
@@ -178,6 +178,7 @@ export class PredictHQService {
       
       const { events, total } = await this.getEvents({
         ...locationParams,
+        city: city, // Pass the city parameter for proper transformation
         'start.gte': `${startDate}T00:00:00`,
         'start.lte': `${endDate}T23:59:59`,
         category: category ? this.mapCategoryToPredictHQ(category) : undefined,
@@ -219,6 +220,7 @@ export class PredictHQService {
       
       const { events, total } = await this.getEvents({
         ...locationParams,
+        city: city, // Pass the city parameter for proper transformation
         'start.gte': `${startDate}T00:00:00`,
         'start.lte': `${endDate}T23:59:59`,
         category: category ? this.mapCategoryToPredictHQ(category) : undefined,
@@ -284,10 +286,27 @@ export class PredictHQService {
   /**
    * Transform PredictHQ event to our Event interface
    */
-  private transformEvent = (phqEvent: PredictHQEvent): Event => {
+  private transformEvent = (phqEvent: PredictHQEvent, requestedCity?: string): Event => {
     const location = phqEvent.location || phqEvent.place;
     const startDate = new Date(phqEvent.start);
     const endDate = phqEvent.end ? new Date(phqEvent.end) : undefined;
+    
+    // Extract city from various possible sources
+    let city = requestedCity || 'Unknown'; // Use requested city as primary fallback
+    if (location?.city) {
+      city = location.city;
+    } else if (location?.address) {
+      // Try to extract city from address
+      const addressParts = location.address.split(',');
+      if (addressParts.length > 1) {
+        city = addressParts[addressParts.length - 2]?.trim() || city;
+      }
+    }
+    
+    // Since PredictHQ returns location-specific events, use the requested city if no other city is found
+    if (city === 'Unknown' && requestedCity) {
+      city = requestedCity;
+    }
     
     return {
       id: `phq_${phqEvent.id}`,
@@ -295,7 +314,7 @@ export class PredictHQService {
       description: phqEvent.description,
       date: startDate.toISOString().split('T')[0],
       endDate: endDate?.toISOString().split('T')[0],
-      city: location?.city || 'Unknown',
+      city: city,
       venue: location?.name || phqEvent.place?.name,
       category: this.mapPredictHQCategory(phqEvent.category),
       subcategory: phqEvent.subcategory,
