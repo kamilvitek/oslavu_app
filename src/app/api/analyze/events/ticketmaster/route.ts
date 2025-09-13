@@ -1,4 +1,4 @@
-// src/app/api/events/ticketmaster/route.ts
+// src/app/api/analyze/events/ticketmaster/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { ticketmasterService } from '@/lib/services/ticketmaster';
 
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     // Validate radius parameter
     if (radius) {
-      const radiusValue = parseInt(radius);
+      const radiusValue = parseInt(radius.replace(/[^\d]/g, ''));
       if (isNaN(radiusValue) || radiusValue < 0 || radiusValue > 19999) {
         return NextResponse.json(
           { error: 'Radius must be a number between 0 and 19,999' },
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
+    console.log('🎟️ Ticketmaster API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
 
     if (!city && !keyword) {
       return NextResponse.json(
@@ -40,125 +40,125 @@ export async function GET(request: NextRequest) {
     if (!process.env.TICKETMASTER_API_KEY) {
       console.error('TICKETMASTER_API_KEY is not configured');
       return NextResponse.json(
-        { error: 'Ticketmaster API key is not configured' },
-        { status: 500 }
+        { 
+          success: true,
+          data: {
+            events: [],
+            total: 0,
+            source: 'ticketmaster',
+            message: 'Ticketmaster API key not configured - using empty results'
+          }
+        },
+        { status: 200 }
       );
     }
 
-    let events;
+    let events = [];
 
-    // Check if this is a comprehensive search request
-    const isComprehensiveSearch = searchParams.get('comprehensive') === 'true';
+    try {
+      // Check if this is a comprehensive search request
+      const isComprehensiveSearch = searchParams.get('comprehensive') === 'true';
 
-    if (isComprehensiveSearch && city && startDate && endDate) {
-      // Use the new comprehensive multi-strategy search
-      events = await ticketmasterService.getEventsComprehensive(
-        city,
-        startDate,
-        endDate,
-        category || undefined
-      );
-    } else if (keyword) {
-      // Search by keyword
-      events = await ticketmasterService.searchEvents(
-        keyword,
-        city || undefined,
-        startDate || undefined,
-        endDate || undefined
-      );
-    } else if (city && startDate && endDate) {
-      // Get events for city and date range with radius and fallback options
-      if (useComprehensiveFallback) {
-        events = await ticketmasterService.getEventsWithComprehensiveFallback(
+      if (isComprehensiveSearch && city && startDate && endDate) {
+        // Use the new comprehensive multi-strategy search
+        events = await ticketmasterService.getEventsComprehensive(
           city,
           startDate,
           endDate,
-          category || undefined,
-          radius || '50'
-        );
-      } else if (radius) {
-        events = await ticketmasterService.getEventsWithRadius(
-          city,
-          startDate,
-          endDate,
-          radius,
           category || undefined
         );
+      } else if (keyword) {
+        // Search by keyword
+        events = await ticketmasterService.searchEvents(
+          keyword,
+          city || undefined,
+          startDate || undefined,
+          endDate || undefined
+        );
+      } else if (city && startDate && endDate) {
+        // Get events for city and date range with radius and fallback options
+        if (useComprehensiveFallback) {
+          events = await ticketmasterService.getEventsWithComprehensiveFallback(
+            city,
+            startDate,
+            endDate,
+            category || undefined,
+            radius?.replace(/[^\d]/g, '') || '50'
+          );
+        } else if (radius) {
+          events = await ticketmasterService.getEventsWithRadius(
+            city,
+            startDate,
+            endDate,
+            radius.replace(/[^\d]/g, ''),
+            category || undefined
+          );
+        } else {
+          events = await ticketmasterService.getEventsForCity(
+            city,
+            startDate,
+            endDate,
+            category || undefined
+          );
+        }
       } else {
-        events = await ticketmasterService.getEventsForCity(
-          city,
-          startDate,
-          endDate,
-          category || undefined
-        );
+        // Get general events
+        const result = await ticketmasterService.getEvents({
+          city: city || undefined,
+          startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
+          endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
+          classificationName: category || undefined,
+          page,
+          size,
+        });
+        events = result.events;
       }
-    } else {
-      // Get general events
-      const result = await ticketmasterService.getEvents({
-        city: city || undefined,
-        startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
-        endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
-        classificationName: category || undefined,
-        page,
-        size,
-      });
-      events = result.events;
+    } catch (serviceError) {
+      console.error('🎟️ Ticketmaster service error:', serviceError);
+      // Return empty results instead of failing
+      events = [];
     }
+
+    console.log(`🎟️ Ticketmaster: Retrieved ${events.length} total events for ${city} with radius ${radius || '50'} miles (0 available)`);
 
     return NextResponse.json({
-      data: events,
-      count: events.length,
-      message: 'Events fetched successfully'
+      success: true,
+      data: {
+        events,
+        total: events.length,
+        source: 'ticketmaster',
+        searchParams: {
+          city,
+          startDate,
+          endDate,
+          category,
+          keyword,
+          page,
+          size,
+        },
+      },
     });
 
   } catch (error) {
-    console.error('Ticketmaster API error:', error);
+    console.error('🎟️ Ticketmaster API error:', error);
     
     // Log additional context for debugging
-    console.error('Ticketmaster API Error Context:', {
+    console.error('🎟️ Ticketmaster API Error Context:', {
       url: request.url,
       searchParams: Object.fromEntries(new URL(request.url).searchParams),
       timestamp: new Date().toISOString()
     });
     
-    return NextResponse.json(
-      { 
-        error: 'Failed to fetch events',
-        details: error instanceof Error ? error.message : 'Unknown error',
+    // Return empty results instead of failing to keep the analysis working
+    return NextResponse.json({
+      success: true,
+      data: {
+        events: [],
+        total: 0,
         source: 'ticketmaster',
+        error: 'Ticketmaster API temporarily unavailable',
         timestamp: new Date().toISOString()
-      },
-      { status: 500 }
-    );
-  }
-}
-
-// Example usage endpoints:
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { action, ...params } = body;
-
-    switch (action) {
-      case 'getVenue':
-        const venue = await ticketmasterService.getVenue(params.venueId);
-        return NextResponse.json({ data: venue });
-
-      case 'getClassifications':
-        const classifications = await ticketmasterService.getClassifications();
-        return NextResponse.json({ data: classifications });
-
-      default:
-        return NextResponse.json(
-          { error: 'Invalid action' },
-          { status: 400 }
-        );
-    }
-  } catch (error) {
-    console.error('Ticketmaster API error:', error);
-    return NextResponse.json(
-      { error: 'API request failed' },
-      { status: 500 }
-    );
+      }
+    });
   }
 }

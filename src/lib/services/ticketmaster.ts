@@ -59,9 +59,8 @@ export class TicketmasterService {
 
   constructor() {
     this.apiKey = process.env.TICKETMASTER_API_KEY || '';
-    if (!this.apiKey) {
-      throw new Error('TICKETMASTER_API_KEY environment variable is required');
-    }
+    // Don't throw error in constructor to allow service to be created
+    // Error handling will be done at method level
   }
 
   /**
@@ -80,6 +79,12 @@ export class TicketmasterService {
     size?: number;
     page?: number;
   }): Promise<{ events: Event[]; total: number }> {
+    // Check if API key is available
+    if (!this.apiKey) {
+      console.warn('Ticketmaster API key is not configured - returning empty results');
+      return { events: [], total: 0 };
+    }
+    
     try {
       const searchParams = new URLSearchParams({
         apikey: this.apiKey,

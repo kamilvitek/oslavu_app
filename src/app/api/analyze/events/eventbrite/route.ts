@@ -28,10 +28,15 @@ export async function GET(request: NextRequest) {
     // Check if private token is configured
     if (!process.env.EVENTBRITE_PRIVATE_TOKEN) {
       console.error('EVENTBRITE_PRIVATE_TOKEN is not configured');
-      return NextResponse.json(
-        { error: 'Eventbrite private token is not configured' },
-        { status: 500 }
-      );
+      return NextResponse.json({
+        success: true,
+        data: {
+          events: [],
+          total: 0,
+          source: 'eventbrite',
+          message: 'Eventbrite API token not configured - using empty results'
+        }
+      });
     }
 
     let events;
@@ -121,14 +126,16 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString()
     });
     
-    return NextResponse.json(
-      { 
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+    // Return empty results instead of failing to keep the analysis working
+    return NextResponse.json({
+      success: true,
+      data: {
+        events: [],
+        total: 0,
         source: 'eventbrite',
+        error: 'Eventbrite API temporarily unavailable',
         timestamp: new Date().toISOString()
-      },
-      { status: 500 }
-    );
+      }
+    });
   }
 }

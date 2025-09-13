@@ -185,7 +185,9 @@ export class ConflictAnalysisService {
         
         // Handle different response structures
         let events = [];
-        if (ticketmasterResult.data?.events) {
+        if (ticketmasterResult.success && ticketmasterResult.data?.events) {
+          events = ticketmasterResult.data.events;
+        } else if (ticketmasterResult.data?.events) {
           events = ticketmasterResult.data.events;
         } else if (ticketmasterResult.data && Array.isArray(ticketmasterResult.data)) {
           events = ticketmasterResult.data;
@@ -204,7 +206,17 @@ export class ConflictAnalysisService {
     } else if (ticketmasterResponse.status === 'rejected') {
       console.error('🎟️ Ticketmaster: API request failed:', ticketmasterResponse.reason);
     } else {
-      console.error('🎟️ Ticketmaster: API returned error:', ticketmasterResponse.value.status);
+      console.error('🎟️ Ticketmaster: API returned error:', ticketmasterResponse.value?.status || 'Unknown error');
+      // Try to get the error message from response
+      try {
+        const errorResult = await ticketmasterResponse.value.json();
+        if (errorResult.success === false && errorResult.data?.events) {
+          // API returned error but still has data structure - use empty events
+          console.log('🎟️ Ticketmaster: Using empty events due to API error');
+        }
+      } catch (parseError) {
+        console.error('🎟️ Ticketmaster: Could not parse error response');
+      }
     }
 
     // Process Eventbrite results
@@ -215,7 +227,9 @@ export class ConflictAnalysisService {
         
         // Handle different response structures
         let events = [];
-        if (eventbriteResult.data?.events) {
+        if (eventbriteResult.success && eventbriteResult.data?.events) {
+          events = eventbriteResult.data.events;
+        } else if (eventbriteResult.data?.events) {
           events = eventbriteResult.data.events;
         } else if (eventbriteResult.data && Array.isArray(eventbriteResult.data)) {
           events = eventbriteResult.data;
@@ -234,7 +248,17 @@ export class ConflictAnalysisService {
     } else if (eventbriteResponse.status === 'rejected') {
       console.error('🎫 Eventbrite: API request failed:', eventbriteResponse.reason);
     } else {
-      console.error('🎫 Eventbrite: API returned error:', eventbriteResponse.value.status);
+      console.error('🎫 Eventbrite: API returned error:', eventbriteResponse.value?.status || 'Unknown error');
+      // Try to get the error message from response
+      try {
+        const errorResult = await eventbriteResponse.value.json();
+        if (errorResult.success === false && errorResult.data?.events) {
+          // API returned error but still has data structure - use empty events
+          console.log('🎫 Eventbrite: Using empty events due to API error');
+        }
+      } catch (parseError) {
+        console.error('🎫 Eventbrite: Could not parse error response');
+      }
     }
 
     // Process PredictHQ results

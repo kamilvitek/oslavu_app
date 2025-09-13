@@ -115,9 +115,8 @@ export class EventbriteService {
 
   constructor() {
     this.privateToken = process.env.EVENTBRITE_PRIVATE_TOKEN || '';
-    if (!this.privateToken) {
-      throw new Error('EVENTBRITE_PRIVATE_TOKEN environment variable is required');
-    }
+    // Don't throw error in constructor to allow service to be created
+    // Error handling will be done at method level
   }
 
   /**
@@ -136,6 +135,12 @@ export class EventbriteService {
     sort_by?: string;
     time_filter?: string;
   }): Promise<{ events: Event[]; total: number }> {
+    // Check if API token is available
+    if (!this.privateToken) {
+      console.error('Eventbrite API token is not configured');
+      throw new Error('Eventbrite API token is not configured');
+    }
+    
     try {
       const searchParams = new URLSearchParams({
         page_size: (params.page_size || 200).toString(), // Increased from 50 to 200 (Eventbrite's max) for better event coverage
