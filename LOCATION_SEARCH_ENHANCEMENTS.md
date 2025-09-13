@@ -10,7 +10,7 @@ The enhancements add radius parameters, better geographic targeting, and compreh
 
 ### 1. Radius-Based Searching
 - **Ticketmaster**: Added `radius`, `postalCode`, and `marketId` parameters
-- **Eventbrite**: Enhanced configurable `location_radius` parameter
+- **Eventbrite**: Integration removed (API discontinued)
 - **PredictHQ**: Added `place.scope` parameter for geographic scope control
 
 ### 2. Geographic Targeting Improvements

@@ -74,7 +74,7 @@ export default function CategoryMappingTestPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Category Mapping Test</h1>
         <p className="text-gray-600">
-          Test and compare category mapping effectiveness across Ticketmaster, Eventbrite, and PredictHQ APIs.
+          Test and compare category mapping effectiveness across Ticketmaster and PredictHQ APIs.
         </p>
       </div>
 
@@ -323,12 +323,6 @@ export default function CategoryMappingTestPage() {
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-green-600">
-                          {fallbackResults.eventbrite.length}
-                        </div>
-                        <div className="text-sm text-gray-600">Eventbrite</div>
-                      </div>
                     </CardContent>
                   </Card>
                   <Card>

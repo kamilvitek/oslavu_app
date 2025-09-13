@@ -59,7 +59,6 @@ PredictHQ uses these main categories:
 
 PredictHQ events are automatically included in the conflict analysis workflow alongside:
 - Ticketmaster events
-- Eventbrite events
 - Brno city events
 
 The system will:

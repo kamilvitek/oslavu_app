@@ -16,7 +16,7 @@ Problems
 
 Solution (MVP Scope):
 1)Multi-feed ingest
-- APIs: Ticketmaster Discovery, Eventbrite, Meetup, PredictHQ, city open-data calendars, Luma
+- APIs: Ticketmaster Discovery, Meetup, PredictHQ, city open-data calendars, Luma
 
 2)Deduplication & clustering:
 - Detect duplicates across feeds.

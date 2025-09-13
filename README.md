@@ -10,7 +10,6 @@ RESEND_API_KEY=your_resend_api_key_here
 
 # External API Keys
 TICKETMASTER_API_KEY=your_ticketmaster_api_key_here
-EVENTBRITE_PRIVATE_TOKEN=your_eventbrite_private_token_here
 MEETUP_API_KEY=your_meetup_api_key_here
 PREDICTHQ_API_KEY=your_predicthq_api_key_here
 
@@ -167,7 +166,7 @@ The app can be deployed to any platform that supports Next.js:
 
 ## Roadmap
 
-- [ ] Implement external API integrations (Ticketmaster, Eventbrite, etc.)
+- [ ] Implement external API integrations (Ticketmaster, PredictHQ, etc.)
 - [ ] Add user authentication and subscription management
 - [ ] Build analytics dashboard for event performance tracking
 - [ ] Implement real-time conflict monitoring

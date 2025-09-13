@@ -9,7 +9,7 @@ export interface Event {
   category: string;
   subcategory?: string;
   expectedAttendees?: number;
-  source: 'ticketmaster' | 'eventbrite' | 'meetup' | 'predicthq' | 'manual' | 'brno';
+  source: 'ticketmaster' | 'meetup' | 'predicthq' | 'manual' | 'brno';
   sourceId?: string;
   url?: string;
   imageUrl?: string;

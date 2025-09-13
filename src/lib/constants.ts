@@ -6,7 +6,6 @@ export const API_ENDPOINTS = {
 
 export const EXTERNAL_APIS = {
   TICKETMASTER: 'https://app.ticketmaster.com/discovery/v2/',
-  EVENTBRITE: 'https://www.eventbriteapi.com/v3/',
   MEETUP: 'https://api.meetup.com/',
   PREDICTHQ: 'https://api.predicthq.com/v1/',
 } as const;
@@ -70,18 +69,6 @@ export const SEARCH_STRATEGIES = {
       marketBased: { enabled: true, timeout: 12000 },
       keywordSearch: { enabled: true, timeout: 10000 },
       extendedRadius: { enabled: true, timeout: 20000, radius: '100' },
-    },
-    maxConcurrentStrategies: 3,
-    deduplicationEnabled: true,
-  },
-  EVENTBRITE: {
-    enabled: true,
-    strategies: {
-      locationBased: { enabled: true, timeout: 10000 },
-      keywordSearch: { enabled: true, timeout: 10000 },
-      categorySpecific: { enabled: true, timeout: 12000 },
-      regionalSearch: { enabled: true, timeout: 15000, radius: '100km' },
-      extendedRegional: { enabled: true, timeout: 20000, radius: '200km' },
     },
     maxConcurrentStrategies: 3,
     deduplicationEnabled: true,

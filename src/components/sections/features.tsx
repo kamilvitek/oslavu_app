@@ -15,7 +15,7 @@ export function Features() {
     {
       icon: Calendar,
       title: "Multi-Source Data Ingestion",
-      description: "Automatically pulls events from Ticketmaster and Eventbrite",
+      description: "Automatically pulls events from Ticketmaster, PredictHQ, and local sources",
     },
     {
       icon: Shield,

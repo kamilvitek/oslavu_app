@@ -187,7 +187,7 @@ export default function TestWorkingAnalysis() {
           <li>Shows detailed information about competing events</li>
         </ul>
         <p className="text-blue-700 mt-2">
-          <strong>Note:</strong> Eventbrite API key needs to be updated, and PredictHQ returns empty results for some date ranges, but the core functionality is working.
+          <strong>Note:</strong> PredictHQ returns empty results for some date ranges, but the core functionality is working.
         </p>
       </Card>
     </div>

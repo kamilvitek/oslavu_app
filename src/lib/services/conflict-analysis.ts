@@ -116,7 +116,7 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Fetch events from multiple APIs (Ticketmaster, Eventbrite, PredictHQ, and Brno)
+   * Fetch events from multiple APIs (Ticketmaster, PredictHQ, and Brno)
    */
   private async fetchEventsFromAPI(params: ConflictAnalysisParams): Promise<Event[]> {
     // Validate required parameters
@@ -154,10 +154,8 @@ export class ConflictAnalysisService {
     console.log('API Keys availability:');
     console.log('- TICKETMASTER_API_KEY:', !!process.env.TICKETMASTER_API_KEY);
     console.log('- PREDICTHQ_API_KEY:', !!process.env.PREDICTHQ_API_KEY);
-    console.log('- EVENTBRITE_API_KEY:', !!process.env.EVENTBRITE_PRIVATE_TOKEN);
     console.log('API URLs being called:');
     console.log('- Ticketmaster:', `${baseUrl}/api/analyze/events/ticketmaster?${queryParams.toString()}`);
-    console.log('- Eventbrite:', `${baseUrl}/api/analyze/events/eventbrite?${queryParams.toString()}`);
     console.log('- PredictHQ:', `${baseUrl}/api/analyze/events/predicthq?${queryParams.toString()}`);
     console.log('- Brno:', `${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
       startDate: params.dateRangeStart,
@@ -178,10 +176,9 @@ export class ConflictAnalysisService {
       radius: params.searchRadius || '50km'
     });
 
-    // Fetch from Ticketmaster, Eventbrite, PredictHQ, and Brno ArcGIS in parallel
-    const [ticketmasterResponse, eventbriteResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
+    // Fetch from Ticketmaster, PredictHQ, and Brno ArcGIS in parallel
+    const [ticketmasterResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
       fetch(`${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveQueryParams.toString() : queryParams.toString()}`),
-      fetch(`${baseUrl}/api/analyze/events/eventbrite?${useComprehensiveSearch ? comprehensiveQueryParams.toString() : queryParams.toString()}`),
       fetch(`${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensiveQueryParams.toString() : queryParams.toString()}`),
       fetch(`${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
         startDate: params.dateRangeStart,
@@ -233,47 +230,6 @@ export class ConflictAnalysisService {
       }
     }
 
-    // Process Eventbrite results
-    if (eventbriteResponse.status === 'fulfilled' && eventbriteResponse.value.ok) {
-      try {
-        const eventbriteResult = await eventbriteResponse.value.json();
-        console.log('🎫 Eventbrite API response structure:', eventbriteResult);
-        
-        // Handle different response structures
-        let events = [];
-        if (eventbriteResult.success && eventbriteResult.data?.events) {
-          events = eventbriteResult.data.events;
-        } else if (eventbriteResult.data?.events) {
-          events = eventbriteResult.data.events;
-        } else if (eventbriteResult.data && Array.isArray(eventbriteResult.data)) {
-          events = eventbriteResult.data;
-        } else if (Array.isArray(eventbriteResult)) {
-          events = eventbriteResult;
-        } else if (eventbriteResult.data) {
-          // Handle case where data is directly the events array
-          events = Array.isArray(eventbriteResult.data) ? eventbriteResult.data : [];
-        }
-        
-        allEvents.push(...events);
-        console.log(`🎫 Eventbrite: Fetched ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
-      } catch (error) {
-        console.error('🎫 Eventbrite: Error processing response:', error);
-      }
-    } else if (eventbriteResponse.status === 'rejected') {
-      console.error('🎫 Eventbrite: API request failed:', eventbriteResponse.reason);
-    } else {
-      console.error('🎫 Eventbrite: API returned error:', eventbriteResponse.value?.status || 'Unknown error');
-      // Try to get the error message from response
-      try {
-        const errorResult = await eventbriteResponse.value.json();
-        if (errorResult.success === false && errorResult.data?.events) {
-          // API returned error but still has data structure - use empty events
-          console.log('🎫 Eventbrite: Using empty events due to API error');
-        }
-      } catch (parseError) {
-        console.error('🎫 Eventbrite: Could not parse error response');
-      }
-    }
 
     // Process PredictHQ results
     if (predicthqResponse.status === 'fulfilled' && predicthqResponse.value.ok) {

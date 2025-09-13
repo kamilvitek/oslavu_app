@@ -2,7 +2,6 @@
 // This file demonstrates how to use the new radius and fallback features
 
 import { ticketmasterService } from './ticketmaster';
-import { eventbriteService } from './eventbrite';
 import { predicthqService } from './predicthq';
 import { conflictAnalysisService } from './conflict-analysis';
 
@@ -24,11 +23,6 @@ export async function exampleBasicRadiusSearch() {
   );
   console.log(`🎟️ Ticketmaster: Found ${ticketmasterEvents.length} events`);
 
-  // Eventbrite with radius
-  const eventbriteEvents = await eventbriteService.getEventsWithRadius(
-    city, startDate, endDate, '50km', category
-  );
-  console.log(`🎫 Eventbrite: Found ${eventbriteEvents.length} events`);
 
   // PredictHQ with radius
   const predicthqEvents = await predicthqService.getEventsWithRadius(
@@ -38,7 +32,6 @@ export async function exampleBasicRadiusSearch() {
 
   return {
     ticketmaster: ticketmasterEvents,
-    eventbrite: eventbriteEvents,
     predicthq: predicthqEvents
   };
 }
@@ -61,11 +54,6 @@ export async function exampleComprehensiveFallback() {
   );
   console.log(`🎟️ Ticketmaster: Found ${ticketmasterEvents.length} events with comprehensive fallback`);
 
-  // Eventbrite comprehensive fallback
-  const eventbriteEvents = await eventbriteService.getEventsWithComprehensiveFallback(
-    city, startDate, endDate, category, '25km'
-  );
-  console.log(`🎫 Eventbrite: Found ${eventbriteEvents.length} events with comprehensive fallback`);
 
   // PredictHQ comprehensive fallback
   const predicthqEvents = await predicthqService.getEventsWithComprehensiveFallback(
@@ -75,7 +63,6 @@ export async function exampleComprehensiveFallback() {
 
   return {
     ticketmaster: ticketmasterEvents,
-    eventbrite: eventbriteEvents,
     predicthq: predicthqEvents
   };
 }

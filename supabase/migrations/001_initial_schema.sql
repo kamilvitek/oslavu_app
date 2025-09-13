@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS events (
   category VARCHAR(100) NOT NULL,
   subcategory VARCHAR(100),
   expected_attendees INTEGER,
-  source VARCHAR(50) NOT NULL CHECK (source IN ('ticketmaster', 'eventbrite', 'meetup', 'predicthq', 'manual')),
+  source VARCHAR(50) NOT NULL CHECK (source IN ('ticketmaster', 'meetup', 'predicthq', 'manual', 'brno')),
   source_id VARCHAR(200),
   url TEXT,
   image_url TEXT,

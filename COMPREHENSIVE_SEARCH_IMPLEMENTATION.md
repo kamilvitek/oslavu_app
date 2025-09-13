@@ -15,12 +15,8 @@ This implementation adds a comprehensive multi-strategy search approach across a
 - **Strategy 4**: Keyword-based search for category
 - **Strategy 5**: Extended radius search (100 miles)
 
-#### Eventbrite Service (`getEventsComprehensive`)
-- **Strategy 1**: Location-based search
-- **Strategy 2**: Keyword search within location
-- **Strategy 3**: Category-specific search
-- **Strategy 4**: Broader regional search (100km)
-- **Strategy 5**: Extended regional search (200km)
+#### Eventbrite Service (Removed)
+- **Note**: Eventbrite integration has been removed due to API discontinuation
 
 #### PredictHQ Service (`getEventsComprehensive`)
 - **Strategy 1**: City-based search
@@ -49,7 +45,6 @@ Added to `constants.ts`:
 
 All API routes now support a `comprehensive=true` parameter:
 - `/api/analyze/events/ticketmaster?comprehensive=true`
-- `/api/analyze/events/eventbrite?comprehensive=true`
 - `/api/analyze/events/predicthq?comprehensive=true`
 
 ### 5. Strategy Reporting and Logging
@@ -98,13 +93,7 @@ const events = await ticketmasterService.getEventsComprehensive(
   'Technology'
 );
 
-// Eventbrite comprehensive search
-const events = await eventbriteService.getEventsComprehensive(
-  'Prague',
-  '2024-01-01',
-  '2024-01-31',
-  'Technology'
-);
+// Eventbrite integration removed (API discontinued)
 
 // PredictHQ comprehensive search
 const events = await predicthqService.getEventsComprehensive(
@@ -133,7 +122,7 @@ export const SEARCH_STRATEGIES = {
     maxConcurrentStrategies: 3,
     deduplicationEnabled: true,
   },
-  // ... similar configs for Eventbrite and PredictHQ
+  // ... similar configs for PredictHQ
 };
 ```
 

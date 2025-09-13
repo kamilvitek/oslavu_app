@@ -1,6 +1,5 @@
 // src/lib/services/category-testing.ts
 import { ticketmasterService } from './ticketmaster';
-import { eventbriteService } from './eventbrite';
 import { predicthqService } from './predicthq';
 
 export interface CategoryTestResult {
@@ -63,32 +62,6 @@ export async function testCategoryEffectiveness(
     });
   }
 
-  // Test Eventbrite
-  try {
-    const eventbriteResult = await eventbriteService.testCategoryEffectiveness(
-      city,
-      startDate,
-      endDate,
-      category
-    );
-    results.push({
-      service: 'eventbrite',
-      category,
-      ...eventbriteResult,
-      success: true,
-    });
-  } catch (error) {
-    results.push({
-      service: 'eventbrite',
-      category,
-      withCategory: 0,
-      withoutCategory: 0,
-      effectiveness: 0,
-      categoryUsed: undefined,
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
 
   // Test PredictHQ
   try {
@@ -209,33 +182,28 @@ export async function getEventsWithFallback(
   category?: string
 ): Promise<{
   ticketmaster: any[];
-  eventbrite: any[];
   predicthq: any[];
   total: number;
 }> {
   console.log(`\n🔍 Fetching events with fallback strategy for "${category || 'all categories'}" in ${city}...`);
 
-  const [ticketmasterEvents, eventbriteEvents, predicthqEvents] = await Promise.allSettled([
+  const [ticketmasterEvents, predicthqEvents] = await Promise.allSettled([
     ticketmasterService.getEventsWithFallback(city, startDate, endDate, category),
-    eventbriteService.getEventsWithFallback(city, startDate, endDate, category),
     predicthqService.getEventsWithFallback(city, startDate, endDate, category),
   ]);
 
   const ticketmaster = ticketmasterEvents.status === 'fulfilled' ? ticketmasterEvents.value : [];
-  const eventbrite = eventbriteEvents.status === 'fulfilled' ? eventbriteEvents.value : [];
   const predicthq = predicthqEvents.status === 'fulfilled' ? predicthqEvents.value : [];
 
-  const total = ticketmaster.length + eventbrite.length + predicthq.length;
+  const total = ticketmaster.length + predicthq.length;
 
   console.log(`📊 Fallback Results:`);
   console.log(`  🎟️ Ticketmaster: ${ticketmaster.length} events`);
-  console.log(`  🎫 Eventbrite: ${eventbrite.length} events`);
   console.log(`  🔮 PredictHQ: ${predicthq.length} events`);
   console.log(`  📈 Total: ${total} events`);
 
   return {
     ticketmaster,
-    eventbrite,
     predicthq,
     total,
   };
