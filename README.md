@@ -10,7 +10,7 @@ RESEND_API_KEY=your_resend_api_key_here
 
 # External API Keys
 TICKETMASTER_API_KEY=your_ticketmaster_api_key_here
-EVENTBRITE_API_KEY=your_eventbrite_api_key_here
+EVENTBRITE_PRIVATE_TOKEN=your_eventbrite_private_token_here
 MEETUP_API_KEY=your_meetup_api_key_here
 PREDICTHQ_API_KEY=your_predicthq_api_key_here
 

@@ -15,7 +15,8 @@ export async function GET(request: NextRequest) {
     const radius = searchParams.get('radius');
     const useComprehensiveFallback = searchParams.get('useComprehensiveFallback') === 'true';
     const page = parseInt(searchParams.get('page') || '0');
-    const size = parseInt(searchParams.get('size') || '200'); // Ticketmaster's maximum page size
+    const rawSize = parseInt(searchParams.get('size') || '200');
+    const size = Math.min(rawSize, 199); // Ticketmaster's maximum page size is 199
 
     // Validate radius parameter
     if (radius) {

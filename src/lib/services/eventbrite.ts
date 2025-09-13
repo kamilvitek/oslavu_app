@@ -158,7 +158,7 @@ export class EventbriteService {
       if (params.subcategories) searchParams.append('subcategories', params.subcategories);
       if (params.q) searchParams.append('q', params.q);
 
-      const url = `${this.baseUrl}/events/search/?${searchParams.toString()}`;
+      const url = `${this.baseUrl}/events/search?${searchParams.toString()}`;
       
       console.log('Eventbrite API Request URL:', url);
       console.log('Eventbrite API Request Params:', Object.fromEntries(searchParams.entries()));

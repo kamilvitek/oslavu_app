@@ -154,7 +154,7 @@ export class TicketmasterService {
     try {
       const searchParams = new URLSearchParams({
         apikey: this.apiKey,
-        size: (params.size || 200).toString(), // Ticketmaster's maximum page size
+        size: Math.min(params.size || 199, 199).toString(), // Ticketmaster's maximum page size is 199
         page: (params.page || 0).toString(),
       });
 
@@ -286,7 +286,7 @@ export class TicketmasterService {
     
     const allEvents: Event[] = [];
     let page = 0;
-    const pageSize = 200;
+    const pageSize = 199;
     let totalAvailable = 0;
     
     while (true) {
@@ -330,7 +330,7 @@ export class TicketmasterService {
   ): Promise<Event[]> {
     const allEvents: Event[] = [];
     let page = 0;
-    const pageSize = 200; // Ticketmaster's maximum page size
+    const pageSize = 199; // Ticketmaster's maximum page size
     const countryCode = this.getCityCountryCode(city);
     let totalAvailable = 0;
     
@@ -384,7 +384,7 @@ export class TicketmasterService {
       classificationName: options?.classificationName,
       startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
       endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
-      size: 200, // Ticketmaster's maximum page size
+      size: 199, // Ticketmaster's maximum page size
     });
 
     return events;
@@ -1013,7 +1013,7 @@ export class TicketmasterService {
   ): Promise<Event[]> {
     const allEvents: Event[] = [];
     let page = 0;
-    const pageSize = 200;
+    const pageSize = 199;
     let totalAvailable = 0;
     
     while (true) {

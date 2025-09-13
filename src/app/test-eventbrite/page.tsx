@@ -25,7 +25,7 @@ export default function TestEventbritePage() {
             <CardHeader>
               <CardTitle>API Configuration</CardTitle>
               <CardDescription>
-                Make sure you have set up your EVENTBRITE_API_KEY in your .env.local file
+                Make sure you have set up your EVENTBRITE_PRIVATE_TOKEN in your .env.local file
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -33,7 +33,7 @@ export default function TestEventbritePage() {
                 <h4 className="font-semibold text-yellow-800 mb-2">Setup Instructions:</h4>
                 <ol className="text-sm text-yellow-700 space-y-1">
                   <li>1. Create a .env.local file in your project root</li>
-                  <li>2. Add: EVENTBRITE_API_KEY=your_api_key_here</li>
+                  <li>2. Add: EVENTBRITE_PRIVATE_TOKEN=your_private_token_here</li>
                   <li>3. Get your API key from: https://www.eventbrite.com/platform/api-keys/</li>
                   <li>4. Restart your development server</li>
                 </ol>

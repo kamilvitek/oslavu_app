@@ -154,7 +154,7 @@ export class ConflictAnalysisService {
     console.log('API Keys availability:');
     console.log('- TICKETMASTER_API_KEY:', !!process.env.TICKETMASTER_API_KEY);
     console.log('- PREDICTHQ_API_KEY:', !!process.env.PREDICTHQ_API_KEY);
-    console.log('- EVENTBRITE_API_KEY:', !!process.env.EVENTBRITE_API_KEY);
+    console.log('- EVENTBRITE_API_KEY:', !!process.env.EVENTBRITE_PRIVATE_TOKEN);
     console.log('API URLs being called:');
     console.log('- Ticketmaster:', `${baseUrl}/api/analyze/events/ticketmaster?${queryParams.toString()}`);
     console.log('- Eventbrite:', `${baseUrl}/api/analyze/events/eventbrite?${queryParams.toString()}`);
