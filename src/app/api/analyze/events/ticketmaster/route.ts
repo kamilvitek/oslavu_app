@@ -56,58 +56,112 @@ export async function GET(request: NextRequest) {
     let events = [];
 
     try {
+      // Apply input optimizations for Ticketmaster API
+      let transformedParams = null;
+      if (city && category && startDate && endDate) {
+        try {
+          console.log('🔧 Applying input optimizations for Ticketmaster API');
+          
+          // Dynamic import to avoid module loading issues
+          const { aiInputTransformerService } = await import('@/lib/services/ai-input-transformer');
+          
+          transformedParams = await aiInputTransformerService.transformForTicketmaster({
+            city,
+            category,
+            startDate,
+            endDate,
+            expectedAttendees: parseInt(searchParams.get('expectedAttendees') || '0') || undefined,
+            venue: searchParams.get('venue') || undefined
+          });
+          console.log('🤖 Transformed Ticketmaster params:', transformedParams);
+        } catch (transformError) {
+          console.error('🤖 Error in input transformation, using original params:', transformError);
+          transformedParams = null; // Fall back to original params
+        }
+      }
+
       // Check if this is a comprehensive search request
       const isComprehensiveSearch = searchParams.get('comprehensive') === 'true';
 
       if (isComprehensiveSearch && city && startDate && endDate) {
-        // Use the new comprehensive multi-strategy search
+        // Use the new comprehensive multi-strategy search with transformed params
+        const searchCity = transformedParams?.city || city;
+        const searchCategory = transformedParams?.classificationName ? 
+          Object.entries({
+            'Music': 'Music',
+            'Sports': 'Sports', 
+            'Arts & Theatre': 'Arts & Culture',
+            'Miscellaneous': category
+          }).find(([key]) => key === transformedParams.classificationName)?.[1] || category : 
+          category;
+        
         events = await ticketmasterService.getEventsComprehensive(
-          city,
+          searchCity,
           startDate,
           endDate,
-          category || undefined
+          searchCategory || undefined
         );
-      } else if (keyword) {
-        // Search by keyword
+      } else if (keyword || transformedParams?.keyword) {
+        // Search by keyword (use transformed keyword if available)
+        const searchKeyword = transformedParams?.keyword || keyword;
+        const searchCity = transformedParams?.city || city;
+        
         events = await ticketmasterService.searchEvents(
-          keyword,
-          city || undefined,
+          searchKeyword,
+          searchCity || undefined,
           startDate || undefined,
           endDate || undefined
         );
       } else if (city && startDate && endDate) {
         // Get events for city and date range with radius and fallback options
+        const searchCity = transformedParams?.city || city;
+        const searchRadius = transformedParams?.radius || radius?.replace(/[^\d]/g, '') || '50';
+        const searchCategory = transformedParams?.classificationName ? 
+          Object.entries({
+            'Music': 'Music',
+            'Sports': 'Sports', 
+            'Arts & Theatre': 'Arts & Culture',
+            'Miscellaneous': category
+          }).find(([key]) => key === transformedParams.classificationName)?.[1] || category : 
+          category;
+        
         if (useComprehensiveFallback) {
           events = await ticketmasterService.getEventsWithComprehensiveFallback(
-            city,
+            searchCity,
             startDate,
             endDate,
-            category || undefined,
-            radius?.replace(/[^\d]/g, '') || '50'
+            searchCategory || undefined,
+            searchRadius
           );
-        } else if (radius) {
+        } else if (radius || transformedParams?.radius) {
           events = await ticketmasterService.getEventsWithRadius(
-            city,
+            searchCity,
             startDate,
             endDate,
-            radius.replace(/[^\d]/g, ''),
-            category || undefined
+            searchRadius,
+            searchCategory || undefined
           );
         } else {
           events = await ticketmasterService.getEventsForCity(
-            city,
+            searchCity,
             startDate,
             endDate,
-            category || undefined
+            searchCategory || undefined
           );
         }
       } else {
-        // Get general events
+        // Get general events with transformed params
+        const searchCity = transformedParams?.city || city;
+        const searchClassification = transformedParams?.classificationName || category;
+        
         const result = await ticketmasterService.getEvents({
-          city: city || undefined,
+          city: searchCity || undefined,
+          countryCode: transformedParams?.countryCode,
+          marketId: transformedParams?.marketId,
           startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
           endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
-          classificationName: category || undefined,
+          classificationName: searchClassification || undefined,
+          keyword: transformedParams?.keyword,
           page,
           size,
         });

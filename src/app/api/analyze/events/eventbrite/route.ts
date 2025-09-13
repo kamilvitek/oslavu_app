@@ -41,22 +41,61 @@ export async function GET(request: NextRequest) {
 
     let events;
 
+    // Apply input optimizations for Eventbrite API
+    let transformedParams = null;
+    if (city && category && startDate && endDate) {
+      try {
+        console.log('🔧 Applying input optimizations for Eventbrite API');
+        
+        // Dynamic import to avoid module loading issues
+        const { aiInputTransformerService } = await import('@/lib/services/ai-input-transformer');
+        
+        transformedParams = await aiInputTransformerService.transformForEventbrite({
+          city,
+          category,
+          startDate,
+          endDate,
+          expectedAttendees: parseInt(searchParams.get('expectedAttendees') || '0') || undefined,
+          venue: searchParams.get('venue') || undefined
+        });
+        console.log('🤖 Transformed Eventbrite params:', transformedParams);
+      } catch (transformError) {
+        console.error('🤖 Error in input transformation, using original params:', transformError);
+        transformedParams = null; // Fall back to original params
+      }
+    }
+
     // Check if this is a comprehensive search request
     const isComprehensiveSearch = searchParams.get('comprehensive') === 'true';
 
     if (isComprehensiveSearch && city && startDate && endDate) {
-      // Use the new comprehensive multi-strategy search
+      // Use the new comprehensive multi-strategy search with transformed params
+      const searchCity = transformedParams?.location || city;
+      const searchCategory = transformedParams?.categories ? 
+        Object.entries({
+          '101': 'Business',
+          '102': 'Technology', 
+          '103': 'Music',
+          '105': 'Arts & Culture',
+          '108': 'Sports',
+          '110': 'Education'
+        }).find(([key]) => key === transformedParams.categories)?.[1] || category : 
+        category;
+      
       events = await eventbriteService.getEventsComprehensive(
-        city,
+        searchCity,
         startDate,
         endDate,
-        category || undefined
+        searchCategory || undefined
       );
-    } else if (keyword) {
-      // Search by keyword
+    } else if (keyword || transformedParams?.q) {
+      // Search by keyword (use transformed query if available)
+      const searchKeyword = transformedParams?.q || keyword;
+      const searchCity = transformedParams?.location || city;
+      
       events = await eventbriteService.searchEvents(
-        keyword,
-        city || undefined,
+        searchKeyword,
+        searchCity || undefined,
         startDate || undefined,
         endDate || undefined
       );
@@ -70,28 +109,41 @@ export async function GET(request: NextRequest) {
       }
 
       // Get events for city and date range with radius and fallback options
+      const searchCity = transformedParams?.location || city!;
+      const searchRadius = transformedParams?.location_radius || radius || '50km';
+      const searchCategory = transformedParams?.categories ? 
+        Object.entries({
+          '101': 'Business',
+          '102': 'Technology', 
+          '103': 'Music',
+          '105': 'Arts & Culture',
+          '108': 'Sports',
+          '110': 'Education'
+        }).find(([key]) => key === transformedParams.categories)?.[1] || category : 
+        category;
+
       if (useComprehensiveFallback) {
         events = await eventbriteService.getEventsWithComprehensiveFallback(
-          city!,
+          searchCity,
           startDate,
           endDate,
-          category || undefined,
-          radius || '50km'
+          searchCategory || undefined,
+          searchRadius
         );
-      } else if (radius) {
+      } else if (radius || transformedParams?.location_radius) {
         events = await eventbriteService.getEventsWithRadius(
-          city!,
+          searchCity,
           startDate,
           endDate,
-          radius,
-          category || undefined
+          searchRadius,
+          searchCategory || undefined
         );
       } else {
         events = await eventbriteService.getEventsForCity(
-          city!,
+          searchCity,
           startDate,
           endDate,
-          category || undefined
+          searchCategory || undefined
         );
       }
     }

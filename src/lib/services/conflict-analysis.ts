@@ -79,11 +79,25 @@ export class ConflictAnalysisService {
         .filter(rec => rec.riskLevel === 'Low')
         .slice(0, 3); // Top 3 recommendations
 
+      // For high-risk dates, get the highest scoring ones (most problematic)
       const highRiskDates = dateRecommendations
         .filter(rec => rec.riskLevel === 'High')
+        .sort((a, b) => b.conflictScore - a.conflictScore) // Sort by highest conflict score first
         .slice(0, 3); // Top 3 high risk dates
 
+      // Also include medium risk dates with high scores as potential high-risk dates if we don't have enough high-risk dates
+      if (highRiskDates.length < 3) {
+        const additionalHighRisk = dateRecommendations
+          .filter(rec => rec.riskLevel === 'Medium' && rec.conflictScore > 50)
+          .sort((a, b) => b.conflictScore - a.conflictScore)
+          .slice(0, 3 - highRiskDates.length);
+        
+        highRiskDates.push(...additionalHighRisk);
+        console.log(`Added ${additionalHighRisk.length} medium-risk dates with high scores to high-risk list`);
+      }
+
       console.log(`Final results: ${recommendedDates.length} low risk dates, ${highRiskDates.length} high risk dates`);
+      console.log(`High-risk dates scores:`, highRiskDates.map(d => `${d.startDate}: ${d.conflictScore} (${d.riskLevel})`));
 
       const totalTime = Date.now() - startTime;
       console.log(`🎯 Conflict analysis completed in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`);
@@ -443,7 +457,7 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Generate potential dates around the preferred dates
+   * Generate potential dates around the preferred dates and throughout the analysis range
    */
   private generatePotentialDates(params: ConflictAnalysisParams): Array<{startDate: string, endDate: string}> {
     const dates: Array<{startDate: string, endDate: string}> = [];
@@ -451,8 +465,8 @@ export class ConflictAnalysisService {
     const preferredEnd = new Date(params.endDate);
     const eventDuration = Math.ceil((preferredEnd.getTime() - preferredStart.getTime()) / (1000 * 60 * 60 * 24));
 
-    // Generate dates ±3 days around preferred dates (reduced for performance)
-    for (let i = -3; i <= 3; i++) {
+    // First, generate dates ±7 days around preferred dates for more comprehensive analysis
+    for (let i = -7; i <= 7; i++) {
       const startDate = new Date(preferredStart);
       startDate.setDate(startDate.getDate() + i);
       
@@ -469,6 +483,38 @@ export class ConflictAnalysisService {
       }
     }
 
+    // Additionally, sample dates throughout the entire analysis range to catch high-risk periods
+    const analysisStart = new Date(params.dateRangeStart);
+    const analysisEnd = new Date(params.dateRangeEnd);
+    const totalDays = Math.ceil((analysisEnd.getTime() - analysisStart.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Sample every 3 days throughout the range to find high-risk dates
+    for (let dayOffset = 0; dayOffset < totalDays; dayOffset += 3) {
+      const startDate = new Date(analysisStart);
+      startDate.setDate(startDate.getDate() + dayOffset);
+      
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + eventDuration);
+
+      // Only include if within range and not already added
+      if (endDate <= analysisEnd) {
+        const dateStr = {
+          startDate: startDate.toISOString().split('T')[0],
+          endDate: endDate.toISOString().split('T')[0]
+        };
+        
+        // Check if this date range is already in our list
+        const alreadyExists = dates.some(d => 
+          d.startDate === dateStr.startDate && d.endDate === dateStr.endDate
+        );
+        
+        if (!alreadyExists) {
+          dates.push(dateStr);
+        }
+      }
+    }
+
+    console.log(`Generated ${dates.length} potential date ranges for analysis`);
     return dates;
   }
 
