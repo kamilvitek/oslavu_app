@@ -56,6 +56,12 @@ interface TicketmasterResponse {
 export class TicketmasterService {
   private readonly apiKey: string;
   private readonly baseUrl = 'https://app.ticketmaster.com/discovery/v2';
+  
+  // Rate limiting properties (5 requests per second as per Ticketmaster API docs)
+  private lastRequestTime = 0;
+  private readonly minRequestInterval = 200; // 200ms = 5 requests per second
+  private requestCount = 0;
+  private dailyRequestLimit = 5000; // Default daily limit
 
   constructor() {
     this.apiKey = process.env.TICKETMASTER_API_KEY || '';
@@ -64,20 +70,80 @@ export class TicketmasterService {
   }
 
   /**
+   * Rate limiting wrapper for API requests
+   * Ensures compliance with Ticketmaster's 5 requests/second limit
+   */
+  private async makeRateLimitedRequest(url: string, options?: RequestInit): Promise<Response> {
+    // Check daily limit
+    if (this.requestCount >= this.dailyRequestLimit) {
+      throw new Error(`Daily API request limit of ${this.dailyRequestLimit} exceeded`);
+    }
+
+    // Implement rate limiting
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    
+    if (timeSinceLastRequest < this.minRequestInterval) {
+      const waitTime = this.minRequestInterval - timeSinceLastRequest;
+      console.log(`🎟️ Ticketmaster: Rate limiting - waiting ${waitTime}ms`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastRequestTime = Date.now();
+    this.requestCount++;
+    
+    console.log(`🎟️ Ticketmaster: Making API request ${this.requestCount}/${this.dailyRequestLimit} to: ${url}`);
+    
+    return fetch(url, {
+      ...options,
+      headers: {
+        'Accept': 'application/json',
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
    * Fetch events from Ticketmaster Discovery API
    */
   async getEvents(params: {
+    // Location parameters
     city?: string;
     countryCode?: string;
     radius?: string;
     postalCode?: string;
     marketId?: string;
+    
+    // Date parameters
     startDateTime?: string;
     endDateTime?: string;
+    onsaleStartDateTime?: string;
+    onsaleEndDateTime?: string;
+    
+    // Classification parameters
     classificationName?: string;
+    classificationId?: string;
+    segmentId?: string;
+    genreId?: string;
+    subGenreId?: string;
+    
+    // Search parameters
     keyword?: string;
+    attractionId?: string;
+    venueId?: string;
+    promoterId?: string;
+    
+    // Pagination and sorting
     size?: number;
     page?: number;
+    sort?: string; // 'name,asc' | 'date,asc' | 'relevance,desc' | etc.
+    
+    // Additional filters
+    source?: string; // 'ticketmaster' | 'universe' | 'frontgate' | 'tmr'
+    locale?: string; // 'en-us', 'en-ca', etc.
+    includeTBA?: boolean; // Include TBA events
+    includeTBD?: boolean; // Include TBD events
+    includeTest?: boolean; // Include test events (usually false)
   }): Promise<{ events: Event[]; total: number }> {
     // Check if API key is available
     if (!this.apiKey) {
@@ -92,24 +158,45 @@ export class TicketmasterService {
         page: (params.page || 0).toString(),
       });
 
-      // Add optional parameters
+      // Add location parameters
       if (params.city) searchParams.append('city', params.city);
       if (params.countryCode) searchParams.append('countryCode', params.countryCode);
       if (params.radius) searchParams.append('radius', params.radius);
       if (params.postalCode) searchParams.append('postalCode', params.postalCode);
       if (params.marketId) searchParams.append('marketId', params.marketId);
+      
+      // Add date parameters
       if (params.startDateTime) searchParams.append('startDateTime', params.startDateTime);
       if (params.endDateTime) searchParams.append('endDateTime', params.endDateTime);
+      if (params.onsaleStartDateTime) searchParams.append('onsaleStartDateTime', params.onsaleStartDateTime);
+      if (params.onsaleEndDateTime) searchParams.append('onsaleEndDateTime', params.onsaleEndDateTime);
+      
+      // Add classification parameters
       if (params.classificationName) searchParams.append('classificationName', params.classificationName);
+      if (params.classificationId) searchParams.append('classificationId', params.classificationId);
+      if (params.segmentId) searchParams.append('segmentId', params.segmentId);
+      if (params.genreId) searchParams.append('genreId', params.genreId);
+      if (params.subGenreId) searchParams.append('subGenreId', params.subGenreId);
+      
+      // Add search parameters
       if (params.keyword) searchParams.append('keyword', params.keyword);
+      if (params.attractionId) searchParams.append('attractionId', params.attractionId);
+      if (params.venueId) searchParams.append('venueId', params.venueId);
+      if (params.promoterId) searchParams.append('promoterId', params.promoterId);
+      
+      // Add sorting
+      if (params.sort) searchParams.append('sort', params.sort);
+      
+      // Add additional filters
+      if (params.source) searchParams.append('source', params.source);
+      if (params.locale) searchParams.append('locale', params.locale);
+      if (params.includeTBA !== undefined) searchParams.append('includeTBA', params.includeTBA.toString());
+      if (params.includeTBD !== undefined) searchParams.append('includeTBD', params.includeTBD.toString());
+      if (params.includeTest !== undefined) searchParams.append('includeTest', params.includeTest.toString());
 
       const url = `${this.baseUrl}/events.json?${searchParams.toString()}`;
       
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
+      const response = await this.makeRateLimitedRequest(url);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -120,8 +207,44 @@ export class TicketmasterService {
 
       const data: TicketmasterResponse = await response.json();
       
-      const events = data._embedded?.events?.map(this.transformEvent) || [];
-      const total = data.page.totalElements;
+      // Validate response structure
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid response structure from Ticketmaster API');
+      }
+      
+      // Validate pagination info
+      if (!data.page || typeof data.page.totalElements !== 'number') {
+        console.warn('🎟️ Ticketmaster: Missing or invalid pagination info in response');
+      }
+      
+      // Safe event extraction with validation
+      const rawEvents = data._embedded?.events || [];
+      if (!Array.isArray(rawEvents)) {
+        console.warn('🎟️ Ticketmaster: Events data is not an array, using empty array');
+        return { events: [], total: data.page?.totalElements || 0 };
+      }
+      
+      // Transform events with error handling for individual events
+      const events: Event[] = [];
+      let transformErrors = 0;
+      
+      for (const rawEvent of rawEvents) {
+        try {
+          const transformedEvent = this.transformEvent(rawEvent);
+          events.push(transformedEvent);
+        } catch (error) {
+          transformErrors++;
+          console.warn(`🎟️ Ticketmaster: Failed to transform event ${rawEvent?.id || 'unknown'}:`, error);
+          // Continue processing other events instead of failing completely
+        }
+      }
+      
+      if (transformErrors > 0) {
+        console.warn(`🎟️ Ticketmaster: ${transformErrors} events failed transformation out of ${rawEvents.length} total events`);
+      }
+      
+      const total = data.page?.totalElements || 0;
+      console.log(`🎟️ Ticketmaster: Successfully transformed ${events.length}/${rawEvents.length} events (total available: ${total})`);
 
       return { events, total };
     } catch (error) {
@@ -260,23 +383,49 @@ export class TicketmasterService {
   }
 
   /**
-   * Transform Ticketmaster event to our Event interface
+   * Transform Ticketmaster event to our Event interface with proper validation
    */
   private transformEvent = (tmEvent: TicketmasterEvent): Event => {
+    // Validate required fields
+    if (!tmEvent || !tmEvent.id || !tmEvent.name || !tmEvent.dates?.start?.localDate) {
+      throw new Error(`Invalid Ticketmaster event data: missing required fields (id: ${tmEvent?.id}, name: ${tmEvent?.name}, date: ${tmEvent?.dates?.start?.localDate})`);
+    }
+
+    // Safe venue extraction with validation
     const venue = tmEvent._embedded?.venues?.[0];
+    const venueCity = venue?.city?.name;
+    const venueName = venue?.name;
+    
+    // Safe classification extraction
     const classification = tmEvent.classifications?.[0];
-    const image = tmEvent.images?.find(img => img.width >= 640) || tmEvent.images?.[0];
+    const segment = classification?.segment?.name;
+    const genre = classification?.genre?.name;
+    const subGenre = classification?.subGenre?.name;
+    
+    // Improved image selection - prefer landscape images with good resolution
+    const image = tmEvent.images?.find(img => 
+      img.width >= 640 && img.height >= 480 && img.width >= img.height
+    ) || tmEvent.images?.find(img => img.width >= 640) || tmEvent.images?.[0];
+    
+    // Create comprehensive description from available fields
+    const description = tmEvent.description || tmEvent.pleaseNote || '';
+    
+    // Validate date format
+    const eventDate = tmEvent.dates.start.localDate;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+      console.warn(`🎟️ Ticketmaster: Invalid date format for event ${tmEvent.id}: ${eventDate}`);
+    }
 
     return {
       id: `tm_${tmEvent.id}`,
       title: tmEvent.name,
-      description: tmEvent.description || tmEvent.pleaseNote,
-      date: tmEvent.dates.start.localDate,
+      description: description,
+      date: eventDate,
       endDate: tmEvent.dates.end?.localDate,
-      city: venue?.city?.name || 'Unknown',
-      venue: venue?.name,
-      category: this.mapTicketmasterCategory(classification?.segment?.name || 'Other'),
-      subcategory: classification?.genre?.name || classification?.subGenre?.name,
+      city: venueCity || 'Unknown',
+      venue: venueName,
+      category: this.mapTicketmasterCategory(segment || 'Other'),
+      subcategory: genre || subGenre,
       source: 'ticketmaster',
       sourceId: tmEvent.id,
       url: tmEvent.url,
@@ -287,47 +436,68 @@ export class TicketmasterService {
   };
 
   /**
-   * Map our categories to Ticketmaster classification names
+   * Map our categories to official Ticketmaster classification names
+   * Based on official Ticketmaster segments: Music, Sports, Arts & Theatre, Film, Miscellaneous
    * Returns undefined for broader searches when no specific mapping exists
    */
   private mapCategoryToTicketmaster(category: string): string | undefined {
     const categoryMap: Record<string, string | undefined> = {
-      // Business and professional events
-      'Technology': 'Miscellaneous', // Ticketmaster doesn't have specific tech category
-      'Business': 'Miscellaneous', // Business events often fall under Miscellaneous
-      'Marketing': 'Miscellaneous',
-      'Finance': 'Miscellaneous',
-      'Professional Development': 'Miscellaneous',
-      'Networking': 'Miscellaneous',
-      
-      // Conferences and trade shows
-      'Conferences': 'Miscellaneous', // Most conferences are in Miscellaneous
-      'Trade Shows': 'Miscellaneous', // Trade shows typically in Miscellaneous
-      'Expos': 'Miscellaneous',
-      
-      // Healthcare and education
-      'Healthcare': 'Miscellaneous',
-      'Education': 'Miscellaneous',
-      'Academic': 'Miscellaneous',
-      
-      // Entertainment and culture
-      'Entertainment': 'Arts & Theatre',
-      'Arts & Culture': 'Arts & Theatre',
+      // Official Ticketmaster segments - direct mappings
       'Music': 'Music',
+      'Sports': 'Sports', 
+      'Arts & Theatre': 'Arts & Theatre',
       'Film': 'Film',
       
-      // Sports
-      'Sports': 'Sports',
+      // Arts and culture variations
+      'Arts & Culture': 'Arts & Theatre',
+      'Arts and Culture': 'Arts & Theatre',
+      'Entertainment': 'Arts & Theatre', // Most entertainment falls under Arts & Theatre
+      'Theater': 'Arts & Theatre',
+      'Theatre': 'Arts & Theatre',
+      'Comedy': 'Arts & Theatre',
+      'Dance': 'Arts & Theatre',
+      'Opera': 'Arts & Theatre',
       
-      // For categories that might benefit from broader search
-      'Other': undefined, // Return undefined to search without category filter
+      // Music variations
+      'Concerts': 'Music',
+      'Live Music': 'Music',
+      
+      // Film variations  
+      'Movies': 'Film',
+      'Cinema': 'Film',
+      'Film Festival': 'Film',
+      
+      // Sports variations
+      'Athletics': 'Sports',
+      'Sporting Events': 'Sports',
+      
+      // Business and professional events - use Miscellaneous sparingly
+      'Technology': undefined, // Broader search often better for tech events
+      'Business': undefined, // Business events vary widely in classification
+      'Conferences': undefined, // Conferences can be in any segment
+      'Trade Shows': undefined, // Trade shows vary by industry
+      'Professional Development': undefined,
+      'Networking': undefined,
+      'Marketing': undefined,
+      'Finance': undefined,
+      'Healthcare': undefined,
+      'Education': undefined,
+      'Academic': undefined,
+      'Workshops': undefined,
+      'Seminars': undefined,
+      
+      // Fallback
+      'Other': undefined,
+      'Miscellaneous': 'Miscellaneous',
     };
 
     const mappedCategory = categoryMap[category];
     
-    // Log when we're using fallback (undefined) for debugging
+    // Log mapping decisions for debugging and optimization
     if (mappedCategory === undefined) {
-      console.log(`🎟️ Ticketmaster: Using broader search for category "${category}" (no specific mapping)`);
+      console.log(`🎟️ Ticketmaster: Using broader search for "${category}" (no specific segment mapping - will search all segments)`);
+    } else {
+      console.log(`🎟️ Ticketmaster: Mapping "${category}" to official segment "${mappedCategory}"`);
     }
     
     return mappedCategory;
@@ -490,60 +660,14 @@ export class TicketmasterService {
 
   /**
    * Get Ticketmaster market ID for major cities
-   * Returns numeric market IDs as required by the API
+   * NOTE: Market IDs are disabled as we don't have access to official Ticketmaster market IDs.
+   * Using fake IDs would cause API calls to fail or return incorrect results.
+   * Geographic targeting is handled via city, countryCode, and radius parameters instead.
    */
   private getCityMarketId(city: string): string | undefined {
-    const cityMarketMap: Record<string, string> = {
-      'Prague': '1', // Czech Republic - Prague
-      'Brno': '2', // Czech Republic - Brno
-      'Ostrava': '3', // Czech Republic - Ostrava
-      'Olomouc': '4', // Czech Republic - Olomouc
-      'London': '5', // United Kingdom - London
-      'Berlin': '6', // Germany - Berlin
-      'Paris': '7', // France - Paris
-      'Amsterdam': '8', // Netherlands - Amsterdam
-      'Vienna': '9', // Austria - Vienna
-      'Warsaw': '10', // Poland - Warsaw
-      'Budapest': '11', // Hungary - Budapest
-      'Zurich': '12', // Switzerland - Zurich
-      'Munich': '13', // Germany - Munich
-      'Stockholm': '14', // Sweden - Stockholm
-      'Copenhagen': '15', // Denmark - Copenhagen
-      'Helsinki': '16', // Finland - Helsinki
-      'Oslo': '17', // Norway - Oslo
-      'Madrid': '18', // Spain - Madrid
-      'Barcelona': '19', // Spain - Barcelona
-      'Rome': '20', // Italy - Rome
-      'Milan': '21', // Italy - Milan
-      'Athens': '22', // Greece - Athens
-      'Lisbon': '23', // Portugal - Lisbon
-      'Dublin': '24', // Ireland - Dublin
-      'Edinburgh': '25', // United Kingdom - Edinburgh
-      'Glasgow': '26', // United Kingdom - Glasgow
-      'Manchester': '27', // United Kingdom - Manchester
-      'Birmingham': '28', // United Kingdom - Birmingham
-      'Liverpool': '29', // United Kingdom - Liverpool
-      'Leeds': '30', // United Kingdom - Leeds
-      'Sheffield': '31', // United Kingdom - Sheffield
-      'Bristol': '32', // United Kingdom - Bristol
-      'Newcastle': '33', // United Kingdom - Newcastle
-      'Nottingham': '34', // United Kingdom - Nottingham
-      'Leicester': '35', // United Kingdom - Leicester
-      'Hamburg': '36', // Germany - Hamburg
-      'Cologne': '37', // Germany - Cologne
-      'Frankfurt': '38', // Germany - Frankfurt
-      'Stuttgart': '39', // Germany - Stuttgart
-      'Düsseldorf': '40', // Germany - Düsseldorf
-      'Dortmund': '41', // Germany - Dortmund
-      'Essen': '42', // Germany - Essen
-      'Leipzig': '43', // Germany - Leipzig
-      'Bremen': '44', // Germany - Bremen
-      'Dresden': '45', // Germany - Dresden
-      'Hannover': '46', // Germany - Hannover
-      'Nuremberg': '47', // Germany - Nuremberg
-    };
-
-    return cityMarketMap[city];
+    // Market ID functionality disabled - use city + countryCode + radius for geographic targeting
+    console.log(`🎟️ Ticketmaster: Market ID lookup disabled for ${city} - using geographic parameters instead`);
+    return undefined;
   }
 
   /**
@@ -552,7 +676,7 @@ export class TicketmasterService {
   async getVenue(venueId: string) {
     try {
       const url = `${this.baseUrl}/venues/${venueId}.json?apikey=${this.apiKey}`;
-      const response = await fetch(url);
+      const response = await this.makeRateLimitedRequest(url);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch venue: ${response.statusText}`);
@@ -571,7 +695,7 @@ export class TicketmasterService {
   async getClassifications() {
     try {
       const url = `${this.baseUrl}/classifications.json?apikey=${this.apiKey}`;
-      const response = await fetch(url);
+      const response = await this.makeRateLimitedRequest(url);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch classifications: ${response.statusText}`);
@@ -765,7 +889,8 @@ export class TicketmasterService {
   }
 
   /**
-   * Comprehensive multi-strategy search approach to maximize event discovery coverage
+   * Optimized multi-strategy search approach to maximize event discovery while minimizing API calls
+   * Uses intelligent fallbacks based on results from each strategy
    */
   async getEventsComprehensive(
     city: string,
@@ -775,95 +900,96 @@ export class TicketmasterService {
   ): Promise<Event[]> {
     const allEvents: Event[] = [];
     const strategyResults: Array<{ strategy: string; events: number; time: number }> = [];
+    const targetEventCount = 50; // Stop early if we have enough events
     
-    console.log(`🎟️ Ticketmaster: Starting comprehensive search for ${city} (${startDate} to ${endDate})`);
+    console.log(`🎟️ Ticketmaster: Starting optimized comprehensive search for ${city} (${startDate} to ${endDate})`);
     
-    // Strategy 1: Direct city search
+    // Strategy 1: Direct city search with category (most specific)
     try {
       const startTime = Date.now();
-      console.log(`🎟️ Ticketmaster: Strategy 1 - Direct city search`);
+      console.log(`🎟️ Ticketmaster: Strategy 1 - Direct city search with category`);
       const cityEvents = await this.getEventsForCityPaginated(city, startDate, endDate, category);
       allEvents.push(...cityEvents);
       const time = Date.now() - startTime;
       strategyResults.push({ strategy: 'Direct city search', events: cityEvents.length, time });
       console.log(`🎟️ Ticketmaster: Strategy 1 found ${cityEvents.length} events in ${time}ms`);
+      
+      // If we have enough events, skip more expensive searches
+      if (allEvents.length >= targetEventCount) {
+        console.log(`🎟️ Ticketmaster: Early exit - found ${allEvents.length} events (target: ${targetEventCount})`);
+        return this.deduplicateEvents(allEvents);
+      }
     } catch (error) {
       console.error(`🎟️ Ticketmaster: Strategy 1 failed:`, error);
       strategyResults.push({ strategy: 'Direct city search', events: 0, time: 0 });
     }
     
-    // Strategy 2: Radius search  
-    try {
-      const startTime = Date.now();
-      console.log(`🎟️ Ticketmaster: Strategy 2 - Radius search (50 miles)`);
-      const radiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '50', category);
-      allEvents.push(...radiusEvents);
-      const time = Date.now() - startTime;
-      strategyResults.push({ strategy: 'Radius search (50 miles)', events: radiusEvents.length, time });
-      console.log(`🎟️ Ticketmaster: Strategy 2 found ${radiusEvents.length} events in ${time}ms`);
-    } catch (error) {
-      console.error(`🎟️ Ticketmaster: Strategy 2 failed:`, error);
-      strategyResults.push({ strategy: 'Radius search (50 miles)', events: 0, time: 0 });
-    }
-    
-    // Strategy 3: Market-based search for major cities
-    const marketId = this.getCityMarketId(city);
-    if (marketId) {
+    // Strategy 2: Radius search (only if needed)
+    if (allEvents.length < targetEventCount / 2) {
       try {
         const startTime = Date.now();
-        console.log(`🎟️ Ticketmaster: Strategy 3 - Market-based search (${marketId})`);
-        const marketEvents = await this.getEventsForMarket(marketId, startDate, endDate, category);
-        allEvents.push(...marketEvents);
+        console.log(`🎟️ Ticketmaster: Strategy 2 - Radius search (50 miles)`);
+        const radiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '50', category);
+        allEvents.push(...radiusEvents);
         const time = Date.now() - startTime;
-        strategyResults.push({ strategy: `Market-based search (${marketId})`, events: marketEvents.length, time });
-        console.log(`🎟️ Ticketmaster: Strategy 3 found ${marketEvents.length} events in ${time}ms`);
+        strategyResults.push({ strategy: 'Radius search (50 miles)', events: radiusEvents.length, time });
+        console.log(`🎟️ Ticketmaster: Strategy 2 found ${radiusEvents.length} events in ${time}ms`);
+        
+        // Check if we have enough events now
+        if (allEvents.length >= targetEventCount) {
+          console.log(`🎟️ Ticketmaster: Sufficient events found - skipping remaining strategies`);
+          return this.deduplicateEvents(allEvents);
+        }
       } catch (error) {
-        console.error(`🎟️ Ticketmaster: Strategy 3 failed:`, error);
-        strategyResults.push({ strategy: `Market-based search (${marketId})`, events: 0, time: 0 });
+        console.error(`🎟️ Ticketmaster: Strategy 2 failed:`, error);
+        strategyResults.push({ strategy: 'Radius search (50 miles)', events: 0, time: 0 });
       }
     }
     
-    // Strategy 4: Keyword-based search for category
-    if (category) {
+    // Strategy 3: Keyword-based search (only if category is provided and we need more events)
+    if (category && allEvents.length < targetEventCount / 3) {
       try {
         const startTime = Date.now();
-        console.log(`🎟️ Ticketmaster: Strategy 4 - Keyword search for "${category}"`);
+        console.log(`🎟️ Ticketmaster: Strategy 3 - Keyword search for "${category}"`);
         const keywordEvents = await this.searchEvents(category, city, startDate, endDate);
         allEvents.push(...keywordEvents);
         const time = Date.now() - startTime;
         strategyResults.push({ strategy: `Keyword search for "${category}"`, events: keywordEvents.length, time });
-        console.log(`🎟️ Ticketmaster: Strategy 4 found ${keywordEvents.length} events in ${time}ms`);
+        console.log(`🎟️ Ticketmaster: Strategy 3 found ${keywordEvents.length} events in ${time}ms`);
       } catch (error) {
-        console.error(`🎟️ Ticketmaster: Strategy 4 failed:`, error);
+        console.error(`🎟️ Ticketmaster: Strategy 3 failed:`, error);
         strategyResults.push({ strategy: `Keyword search for "${category}"`, events: 0, time: 0 });
       }
     }
     
-    // Strategy 5: Extended radius search (100 miles)
-    try {
-      const startTime = Date.now();
-      console.log(`🎟️ Ticketmaster: Strategy 5 - Extended radius search (100 miles)`);
-      const extendedRadiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '100', category);
-      allEvents.push(...extendedRadiusEvents);
-      const time = Date.now() - startTime;
-      strategyResults.push({ strategy: 'Extended radius search (100 miles)', events: extendedRadiusEvents.length, time });
-      console.log(`🎟️ Ticketmaster: Strategy 5 found ${extendedRadiusEvents.length} events in ${time}ms`);
-    } catch (error) {
-      console.error(`🎟️ Ticketmaster: Strategy 5 failed:`, error);
-      strategyResults.push({ strategy: 'Extended radius search (100 miles)', events: 0, time: 0 });
+    // Strategy 4: Extended radius search (only as last resort)
+    if (allEvents.length < 10) {
+      try {
+        const startTime = Date.now();
+        console.log(`🎟️ Ticketmaster: Strategy 4 - Extended radius search (100 miles) - last resort`);
+        const extendedRadiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '100', category);
+        allEvents.push(...extendedRadiusEvents);
+        const time = Date.now() - startTime;
+        strategyResults.push({ strategy: 'Extended radius search (100 miles)', events: extendedRadiusEvents.length, time });
+        console.log(`🎟️ Ticketmaster: Strategy 4 found ${extendedRadiusEvents.length} events in ${time}ms`);
+      } catch (error) {
+        console.error(`🎟️ Ticketmaster: Strategy 4 failed:`, error);
+        strategyResults.push({ strategy: 'Extended radius search (100 miles)', events: 0, time: 0 });
+      }
     }
     
     // Deduplicate and log results
     const uniqueEvents = this.deduplicateEvents(allEvents);
     
     // Log strategy effectiveness
-    console.log(`🎟️ Ticketmaster: Comprehensive search completed`);
+    console.log(`🎟️ Ticketmaster: Optimized comprehensive search completed`);
     console.log(`🎟️ Ticketmaster: Strategy Results:`);
     strategyResults.forEach(result => {
       console.log(`  - ${result.strategy}: ${result.events} events in ${result.time}ms`);
     });
     console.log(`🎟️ Ticketmaster: Total events before deduplication: ${allEvents.length}`);
     console.log(`🎟️ Ticketmaster: Total unique events after deduplication: ${uniqueEvents.length}`);
+    console.log(`🎟️ Ticketmaster: API calls saved by early termination and intelligent fallbacks`);
     
     return uniqueEvents;
   }
