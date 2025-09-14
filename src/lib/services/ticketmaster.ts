@@ -1315,100 +1315,94 @@ export class TicketmasterService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
-    const allEvents: Event[] = [];
+    const targetEventCount = 25; // Reduced from 50 for faster responses
     const strategyResults: Array<{ strategy: string; events: number; time: number }> = [];
-    const targetEventCount = 50; // Stop early if we have enough events
     
-    console.log(`🎟️ Ticketmaster: Starting optimized comprehensive search for ${city} (${startDate} to ${endDate})`);
+    console.log(`🎟️ Ticketmaster: Starting parallel comprehensive search for ${city} (${startDate} to ${endDate})`);
     
-    // Strategy 1: Direct city search with category (most specific)
-    try {
-      const startTime = Date.now();
-      console.log(`🎟️ Ticketmaster: Strategy 1 - Direct city search with category`);
-      const cityEvents = await this.getEventsForCityPaginated(city, startDate, endDate, category);
-      allEvents.push(...cityEvents);
-      const time = Date.now() - startTime;
-      strategyResults.push({ strategy: 'Direct city search', events: cityEvents.length, time });
-      console.log(`🎟️ Ticketmaster: Strategy 1 found ${cityEvents.length} events in ${time}ms`);
-      
-      // If we have enough events, skip more expensive searches
-      if (allEvents.length >= targetEventCount) {
-        console.log(`🎟️ Ticketmaster: Early exit - found ${allEvents.length} events (target: ${targetEventCount})`);
-        return this.deduplicateEvents(allEvents);
-      }
-    } catch (error) {
-      console.error(`🎟️ Ticketmaster: Strategy 1 failed:`, error);
-      strategyResults.push({ strategy: 'Direct city search', events: 0, time: 0 });
+    // Run first two strategies in parallel for faster results
+    const parallelStrategies = [
+      this.runStrategy('Direct city search', () => this.getEventsForCityPaginated(city, startDate, endDate, category)),
+      this.runStrategy('Radius search (50 miles)', () => this.getEventsWithRadius(city, startDate, endDate, '50', category))
+    ];
+    
+    // Add keyword search if category is provided
+    if (category) {
+      parallelStrategies.push(
+        this.runStrategy(`Keyword search for "${category}"`, () => this.searchEvents(category, city, startDate, endDate))
+      );
     }
     
-    // Strategy 2: Radius search (only if needed)
-    if (allEvents.length < targetEventCount / 2) {
-      try {
-        const startTime = Date.now();
-        console.log(`🎟️ Ticketmaster: Strategy 2 - Radius search (50 miles)`);
-        const radiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '50', category);
-        allEvents.push(...radiusEvents);
-        const time = Date.now() - startTime;
-        strategyResults.push({ strategy: 'Radius search (50 miles)', events: radiusEvents.length, time });
-        console.log(`🎟️ Ticketmaster: Strategy 2 found ${radiusEvents.length} events in ${time}ms`);
-        
-        // Check if we have enough events now
-        if (allEvents.length >= targetEventCount) {
-          console.log(`🎟️ Ticketmaster: Sufficient events found - skipping remaining strategies`);
-          return this.deduplicateEvents(allEvents);
-        }
-      } catch (error) {
-        console.error(`🎟️ Ticketmaster: Strategy 2 failed:`, error);
-        strategyResults.push({ strategy: 'Radius search (50 miles)', events: 0, time: 0 });
+    const results = await Promise.allSettled(parallelStrategies);
+    const allEvents: Event[] = [];
+    
+    // Process results from parallel strategies
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        const { strategy, events, time } = result.value;
+        allEvents.push(...events);
+        strategyResults.push({ strategy, events: events.length, time });
+        console.log(`🎟️ Ticketmaster: ${strategy} found ${events.length} events in ${time}ms`);
+      } else {
+        const strategyNames = ['Direct city search', 'Radius search (50 miles)', `Keyword search for "${category}"`];
+        console.error(`🎟️ Ticketmaster: ${strategyNames[index]} failed:`, result.reason);
+        strategyResults.push({ strategy: strategyNames[index], events: 0, time: 0 });
       }
+    });
+    
+    // Early termination if we have enough events
+    if (allEvents.length >= targetEventCount) {
+      console.log(`🎟️ Ticketmaster: Early termination - found ${allEvents.length} events (target: ${targetEventCount})`);
+      const uniqueEvents = this.deduplicateEvents(allEvents);
+      this.logStrategyResults(strategyResults, allEvents.length, uniqueEvents.length);
+      return uniqueEvents;
     }
     
-    // Strategy 3: Keyword-based search (only if category is provided and we need more events)
-    if (category && allEvents.length < targetEventCount / 3) {
-      try {
-        const startTime = Date.now();
-        console.log(`🎟️ Ticketmaster: Strategy 3 - Keyword search for "${category}"`);
-        const keywordEvents = await this.searchEvents(category, city, startDate, endDate);
-        allEvents.push(...keywordEvents);
-        const time = Date.now() - startTime;
-        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: keywordEvents.length, time });
-        console.log(`🎟️ Ticketmaster: Strategy 3 found ${keywordEvents.length} events in ${time}ms`);
-      } catch (error) {
-        console.error(`🎟️ Ticketmaster: Strategy 3 failed:`, error);
-        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: 0, time: 0 });
-      }
-    }
-    
-    // Strategy 4: Extended radius search (only as last resort)
+    // Only run extended radius search as last resort if we have very few events
     if (allEvents.length < 10) {
       try {
         const startTime = Date.now();
-        console.log(`🎟️ Ticketmaster: Strategy 4 - Extended radius search (100 miles) - last resort`);
+        console.log(`🎟️ Ticketmaster: Last resort - Extended radius search (100 miles)`);
         const extendedRadiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '100', category);
         allEvents.push(...extendedRadiusEvents);
         const time = Date.now() - startTime;
         strategyResults.push({ strategy: 'Extended radius search (100 miles)', events: extendedRadiusEvents.length, time });
-        console.log(`🎟️ Ticketmaster: Strategy 4 found ${extendedRadiusEvents.length} events in ${time}ms`);
+        console.log(`🎟️ Ticketmaster: Extended radius found ${extendedRadiusEvents.length} events in ${time}ms`);
       } catch (error) {
-        console.error(`🎟️ Ticketmaster: Strategy 4 failed:`, error);
+        console.error(`🎟️ Ticketmaster: Extended radius search failed:`, error);
         strategyResults.push({ strategy: 'Extended radius search (100 miles)', events: 0, time: 0 });
       }
     }
     
     // Deduplicate and log results
     const uniqueEvents = this.deduplicateEvents(allEvents);
+    this.logStrategyResults(strategyResults, allEvents.length, uniqueEvents.length);
     
-    // Log strategy effectiveness
-    console.log(`🎟️ Ticketmaster: Optimized comprehensive search completed`);
+    return uniqueEvents;
+  }
+
+  /**
+   * Helper method to run a strategy with timing
+   */
+  private async runStrategy(strategyName: string, strategyFn: () => Promise<Event[]>): Promise<{ strategy: string; events: Event[]; time: number }> {
+    const startTime = Date.now();
+    const events = await strategyFn();
+    const time = Date.now() - startTime;
+    return { strategy: strategyName, events, time };
+  }
+
+  /**
+   * Helper method to log strategy results
+   */
+  private logStrategyResults(strategyResults: Array<{ strategy: string; events: number; time: number }>, totalEvents: number, uniqueEvents: number): void {
+    console.log(`🎟️ Ticketmaster: Parallel comprehensive search completed`);
     console.log(`🎟️ Ticketmaster: Strategy Results:`);
     strategyResults.forEach(result => {
       console.log(`  - ${result.strategy}: ${result.events} events in ${result.time}ms`);
     });
-    console.log(`🎟️ Ticketmaster: Total events before deduplication: ${allEvents.length}`);
-    console.log(`🎟️ Ticketmaster: Total unique events after deduplication: ${uniqueEvents.length}`);
-    console.log(`🎟️ Ticketmaster: API calls saved by early termination and intelligent fallbacks`);
-    
-    return uniqueEvents;
+    console.log(`🎟️ Ticketmaster: Total events before deduplication: ${totalEvents}`);
+    console.log(`🎟️ Ticketmaster: Total unique events after deduplication: ${uniqueEvents}`);
+    console.log(`🎟️ Ticketmaster: Performance optimized with parallel execution and early termination`);
   }
 
   /**

@@ -799,7 +799,7 @@ export class PredictHQService {
   }
 
   /**
-   * Comprehensive multi-strategy search approach to maximize event discovery coverage
+   * Optimized multi-strategy search approach with parallel execution and early termination
    */
   async getEventsComprehensive(
     city: string,
@@ -807,112 +807,108 @@ export class PredictHQService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
-    const allEvents: Event[] = [];
+    const targetEventCount = 25; // Reduced from 50 for faster responses
     const strategyResults: Array<{ strategy: string; events: number; time: number }> = [];
     
-    console.log(`🔮 PredictHQ: Starting comprehensive search for ${city} (${startDate} to ${endDate})`);
+    console.log(`🔮 PredictHQ: Starting parallel comprehensive search for ${city} (${startDate} to ${endDate})`);
     
-    // Strategy 1: City-based search
-    try {
-      const startTime = Date.now();
-      console.log(`🔮 PredictHQ: Strategy 1 - City-based search`);
-      const cityEvents = await this.getEventsForCityPaginated(city, startDate, endDate, category);
-      allEvents.push(...cityEvents);
-      const time = Date.now() - startTime;
-      strategyResults.push({ strategy: 'City-based search', events: cityEvents.length, time });
-      console.log(`🔮 PredictHQ: Strategy 1 found ${cityEvents.length} events in ${time}ms`);
-    } catch (error) {
-      console.error(`🔮 PredictHQ: Strategy 1 failed:`, error);
-      strategyResults.push({ strategy: 'City-based search', events: 0, time: 0 });
-    }
+    // Run core strategies in parallel for faster results
+    const parallelStrategies = [
+      this.runStrategy('City-based search', () => this.getEventsForCityPaginated(city, startDate, endDate, category)),
+      this.runStrategy('High attendance events (1000+ attendees)', () => this.getHighAttendanceEvents(city, startDate, endDate, 1000)),
+      this.runStrategy('High local rank events (rank 50+)', () => this.getHighRankEvents(city, startDate, endDate, 50))
+    ];
     
-    // Strategy 2: Keyword search
+    // Add keyword search if category is provided
     if (category) {
-      try {
-        const startTime = Date.now();
-        console.log(`🔮 PredictHQ: Strategy 2 - Keyword search for "${category}"`);
-        const keywordEvents = await this.searchEvents(category, city, startDate, endDate);
-        allEvents.push(...keywordEvents);
-        const time = Date.now() - startTime;
-        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: keywordEvents.length, time });
-        console.log(`🔮 PredictHQ: Strategy 2 found ${keywordEvents.length} events in ${time}ms`);
-      } catch (error) {
-        console.error(`🔮 PredictHQ: Strategy 2 failed:`, error);
-        strategyResults.push({ strategy: `Keyword search for "${category}"`, events: 0, time: 0 });
+      parallelStrategies.push(
+        this.runStrategy(`Keyword search for "${category}"`, () => this.searchEvents(category, city, startDate, endDate))
+      );
+    }
+    
+    const results = await Promise.allSettled(parallelStrategies);
+    const allEvents: Event[] = [];
+    
+    // Process results from parallel strategies
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        const { strategy, events, time } = result.value;
+        allEvents.push(...events);
+        strategyResults.push({ strategy, events: events.length, time });
+        console.log(`🔮 PredictHQ: ${strategy} found ${events.length} events in ${time}ms`);
+      } else {
+        const strategyNames = ['City-based search', 'High attendance events (1000+ attendees)', 'High local rank events (rank 50+)', `Keyword search for "${category}"`];
+        console.error(`🔮 PredictHQ: ${strategyNames[index]} failed:`, result.reason);
+        strategyResults.push({ strategy: strategyNames[index], events: 0, time: 0 });
       }
+    });
+    
+    // Early termination if we have enough events
+    if (allEvents.length >= targetEventCount) {
+      console.log(`🔮 PredictHQ: Early termination - found ${allEvents.length} events (target: ${targetEventCount})`);
+      const uniqueEvents = this.deduplicateEvents(allEvents);
+      this.logStrategyResults(strategyResults, allEvents.length, uniqueEvents.length);
+      return uniqueEvents;
     }
     
-    // Strategy 3: High attendance events filter
-    try {
-      const startTime = Date.now();
-      console.log(`🔮 PredictHQ: Strategy 3 - High attendance events (1000+ attendees)`);
-      const highAttendanceEvents = await this.getHighAttendanceEvents(city, startDate, endDate, 1000);
-      allEvents.push(...highAttendanceEvents);
-      const time = Date.now() - startTime;
-      strategyResults.push({ strategy: 'High attendance events (1000+ attendees)', events: highAttendanceEvents.length, time });
-      console.log(`🔮 PredictHQ: Strategy 3 found ${highAttendanceEvents.length} events in ${time}ms`);
-    } catch (error) {
-      console.error(`🔮 PredictHQ: Strategy 3 failed:`, error);
-      strategyResults.push({ strategy: 'High attendance events (1000+ attendees)', events: 0, time: 0 });
-    }
-    
-    // Strategy 4: High local rank events filter
-    try {
-      const startTime = Date.now();
-      console.log(`🔮 PredictHQ: Strategy 4 - High local rank events (rank 50+)`);
-      const highRankEvents = await this.getHighRankEvents(city, startDate, endDate, 50);
-      allEvents.push(...highRankEvents);
-      const time = Date.now() - startTime;
-      strategyResults.push({ strategy: 'High local rank events (rank 50+)', events: highRankEvents.length, time });
-      console.log(`🔮 PredictHQ: Strategy 4 found ${highRankEvents.length} events in ${time}ms`);
-    } catch (error) {
-      console.error(`🔮 PredictHQ: Strategy 4 failed:`, error);
-      strategyResults.push({ strategy: 'High local rank events (rank 50+)', events: 0, time: 0 });
-    }
-    
-    // Strategy 5: Radius search with category
-    if (category) {
-      try {
-        const startTime = Date.now();
-        console.log(`🔮 PredictHQ: Strategy 5 - Radius search (50km) with category`);
-        const radiusCategoryEvents = await this.getEventsWithRadius(city, startDate, endDate, '50km', category);
-        allEvents.push(...radiusCategoryEvents);
-        const time = Date.now() - startTime;
-        strategyResults.push({ strategy: 'Radius search (50km) with category', events: radiusCategoryEvents.length, time });
-        console.log(`🔮 PredictHQ: Strategy 5 found ${radiusCategoryEvents.length} events in ${time}ms`);
-      } catch (error) {
-        console.error(`🔮 PredictHQ: Strategy 5 failed:`, error);
-        strategyResults.push({ strategy: 'Radius search (50km) with category', events: 0, time: 0 });
+    // Only run radius searches as fallback if we need more events
+    if (allEvents.length < 15) {
+      const fallbackStrategies = [
+        this.runStrategy('Radius search (50km)', () => this.getEventsWithRadius(city, startDate, endDate, '50km', category))
+      ];
+      
+      // Only use extended radius if we have very few events
+      if (allEvents.length < 10) {
+        fallbackStrategies.push(
+          this.runStrategy('Extended radius search (100km)', () => this.getEventsWithRadius(city, startDate, endDate, '100km', category))
+        );
       }
-    }
-    
-    // Strategy 6: Extended radius search (100km)
-    try {
-      const startTime = Date.now();
-      console.log(`🔮 PredictHQ: Strategy 6 - Extended radius search (100km)`);
-      const extendedRadiusEvents = await this.getEventsWithRadius(city, startDate, endDate, '100km', category);
-      allEvents.push(...extendedRadiusEvents);
-      const time = Date.now() - startTime;
-      strategyResults.push({ strategy: 'Extended radius search (100km)', events: extendedRadiusEvents.length, time });
-      console.log(`🔮 PredictHQ: Strategy 6 found ${extendedRadiusEvents.length} events in ${time}ms`);
-    } catch (error) {
-      console.error(`🔮 PredictHQ: Strategy 6 failed:`, error);
-      strategyResults.push({ strategy: 'Extended radius search (100km)', events: 0, time: 0 });
+      
+      const fallbackResults = await Promise.allSettled(fallbackStrategies);
+      
+      fallbackResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          const { strategy, events, time } = result.value;
+          allEvents.push(...events);
+          strategyResults.push({ strategy, events: events.length, time });
+          console.log(`🔮 PredictHQ: ${strategy} found ${events.length} events in ${time}ms`);
+        } else {
+          const strategyNames = ['Radius search (50km)', 'Extended radius search (100km)'];
+          console.error(`🔮 PredictHQ: ${strategyNames[index]} failed:`, result.reason);
+          strategyResults.push({ strategy: strategyNames[index], events: 0, time: 0 });
+        }
+      });
     }
     
     // Deduplicate and log results
     const uniqueEvents = this.deduplicateEvents(allEvents);
+    this.logStrategyResults(strategyResults, allEvents.length, uniqueEvents.length);
     
-    // Log strategy effectiveness
-    console.log(`🔮 PredictHQ: Comprehensive search completed`);
+    return uniqueEvents;
+  }
+
+  /**
+   * Helper method to run a strategy with timing
+   */
+  private async runStrategy(strategyName: string, strategyFn: () => Promise<Event[]>): Promise<{ strategy: string; events: Event[]; time: number }> {
+    const startTime = Date.now();
+    const events = await strategyFn();
+    const time = Date.now() - startTime;
+    return { strategy: strategyName, events, time };
+  }
+
+  /**
+   * Helper method to log strategy results
+   */
+  private logStrategyResults(strategyResults: Array<{ strategy: string; events: number; time: number }>, totalEvents: number, uniqueEvents: number): void {
+    console.log(`🔮 PredictHQ: Parallel comprehensive search completed`);
     console.log(`🔮 PredictHQ: Strategy Results:`);
     strategyResults.forEach(result => {
       console.log(`  - ${result.strategy}: ${result.events} events in ${result.time}ms`);
     });
-    console.log(`🔮 PredictHQ: Total events before deduplication: ${allEvents.length}`);
-    console.log(`🔮 PredictHQ: Total unique events after deduplication: ${uniqueEvents.length}`);
-    
-    return uniqueEvents;
+    console.log(`🔮 PredictHQ: Total events before deduplication: ${totalEvents}`);
+    console.log(`🔮 PredictHQ: Total unique events after deduplication: ${uniqueEvents}`);
+    console.log(`🔮 PredictHQ: Performance optimized with parallel execution and early termination`);
   }
 
   /**

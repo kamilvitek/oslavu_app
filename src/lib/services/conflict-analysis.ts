@@ -133,8 +133,8 @@ export class ConflictAnalysisService {
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
-      size: '199', // Ticketmaster's maximum page size limit
-      useComprehensiveFallback: params.useComprehensiveFallback !== false ? 'true' : 'false' // Default to true
+      size: '100', // Reduced from 199 for faster responses
+      useComprehensiveFallback: params.useComprehensiveFallback === true ? 'true' : 'false' // Default to false for better performance
     });
 
     // Add radius only for PredictHQ (Ticketmaster city variations work better without radius)
@@ -190,15 +190,31 @@ export class ConflictAnalysisService {
       radius: params.searchRadius || '50km'
     });
 
-    // Fetch from Ticketmaster, PredictHQ, and Brno ArcGIS in parallel
+    // Create timeout controller for API requests
+    const timeoutMs = 30000; // 30 seconds timeout per API
+    const createTimeoutFetch = (url: string) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
+      return fetch(url, { signal: controller.signal })
+        .finally(() => clearTimeout(timeoutId));
+    };
+
+    // Fetch from Ticketmaster, PredictHQ, and Brno ArcGIS in parallel with timeout
+    console.log('🚀 Starting parallel API requests with 30s timeout each...');
+    const startTime = Date.now();
+    
     const [ticketmasterResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
-      fetch(`${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveTicketmasterParams.toString() : ticketmasterQueryParams.toString()}`),
-      fetch(`${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensivePredicthqParams.toString() : predicthqQueryParams.toString()}`),
-      fetch(`${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
+      createTimeoutFetch(`${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveTicketmasterParams.toString() : ticketmasterQueryParams.toString()}`),
+      createTimeoutFetch(`${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensivePredicthqParams.toString() : predicthqQueryParams.toString()}`),
+      createTimeoutFetch(`${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
         startDate: params.dateRangeStart,
         endDate: params.dateRangeEnd
       }).toString()}`)
     ]);
+
+    const totalFetchTime = Date.now() - startTime;
+    console.log(`🚀 All API requests completed in ${totalFetchTime}ms`);
 
     const allEvents: Event[] = [];
 
@@ -229,7 +245,12 @@ export class ConflictAnalysisService {
         console.error('🎟️ Ticketmaster: Error processing response:', error);
       }
     } else if (ticketmasterResponse.status === 'rejected') {
-      console.error('🎟️ Ticketmaster: API request failed:', ticketmasterResponse.reason);
+      const error = ticketmasterResponse.reason;
+      if (error?.name === 'AbortError') {
+        console.warn('🎟️ Ticketmaster: API request timed out after 30 seconds');
+      } else {
+        console.error('🎟️ Ticketmaster: API request failed:', error);
+      }
     } else {
       console.error('🎟️ Ticketmaster: API returned error:', ticketmasterResponse.value?.status || 'Unknown error');
       // Try to get the error message from response
@@ -277,7 +298,12 @@ export class ConflictAnalysisService {
         console.error('🔮 PredictHQ: Error processing response:', error);
       }
     } else if (predicthqResponse.status === 'rejected') {
-      console.error('🔮 PredictHQ: API request failed:', predicthqResponse.reason);
+      const error = predicthqResponse.reason;
+      if (error?.name === 'AbortError') {
+        console.warn('🔮 PredictHQ: API request timed out after 30 seconds');
+      } else {
+        console.error('🔮 PredictHQ: API request failed:', error);
+      }
     } else {
       console.error('🔮 PredictHQ: API returned error:', predicthqResponse.value?.status || 'Unknown error');
       // Try to get the error message from response
