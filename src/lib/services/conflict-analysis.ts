@@ -133,7 +133,7 @@ export class ConflictAnalysisService {
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
-      size: '500', // Increased from 100 to 500 for better event coverage
+      size: '199', // Ticketmaster's maximum page size limit
       useComprehensiveFallback: params.useComprehensiveFallback ? 'true' : 'false'
     });
 
@@ -176,7 +176,7 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       comprehensive: 'true', // Enable comprehensive search
-      size: '500'
+      size: '199' // Ticketmaster's maximum page size limit
       // No radius for Ticketmaster comprehensive search
     });
 
@@ -186,7 +186,7 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       comprehensive: 'true', // Enable comprehensive search
-      size: '500',
+      size: '199', // Ticketmaster's maximum page size limit
       radius: params.searchRadius || '50km'
     });
 
