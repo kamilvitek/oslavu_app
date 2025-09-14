@@ -5,7 +5,23 @@ import { Event } from '@/types';
 
 export async function GET(request: NextRequest) {
   try {
+    // Log environment check
+    console.log('🔧 Environment Check:', {
+      NODE_ENV: process.env.NODE_ENV,
+      hasTicketmasterKey: !!process.env.TICKETMASTER_API_KEY,
+      keyLength: process.env.TICKETMASTER_API_KEY?.length || 0,
+      firstChars: process.env.TICKETMASTER_API_KEY ? process.env.TICKETMASTER_API_KEY.substring(0, 8) + '...' : 'none'
+    });
+    
     const { searchParams } = new URL(request.url);
+    
+    // Log request parameters
+    console.log('📥 Ticketmaster Route Request:', {
+      method: request.method,
+      url: request.url,
+      searchParams: Object.fromEntries(searchParams),
+      timestamp: new Date().toISOString()
+    });
     
     const city = searchParams.get('city');
     const startDate = searchParams.get('startDate');
@@ -45,6 +61,7 @@ export async function GET(request: NextRequest) {
     const isValidKey = !!(apiKey && apiKey.length > 10 && !apiKey.includes('your_') && !apiKey.includes('here'));
     
     if (!isValidKey) {
+      console.error('❌ TICKETMASTER_API_KEY is not set in environment variables');
       console.error('🎟️ Ticketmaster API key is not properly configured');
       console.error('🎟️ Current key status:', {
         exists: !!apiKey,
@@ -56,7 +73,8 @@ export async function GET(request: NextRequest) {
       
       return NextResponse.json(
         { 
-          success: true,
+          success: false,
+          error: 'Ticketmaster API key not configured',
           data: {
             events: [],
             total: 0,
@@ -70,7 +88,7 @@ export async function GET(request: NextRequest) {
             }
           }
         },
-        { status: 200 }
+        { status: 500 }
       );
     }
 
@@ -129,42 +147,58 @@ export async function GET(request: NextRequest) {
           events = [];
         }
       } else if (city && startDate && endDate) {
-        // Get events for city and date range with radius and fallback options
+        // Get events for city and date range - use direct getEvents method for better reliability
         const searchCity = transformedParams?.city || city;
-        const searchRadius = transformedParams?.radius || cleanRadius || '50';
-        const searchCategory = transformedParams?.classificationName ? 
-          Object.entries({
+        const searchRadius = transformedParams?.radius || cleanRadius;
+        
+        // Map category to Ticketmaster classification
+        const mappedCategory = category ? (() => {
+          const categoryMap: Record<string, string | undefined> = {
             'Music': 'Music',
             'Sports': 'Sports', 
-            'Arts & Theatre': 'Arts & Culture',
-            'Miscellaneous': category
-          }).find(([key]) => key === transformedParams.classificationName)?.[1] || category : 
-          category;
+            'Arts & Theatre': 'Arts & Theatre',
+            'Film': 'Film',
+            'Arts & Culture': 'Arts & Theatre',
+            'Entertainment': undefined, // Entertainment spans multiple categories
+            'Concerts': 'Music',
+            'Live Music': 'Music',
+            'Movies': 'Film',
+            'Cinema': 'Film',
+            'Theater': 'Arts & Theatre',
+            'Theatre': 'Arts & Theatre',
+            'Comedy': 'Arts & Theatre',
+            'Dance': 'Arts & Theatre',
+            'Opera': 'Arts & Theatre',
+            'Miscellaneous': 'Miscellaneous',
+          };
+          return categoryMap[category];
+        })() : undefined;
         
-        if (useComprehensiveFallback) {
-          events = await ticketmasterService.getEventsWithComprehensiveFallback(
-            searchCity,
-            startDate,
-            endDate,
-            searchCategory || undefined,
-            searchRadius
-          );
-        } else if (cleanRadius || transformedParams?.radius) {
-          events = await ticketmasterService.getEventsWithRadius(
-            searchCity,
-            startDate,
-            endDate,
-            cleanRadius || transformedParams?.radius || '50',
-            searchCategory || undefined
-          );
-        } else {
-          events = await ticketmasterService.getEventsForCity(
-            searchCity,
-            startDate,
-            endDate,
-            searchCategory || undefined
-          );
-        }
+        const searchCategory = transformedParams?.classificationName || mappedCategory;
+        
+        console.log('🎟️ Using direct getEvents method for city search:', {
+          city: searchCity,
+          startDate,
+          endDate,
+          category: searchCategory,
+          radius: searchRadius,
+          useComprehensiveFallback
+        });
+        
+        // Use direct getEvents method for better reliability
+        const result = await ticketmasterService.getEvents({
+          city: searchCity,
+          countryCode: transformedParams?.countryCode,
+          radius: searchRadius,
+          postalCode: transformedParams?.postalCode,
+          marketId: transformedParams?.marketId,
+          startDateTime: `${startDate}T00:00:00Z`,
+          endDateTime: `${endDate}T23:59:59Z`,
+          classificationName: searchCategory || undefined, // Only pass if not undefined
+          size,
+          page,
+        });
+        events = result.events;
       } else {
         // Get general events with transformed params
         const searchCity = transformedParams?.city || city;
@@ -230,5 +264,53 @@ export async function GET(request: NextRequest) {
         timestamp: new Date().toISOString()
       }
     });
+  }
+}
+
+// Add POST method for testing basic connection
+export async function POST(request: NextRequest) {
+  try {
+    const { city, startDate, endDate } = await request.json();
+    
+    console.log('🧪 Testing Ticketmaster connection with dates:', { city: city || 'New York', startDate, endDate });
+    
+    try {
+      if (startDate && endDate) {
+        // Test with date range
+        const result = await ticketmasterService.getEvents({
+          city: city || 'Prague',
+          startDateTime: `${startDate}T00:00:00Z`,
+          endDateTime: `${endDate}T23:59:59Z`,
+          size: 5
+        });
+        return NextResponse.json({ 
+          success: true, 
+          data: result,
+          message: 'Date range test successful'
+        });
+      } else {
+        // Test basic connection
+        const result = await ticketmasterService.testBasicConnection(city || 'New York');
+        return NextResponse.json({ 
+          success: true, 
+          data: result,
+          message: 'Basic connection test successful'
+        });
+      }
+    } catch (error) {
+      console.error('🧪 Test connection failed:', error);
+      return NextResponse.json({ 
+        success: false, 
+        error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('🧪 POST request error:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Invalid request format',
+      details: error.message
+    }, { status: 400 });
   }
 }

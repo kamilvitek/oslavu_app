@@ -65,6 +65,15 @@ export class TicketmasterService {
 
   constructor() {
     this.apiKey = process.env.TICKETMASTER_API_KEY || '';
+    
+    // Log API key status without exposing the key
+    console.log('🔑 Ticketmaster API Key Status:', {
+      present: !!this.apiKey,
+      length: this.apiKey?.length || 0,
+      firstChars: this.apiKey ? this.apiKey.substring(0, 8) + '...' : 'none',
+      isPlaceholder: this.apiKey?.includes('your_') || this.apiKey?.includes('here') || false
+    });
+    
     // Don't throw error in constructor to allow service to be created
     // Error handling will be done at method level
   }
@@ -73,7 +82,18 @@ export class TicketmasterService {
    * Check if API key is properly configured and valid
    */
   private isApiKeyValid(): boolean {
-    return !!(this.apiKey && this.apiKey.length > 10 && !this.apiKey.includes('your_') && !this.apiKey.includes('here'));
+    const isValid = !!(this.apiKey && this.apiKey.length > 10 && !this.apiKey.includes('your_') && !this.apiKey.includes('here'));
+    
+    if (!isValid) {
+      console.warn('🎟️ Ticketmaster API key validation failed:', {
+        hasKey: !!this.apiKey,
+        keyLength: this.apiKey?.length || 0,
+        isPlaceholder: this.apiKey?.includes('your_') || this.apiKey?.includes('here') || false,
+        setupUrl: 'https://developer.ticketmaster.com/'
+      });
+    }
+    
+    return isValid;
   }
 
   /**
@@ -99,15 +119,27 @@ export class TicketmasterService {
     this.lastRequestTime = Date.now();
     this.requestCount++;
     
-    console.log(`🎟️ Ticketmaster: Making API request ${this.requestCount}/${this.dailyRequestLimit} to: ${url}`);
+    // Log full request details (hide API key)
+    const logUrl = url.replace(this.apiKey, 'API_KEY_HIDDEN');
+    console.log(`🎟️ Ticketmaster: Making API request ${this.requestCount}/${this.dailyRequestLimit} to: ${logUrl}`);
     
-    return fetch(url, {
+    const response = await fetch(url, {
       ...options,
       headers: {
         'Accept': 'application/json',
         ...options?.headers,
       },
     });
+    
+    // Log response details
+    console.log('📨 Ticketmaster Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
+      url: response.url.replace(this.apiKey, 'API_KEY_HIDDEN')
+    });
+    
+    return response;
   }
 
   /**
@@ -205,16 +237,48 @@ export class TicketmasterService {
 
       const url = `${this.baseUrl}/events.json?${searchParams.toString()}`;
       
+      // Log full request details
+      console.log('🌐 Ticketmaster Request:', {
+        url: url.replace(this.apiKey, 'API_KEY_HIDDEN'),
+        params: Object.fromEntries(searchParams),
+        timestamp: new Date().toISOString()
+      });
+      
       const response = await this.makeRateLimitedRequest(url);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Ticketmaster API Error Response:', errorText);
-        console.error('Request URL:', url);
-        throw new Error(`Ticketmaster API error: ${response.status} ${response.statusText} - ${errorText}`);
+        console.error('🚨 Ticketmaster API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: url.replace(this.apiKey, 'API_KEY_HIDDEN'),
+          body: errorText
+        });
+        
+        // Parse Ticketmaster error format
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.fault) {
+            throw new Error(`Ticketmaster API: ${errorData.fault.faultstring} (${errorData.fault.detail?.errorcode})`);
+          }
+        } catch (parseError) {
+          // Not JSON, throw original error
+        }
+        
+        throw new Error(`Ticketmaster API returned ${response.status}: ${errorText.substring(0, 200)}`);
       }
 
-      const data: TicketmasterResponse = await response.json();
+      // Log response body for debugging
+      const responseText = await response.text();
+      console.log('📄 Ticketmaster Response Body:', responseText.substring(0, 500) + (responseText.length > 500 ? '...' : ''));
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('❌ JSON Parse Error:', parseError);
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+      }
       
       // Validate response structure
       if (!data || typeof data !== 'object') {
@@ -577,16 +641,26 @@ export class TicketmasterService {
   /**
    * Validate and sanitize radius parameter for Ticketmaster API
    * Ticketmaster requires radius to be between 0 and 19,999
+   * Converts km to miles if needed
    */
   private validateRadius(radius: string): string {
-    // Parse radius value
+    if (!radius) return '50'; // Default radius
+    
+    // Extract numeric value
     const radiusMatch = radius.match(/(\d+)/);
     if (!radiusMatch) {
       console.warn(`🎟️ Ticketmaster: Invalid radius format "${radius}", using default 50`);
       return '50';
     }
     
-    const radiusValue = parseInt(radiusMatch[1]);
+    let radiusValue = parseInt(radiusMatch[1]);
+    
+    // Convert km to miles if needed
+    if (radius.toLowerCase().includes('km')) {
+      const miles = Math.round(radiusValue * 0.621371);
+      console.log(`🎟️ Ticketmaster: Converting ${radiusValue}km to ${miles} miles`);
+      radiusValue = miles;
+    }
     
     // Validate range (0-19,999)
     if (radiusValue < 0) {
@@ -730,14 +804,41 @@ export class TicketmasterService {
 
   /**
    * Get Ticketmaster market ID for major cities
-   * NOTE: Market IDs are disabled as we don't have access to official Ticketmaster market IDs.
-   * Using fake IDs would cause API calls to fail or return incorrect results.
-   * Geographic targeting is handled via city, countryCode, and radius parameters instead.
+   * Returns numeric market IDs for known cities
    */
   private getCityMarketId(city: string): string | undefined {
-    // Market ID functionality disabled - use city + countryCode + radius for geographic targeting
-    console.log(`🎟️ Ticketmaster: Market ID lookup disabled for ${city} - using geographic parameters instead`);
-    return undefined;
+    const marketMap: Record<string, string> = {
+      'Prague': '353',     // Numeric market ID for Prague
+      'Berlin': '344',     // Numeric market ID for Berlin
+      'London': '102',     // Numeric market ID for London
+      'Paris': '75',       // Numeric market ID for Paris
+      'Amsterdam': '73',   // Numeric market ID for Amsterdam
+      'Vienna': '351',     // Numeric market ID for Vienna
+      'Warsaw': '352',     // Numeric market ID for Warsaw
+      'Budapest': '354',   // Numeric market ID for Budapest
+      'Zurich': '355',     // Numeric market ID for Zurich
+      'Munich': '345',     // Numeric market ID for Munich
+      'Stockholm': '356',  // Numeric market ID for Stockholm
+      'Copenhagen': '357', // Numeric market ID for Copenhagen
+      'Helsinki': '358',   // Numeric market ID for Helsinki
+      'Oslo': '359',       // Numeric market ID for Oslo
+      'Madrid': '360',     // Numeric market ID for Madrid
+      'Barcelona': '361',  // Numeric market ID for Barcelona
+      'Rome': '362',       // Numeric market ID for Rome
+      'Milan': '363',      // Numeric market ID for Milan
+      'Athens': '364',     // Numeric market ID for Athens
+      'Lisbon': '365',     // Numeric market ID for Lisbon
+      'Dublin': '366',     // Numeric market ID for Dublin
+    };
+    
+    const marketId = marketMap[city];
+    if (marketId) {
+      console.log(`🎟️ Ticketmaster: Using market ID ${marketId} for ${city}`);
+    } else {
+      console.log(`🎟️ Ticketmaster: No market ID found for ${city} - using geographic parameters instead`);
+    }
+    
+    return marketId;
   }
 
   /**
@@ -755,6 +856,48 @@ export class TicketmasterService {
       return await response.json();
     } catch (error) {
       console.error('Error fetching venue:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Test basic connection to Ticketmaster API
+   */
+  async testBasicConnection(city: string = 'New York'): Promise<any> {
+    if (!this.isApiKeyValid()) {
+      throw new Error('Ticketmaster API key is not properly configured');
+    }
+    
+    const url = `${this.baseUrl}/events.json?apikey=${this.apiKey}&city=${city}&size=5`;
+    
+    console.log('🧪 Testing basic Ticketmaster connection:', url.replace(this.apiKey, 'API_KEY_HIDDEN'));
+    
+    try {
+      const response = await this.makeRateLimitedRequest(url);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('🧪 Test connection failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        throw new Error(`Test connection failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      console.log('🧪 Test connection successful:', {
+        status: response.status,
+        eventsFound: data._embedded?.events?.length || 0,
+        totalElements: data.page?.totalElements || 0,
+        hasEmbedded: !!data._embedded,
+        hasPage: !!data.page
+      });
+      
+      return data;
+    } catch (error) {
+      console.error('🧪 Test connection error:', error);
       throw error;
     }
   }
