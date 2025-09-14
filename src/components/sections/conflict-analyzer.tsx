@@ -5,7 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar, MapPin, Users, Target, AlertTriangle, CheckCircle, Loader2, RefreshCw, Building } from "lucide-react";
+import { StatusBadge, SuccessBadge, WarningBadge, ErrorBadge, InfoBadge } from "@/components/ui/status-badge";
+import { ProgressIndicator, ProgressStep } from "@/components/ui/progress-indicator";
+import { MetricCard } from "@/components/ui/metric-card";
+import { Calendar, MapPin, Users, Target, AlertTriangle, CheckCircle, Loader2, RefreshCw, Building, BarChart3, Clock, Zap } from "lucide-react";
 import { ConflictAnalysisForm } from "@/components/forms/conflict-analysis-form";
 import { conflictAnalysisService, ConflictAnalysisResult, DateRecommendation } from "@/lib/services/conflict-analysis";
 // OpenAI service is now accessed via API endpoint
@@ -15,6 +18,40 @@ export function ConflictAnalyzer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openaiAvailable, setOpenaiAvailable] = useState(false);
+  const [currentAnalysisStep, setCurrentAnalysisStep] = useState<string>('');
+
+  const analysisSteps: ProgressStep[] = [
+    {
+      id: 'initializing',
+      label: 'Initializing',
+      description: 'Setting up analysis parameters',
+      status: 'pending'
+    },
+    {
+      id: 'fetching-events',
+      label: 'Fetching Events',
+      description: 'Gathering event data from multiple sources',
+      status: 'pending'
+    },
+    {
+      id: 'analyzing-conflicts',
+      label: 'Analyzing Conflicts',
+      description: 'Calculating conflict scores and risk levels',
+      status: 'pending'
+    },
+    {
+      id: 'generating-recommendations',
+      label: 'Generating Recommendations',
+      description: 'Creating personalized date recommendations',
+      status: 'pending'
+    },
+    {
+      id: 'complete',
+      label: 'Complete',
+      description: 'Analysis finished successfully',
+      status: 'pending'
+    }
+  ];
 
   useEffect(() => {
     // Check if OpenAI is available via API
@@ -32,12 +69,23 @@ export function ConflictAnalyzer() {
     checkOpenAIStatus();
   }, []);
 
+  const updateAnalysisProgress = (stepId: string, status: 'pending' | 'in-progress' | 'completed' | 'error') => {
+    setCurrentAnalysisStep(stepId);
+  };
+
   const handleAnalysisComplete = async (formData: any) => {
     setLoading(true);
     setError(null);
     setAnalysisResult(null);
+    setCurrentAnalysisStep('initializing');
 
     try {
+      // Simulate progress updates
+      updateAnalysisProgress('initializing', 'in-progress');
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      updateAnalysisProgress('fetching-events', 'in-progress');
+      
       // Call the API endpoint instead of the service directly
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -59,15 +107,22 @@ export function ConflictAnalyzer() {
         })
       });
 
+      updateAnalysisProgress('analyzing-conflicts', 'in-progress');
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      updateAnalysisProgress('generating-recommendations', 'in-progress');
       const data = await response.json();
       
       if (response.ok && data.data) {
+        updateAnalysisProgress('complete', 'completed');
         setAnalysisResult(data.data);
       } else {
         setError(data.error || 'Failed to analyze conflicts');
+        setCurrentAnalysisStep('');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to analyze conflicts');
+      setCurrentAnalysisStep('');
     } finally {
       setLoading(false);
     }
@@ -132,28 +187,30 @@ export function ConflictAnalyzer() {
   };
 
   return (
-    <section id="conflict-analyzer" className="py-20 bg-white">
+    <section id="conflict-analyzer" className="py-20 bg-gradient-to-b from-background to-muted/20">
       <div className="container mx-auto px-4">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+        <div className="text-center mb-12 animate-fade-in-up">
+          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
             Analyze Your Event Date
           </h2>
-          <p className="text-xl text-gray-600">
-            Get instant conflict analysis for your event. See competing events, 
-            festivals, and major gatherings that could impact your attendance.
+          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+            Get instant AI-powered conflict analysis for your event. See competing events, 
+            festivals, and major gatherings that could impact your attendance with detailed 
+            risk assessments and recommendations.
           </p>
         </div>
 
         <div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <Card>
+            <Card className="interactive-element glass-effect">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
-                  <Target className="h-5 w-5" />
+                  <Target className="h-5 w-5 text-chart-primary" />
                   <span>Event Details</span>
                 </CardTitle>
                 <CardDescription>
-                  Tell us about your event to get personalized conflict analysis
+                  Tell us about your event to get personalized AI-powered conflict analysis with 
+                  detailed risk assessments and venue intelligence.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -163,35 +220,89 @@ export function ConflictAnalyzer() {
 
             <div className="space-y-6">
               {loading && (
-                <Card>
-                  <CardContent className="flex items-center justify-center py-12">
-                    <div className="text-center">
-                      <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-                      <p className="text-gray-600">Analyzing conflicts...</p>
-                      <p className="text-sm text-gray-500 mt-2">
-                        Fetching events and calculating conflict scores
-                      </p>
+                <Card className="glass-effect">
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <BarChart3 className="h-5 w-5 text-chart-info animate-pulse" />
+                      <span>Analysis in Progress</span>
+                    </CardTitle>
+                    <CardDescription>
+                      Processing your event data and calculating conflict scores
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <ProgressIndicator 
+                      steps={analysisSteps.map(step => ({
+                        ...step,
+                        status: step.id === currentAnalysisStep ? 'in-progress' : 
+                               analysisSteps.findIndex(s => s.id === step.id) < 
+                               analysisSteps.findIndex(s => s.id === currentAnalysisStep) ? 'completed' : 'pending'
+                      }))}
+                      currentStep={currentAnalysisStep}
+                      variant="vertical"
+                    />
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
+                      <MetricCard
+                        title="Data Sources"
+                        value="5+"
+                        icon={BarChart3}
+                        colorScheme="info"
+                        description="APIs being queried"
+                        isLoading={false}
+                      />
+                      <MetricCard
+                        title="Processing Time"
+                        value="~30s"
+                        icon={Clock}
+                        colorScheme="neutral"
+                        description="Estimated completion"
+                        isLoading={false}
+                      />
+                      <MetricCard
+                        title="Analysis Depth"
+                        value={openaiAvailable ? "AI+" : "STD"}
+                        icon={Zap}
+                        colorScheme={openaiAvailable ? "success" : "warning"}
+                        description={openaiAvailable ? "AI-enhanced" : "Rule-based"}
+                        isLoading={false}
+                      />
                     </div>
                   </CardContent>
                 </Card>
               )}
 
               {error && (
-                <Card>
+                <Card className="border-chart-error/20 bg-red-50/50 dark:bg-red-950/20">
                   <CardContent className="py-8">
-                    <div className="text-center">
-                      <AlertTriangle className="h-8 w-8 mx-auto mb-4 text-red-500" />
-                      <p className="text-red-600 font-medium">Analysis Failed</p>
-                      <p className="text-sm text-gray-600 mt-2">{error}</p>
-                      <Button 
-                        onClick={() => setError(null)} 
-                        variant="outline" 
-                        size="sm" 
-                        className="mt-4"
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Try Again
-                      </Button>
+                    <div className="text-center space-y-4">
+                      <AlertTriangle className="h-12 w-12 mx-auto text-chart-error" />
+                      <div>
+                        <h3 className="text-lg font-semibold text-chart-error">Analysis Failed</h3>
+                        <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">{error}</p>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                        <Button 
+                          onClick={() => setError(null)} 
+                          variant="outline" 
+                          size="sm"
+                          className="border-chart-error text-chart-error hover:bg-chart-error/10"
+                        >
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Try Again
+                        </Button>
+                        <Button 
+                          onClick={() => {
+                            setError(null);
+                            setAnalysisResult(null);
+                          }} 
+                          variant="ghost" 
+                          size="sm"
+                          className="text-muted-foreground"
+                        >
+                          Clear Results
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -200,44 +311,53 @@ export function ConflictAnalyzer() {
               {analysisResult && (
                 <>
                   {/* Analysis Method Status */}
-                  <Card className="bg-blue-50 border-blue-200">
+                  <Card className="glass-effect border-chart-info/20 bg-blue-50/50 dark:bg-blue-950/20">
                     <CardContent className="pt-6">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
-                          <Target className="h-5 w-5 text-blue-600" />
-                          <span className="font-medium text-blue-800">Analysis Method</span>
+                          <Target className="h-5 w-5 text-chart-info" />
+                          <span className="font-medium text-chart-info">Analysis Method</span>
                         </div>
                         <div className="flex items-center space-x-2">
                           {openaiAvailable ? (
-                            <>
-                              <CheckCircle className="h-4 w-4 text-green-600" />
-                              <span className="text-sm text-green-700 font-medium">AI-Powered Analysis</span>
-                            </>
+                            <SuccessBadge 
+                              label="AI-Powered Analysis" 
+                              size="sm"
+                              variant="subtle"
+                            />
                           ) : (
-                            <>
-                              <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                              <span className="text-sm text-yellow-700 font-medium">Rule-Based Analysis</span>
-                            </>
+                            <WarningBadge 
+                              label="Rule-Based Analysis" 
+                              size="sm"
+                              variant="subtle"
+                            />
                           )}
                         </div>
                       </div>
-                      <p className="text-xs text-blue-600 mt-1">
+                      <p className="text-xs text-chart-info mt-2">
                         {openaiAvailable 
-                          ? "Using OpenAI for advanced audience overlap prediction and semantic analysis"
-                          : "Using algorithmic analysis. Add OpenAI API key for enhanced AI-powered features"
+                          ? "✨ Using OpenAI for advanced audience overlap prediction and semantic analysis"
+                          : "⚡ Using algorithmic analysis. Add OpenAI API key for enhanced AI-powered features"
                         }
                       </p>
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-chart-success/20 bg-green-50/50 dark:bg-green-950/20 animate-scale-in">
                     <CardHeader>
-                      <CardTitle className="flex items-center space-x-2 text-green-600">
-                        <CheckCircle className="h-5 w-5" />
-                        <span>Recommended Dates</span>
-                      </CardTitle>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="flex items-center space-x-2 text-chart-success">
+                          <CheckCircle className="h-5 w-5" />
+                          <span>Recommended Dates</span>
+                        </CardTitle>
+                        <SuccessBadge 
+                          label={`${analysisResult.recommendedDates.length} options`}
+                          size="sm"
+                          variant="subtle"
+                        />
+                      </div>
                       <CardDescription>
-                        {analysisResult.recommendedDates.length} low-risk options found
+                        Low-risk dates with optimal conditions for your event
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
