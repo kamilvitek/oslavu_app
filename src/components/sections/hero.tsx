@@ -69,7 +69,7 @@ export function Hero() {
               
               <MetricCard
                 title="Data Sources"
-                value="5+"
+                value="2"
                 icon={BarChart3}
                 colorScheme="info"
                 description="APIs covering events, meetups, and festivals"
