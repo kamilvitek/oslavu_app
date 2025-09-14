@@ -748,8 +748,9 @@ export class ConflictAnalysisService {
       // Only very closely related categories should compete
       'Technology': ['Technology'], // Only compete with other tech events
       'Business': ['Business', 'Finance', 'Marketing'], // Business-related only
-      'Entertainment': ['Arts & Culture', 'Entertainment'],
-      'Arts & Culture': ['Entertainment', 'Arts & Culture'],
+      'Entertainment': ['Arts & Culture', 'Entertainment', 'Music'], // Music events are entertainment
+      'Music': ['Entertainment', 'Music'], // Music competes with entertainment events
+      'Arts & Culture': ['Entertainment', 'Arts & Culture', 'Music'], // Arts & Culture includes music
       'Sports': ['Sports'], // Sports only compete with sports
       'Healthcare': ['Healthcare'], // Healthcare only competes with healthcare
       'Education': ['Education'], // Education only competes with education
