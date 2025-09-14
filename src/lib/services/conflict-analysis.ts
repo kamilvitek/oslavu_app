@@ -325,6 +325,7 @@ export class ConflictAnalysisService {
     console.log(`📍 Events before location filtering: ${allEvents.length}`);
     console.log(`📍 Sample event cities:`, allEvents.slice(0, 5).map(e => ({ title: e.title, city: e.city, venue: e.venue })));
     
+    
     const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
     console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
 
@@ -769,7 +770,7 @@ export class ConflictAnalysisService {
     
     // Define city aliases and nearby cities for better matching
     const cityAliases: Record<string, string[]> = {
-      'prague': ['praha', 'prag', 'prague'],
+      'prague': ['praha', 'prag', 'prague', 'praha 1', 'praha 2', 'praha 3', 'praha 4', 'praha 5', 'praha 6', 'praha 7', 'praha 8', 'praha 9', 'praha 10', 'praha 11', 'praha 12', 'praha 13', 'praha 14', 'praha 15', 'praha 16', 'praha 17', 'praha 18', 'praha 19', 'praha 20', 'praha 21', 'praha 22'],
       'brno': ['brno', 'brünn'],
       'ostrava': ['ostrava'],
       'olomouc': ['olomouc'],
@@ -889,7 +890,7 @@ export class ConflictAnalysisService {
       const eventCity = event.city?.toLowerCase().trim() || '';
       
       // Check if event city matches any of the target city aliases
-      const isMatchingCity = targetAliases.some(alias => 
+      let isMatchingCity = targetAliases.some(alias => 
         eventCity === alias || 
         eventCity.includes(alias) || 
         alias.includes(eventCity)
@@ -943,6 +944,7 @@ export class ConflictAnalysisService {
       if (!isDuplicate) {
         uniqueEvents.push(event);
         seenEvents.add(eventKey);
+        
       }
     }
 
