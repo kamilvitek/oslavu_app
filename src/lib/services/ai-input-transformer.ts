@@ -14,7 +14,6 @@ interface TransformationParams {
 interface TicketmasterTransformation {
   city: string;
   countryCode?: string;
-  marketId?: string;
   postalCode?: string;
   classificationName?: string;
   keyword?: string;
@@ -76,7 +75,6 @@ Please provide a JSON response with optimized parameters for Ticketmaster API:
   "classificationName": "Ticketmaster classification (Music, Sports, Arts & Theatre, Film, Miscellaneous, or null for broader search)",
   "keyword": "additional search keywords to improve results (optional)",
   "radius": "search radius in miles (25, 50, 100, or 150)",
-  "marketId": "Ticketmaster market ID if applicable (optional)"
 }
 
 Guidelines:

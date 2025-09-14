@@ -139,18 +139,19 @@ export async function exampleMarketBasedSearch() {
   const endDate = '2024-10-31';
   const category = 'Entertainment';
 
-  console.log(`🏙️ Market-based search for ${category} events in ${city}`);
+  console.log(`🏙️ Geographic search for ${category} events in ${city}`);
 
-  // This will use the market ID for Berlin (DE-BER)
+  // Market ID functionality disabled - using geographic parameters instead
   const events = await ticketmasterService.getEvents({
-    marketId: 'DE-BER',
+    city: city,
+    countryCode: 'DE',
     startDateTime: `${startDate}T00:00:00Z`,
     endDateTime: `${endDate}T23:59:59Z`,
     classificationName: 'Arts & Theatre',
     size: 200
   });
 
-  console.log(`🎟️ Market-based search: Found ${events.events.length} events`);
+  console.log(`🎟️ Geographic search: Found ${events.events.length} events`);
   return events.events;
 }
 

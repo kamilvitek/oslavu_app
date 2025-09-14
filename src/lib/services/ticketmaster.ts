@@ -192,48 +192,55 @@ export class TicketmasterService {
       return { events: [], total: 0 };
     }
     
+    // Validate and sanitize parameters
+    const validation = this.validateApiParameters(params);
+    if (!validation.isValid) {
+      console.warn('🎟️ Ticketmaster: Parameter validation warnings:', validation.errors);
+    }
+    const sanitizedParams = validation.sanitizedParams;
+    
     try {
       const searchParams = new URLSearchParams({
         apikey: this.apiKey,
-        size: Math.min(params.size || 199, 199).toString(), // Ticketmaster's maximum page size is 199
-        page: (params.page || 0).toString(),
+        size: Math.min(sanitizedParams.size || 199, 199).toString(), // Ticketmaster's maximum page size is 199
+        page: (sanitizedParams.page || 0).toString(),
       });
 
-      // Add location parameters
-      if (params.city) searchParams.append('city', params.city);
-      if (params.countryCode) searchParams.append('countryCode', params.countryCode);
-      if (params.radius) searchParams.append('radius', params.radius);
-      if (params.postalCode) searchParams.append('postalCode', params.postalCode);
-      if (params.marketId) searchParams.append('marketId', params.marketId);
+      // Add location parameters (using sanitized values)
+      if (sanitizedParams.city) searchParams.append('city', sanitizedParams.city);
+      if (sanitizedParams.countryCode) searchParams.append('countryCode', sanitizedParams.countryCode);
+      if (sanitizedParams.radius) searchParams.append('radius', sanitizedParams.radius);
+      if (sanitizedParams.postalCode) searchParams.append('postalCode', sanitizedParams.postalCode);
+      // marketId removed - using geographic parameters instead
       
-      // Add date parameters
-      if (params.startDateTime) searchParams.append('startDateTime', params.startDateTime);
-      if (params.endDateTime) searchParams.append('endDateTime', params.endDateTime);
-      if (params.onsaleStartDateTime) searchParams.append('onsaleStartDateTime', params.onsaleStartDateTime);
-      if (params.onsaleEndDateTime) searchParams.append('onsaleEndDateTime', params.onsaleEndDateTime);
+      // Add date parameters (using sanitized values)
+      if (sanitizedParams.startDateTime) searchParams.append('startDateTime', sanitizedParams.startDateTime);
+      if (sanitizedParams.endDateTime) searchParams.append('endDateTime', sanitizedParams.endDateTime);
+      if (sanitizedParams.onsaleStartDateTime) searchParams.append('onsaleStartDateTime', sanitizedParams.onsaleStartDateTime);
+      if (sanitizedParams.onsaleEndDateTime) searchParams.append('onsaleEndDateTime', sanitizedParams.onsaleEndDateTime);
       
-      // Add classification parameters
-      if (params.classificationName) searchParams.append('classificationName', params.classificationName);
-      if (params.classificationId) searchParams.append('classificationId', params.classificationId);
-      if (params.segmentId) searchParams.append('segmentId', params.segmentId);
-      if (params.genreId) searchParams.append('genreId', params.genreId);
-      if (params.subGenreId) searchParams.append('subGenreId', params.subGenreId);
+      // Add classification parameters (using sanitized values)
+      if (sanitizedParams.classificationName) searchParams.append('classificationName', sanitizedParams.classificationName);
+      if (sanitizedParams.classificationId) searchParams.append('classificationId', sanitizedParams.classificationId);
+      if (sanitizedParams.segmentId) searchParams.append('segmentId', sanitizedParams.segmentId);
+      if (sanitizedParams.genreId) searchParams.append('genreId', sanitizedParams.genreId);
+      if (sanitizedParams.subGenreId) searchParams.append('subGenreId', sanitizedParams.subGenreId);
       
-      // Add search parameters
-      if (params.keyword) searchParams.append('keyword', params.keyword);
-      if (params.attractionId) searchParams.append('attractionId', params.attractionId);
-      if (params.venueId) searchParams.append('venueId', params.venueId);
-      if (params.promoterId) searchParams.append('promoterId', params.promoterId);
+      // Add search parameters (using sanitized values)
+      if (sanitizedParams.keyword) searchParams.append('keyword', sanitizedParams.keyword);
+      if (sanitizedParams.attractionId) searchParams.append('attractionId', sanitizedParams.attractionId);
+      if (sanitizedParams.venueId) searchParams.append('venueId', sanitizedParams.venueId);
+      if (sanitizedParams.promoterId) searchParams.append('promoterId', sanitizedParams.promoterId);
       
-      // Add sorting
-      if (params.sort) searchParams.append('sort', params.sort);
+      // Add sorting (using sanitized values)
+      if (sanitizedParams.sort) searchParams.append('sort', sanitizedParams.sort);
       
-      // Add additional filters
-      if (params.source) searchParams.append('source', params.source);
-      if (params.locale) searchParams.append('locale', params.locale);
-      if (params.includeTBA !== undefined) searchParams.append('includeTBA', params.includeTBA.toString());
-      if (params.includeTBD !== undefined) searchParams.append('includeTBD', params.includeTBD.toString());
-      if (params.includeTest !== undefined) searchParams.append('includeTest', params.includeTest.toString());
+      // Add additional filters (using sanitized values)
+      if (sanitizedParams.source) searchParams.append('source', sanitizedParams.source);
+      if (sanitizedParams.locale) searchParams.append('locale', sanitizedParams.locale);
+      if (sanitizedParams.includeTBA !== undefined) searchParams.append('includeTBA', sanitizedParams.includeTBA.toString());
+      if (sanitizedParams.includeTBD !== undefined) searchParams.append('includeTBD', sanitizedParams.includeTBD.toString());
+      if (sanitizedParams.includeTest !== undefined) searchParams.append('includeTest', sanitizedParams.includeTest.toString());
 
       const url = `${this.baseUrl}/events.json?${searchParams.toString()}`;
       
@@ -322,6 +329,29 @@ export class TicketmasterService {
       return { events, total };
     } catch (error) {
       console.error('Error fetching Ticketmaster events:', error);
+      
+      // Handle specific error types gracefully
+      if (error instanceof Error) {
+        // Rate limit errors
+        if (error.message.includes('rate limit') || error.message.includes('429')) {
+          console.warn('🎟️ Ticketmaster: Rate limit exceeded, returning empty results');
+          return { events: [], total: 0 };
+        }
+        
+        // API key errors
+        if (error.message.includes('API key') || error.message.includes('401') || error.message.includes('403')) {
+          console.warn('🎟️ Ticketmaster: API key issue, returning empty results');
+          return { events: [], total: 0 };
+        }
+        
+        // Network errors
+        if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('timeout')) {
+          console.warn('🎟️ Ticketmaster: Network error, returning empty results');
+          return { events: [], total: 0 };
+        }
+      }
+      
+      // For other errors, still throw to maintain error visibility
       throw error;
     }
   }
@@ -335,7 +365,24 @@ export class TicketmasterService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
-    return this.getEventsForCityPaginated(city, startDate, endDate, category);
+    // Validate input parameters
+    if (!city || !startDate || !endDate) {
+      console.warn('🎟️ Ticketmaster: Missing required parameters for getEventsForCity');
+      return [];
+    }
+    
+    // Validate date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      console.warn('🎟️ Ticketmaster: Invalid date format for getEventsForCity');
+      return [];
+    }
+    
+    try {
+      return this.getEventsForCityPaginated(city, startDate, endDate, category);
+    } catch (error) {
+      console.error('🎟️ Ticketmaster: Error in getEventsForCity:', error);
+      return [];
+    }
   }
 
   /**
@@ -349,11 +396,22 @@ export class TicketmasterService {
     radius: string = '50',
     category?: string
   ): Promise<Event[]> {
+    // Validate input parameters
+    if (!city || !startDate || !endDate) {
+      console.warn('🎟️ Ticketmaster: Missing required parameters for getEventsWithRadius');
+      return [];
+    }
+    
+    // Validate date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      console.warn('🎟️ Ticketmaster: Invalid date format for getEventsWithRadius');
+      return [];
+    }
+    
     const allEvents: Event[] = [];
     const seenEventIds = new Set<string>();
     const countryCode = this.getCityCountryCode(city);
     const postalCode = this.getCityPostalCode(city);
-    const marketId = this.getCityMarketId(city);
     const cityVariations = this.mapCityForTicketmaster(city);
     
     // Validate and sanitize radius parameter
@@ -377,7 +435,7 @@ export class TicketmasterService {
           countryCode,
           radius: radiusValue,
           postalCode,
-          marketId,
+          // marketId removed - using geographic parameters instead
           startDateTime: `${startDate}T00:00:00Z`,
           endDateTime: `${endDate}T23:59:59Z`,
           classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
@@ -675,6 +733,102 @@ export class TicketmasterService {
   }
 
   /**
+   * Validate Ticketmaster API parameters according to official specification
+   */
+  private validateApiParameters(params: {
+    city?: string;
+    countryCode?: string;
+    radius?: string;
+    postalCode?: string;
+    startDateTime?: string;
+    endDateTime?: string;
+    classificationName?: string;
+    keyword?: string;
+    size?: number;
+    page?: number;
+  }): { isValid: boolean; errors: string[]; sanitizedParams: any } {
+    const errors: string[] = [];
+    const sanitizedParams = { ...params };
+
+    // Validate radius
+    if (params.radius) {
+      const radiusValue = this.validateRadius(params.radius);
+      sanitizedParams.radius = radiusValue;
+    }
+
+    // Validate size (max 199 per Ticketmaster API)
+    if (params.size !== undefined) {
+      if (params.size < 1 || params.size > 199) {
+        errors.push(`Size must be between 1 and 199, got ${params.size}`);
+        sanitizedParams.size = Math.min(Math.max(params.size, 1), 199);
+      }
+    }
+
+    // Validate page (must be non-negative)
+    if (params.page !== undefined) {
+      if (params.page < 0) {
+        errors.push(`Page must be non-negative, got ${params.page}`);
+        sanitizedParams.page = 0;
+      }
+    }
+
+    // Validate date format (ISO 8601)
+    if (params.startDateTime) {
+      if (!this.isValidISODateTime(params.startDateTime)) {
+        errors.push(`Invalid startDateTime format: ${params.startDateTime}. Expected ISO 8601 format.`);
+      }
+    }
+
+    if (params.endDateTime) {
+      if (!this.isValidISODateTime(params.endDateTime)) {
+        errors.push(`Invalid endDateTime format: ${params.endDateTime}. Expected ISO 8601 format.`);
+      }
+    }
+
+    // Validate country code (2-letter ISO code)
+    if (params.countryCode) {
+      if (!/^[A-Z]{2}$/.test(params.countryCode)) {
+        errors.push(`Invalid countryCode format: ${params.countryCode}. Expected 2-letter ISO code.`);
+      }
+    }
+
+    // Validate postal code (basic format check)
+    if (params.postalCode) {
+      if (!/^[A-Z0-9\s-]{3,10}$/i.test(params.postalCode)) {
+        errors.push(`Invalid postalCode format: ${params.postalCode}. Expected alphanumeric format.`);
+      }
+    }
+
+    // Validate city name (basic format check)
+    if (params.city) {
+      if (params.city.length < 2 || params.city.length > 100) {
+        errors.push(`City name must be between 2 and 100 characters, got ${params.city.length}`);
+      }
+    }
+
+    // Validate keyword (basic format check)
+    if (params.keyword) {
+      if (params.keyword.length < 2 || params.keyword.length > 100) {
+        errors.push(`Keyword must be between 2 and 100 characters, got ${params.keyword.length}`);
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      sanitizedParams
+    };
+  }
+
+  /**
+   * Validate ISO 8601 date time format
+   */
+  private isValidISODateTime(dateTime: string): boolean {
+    const iso8601Regex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
+    return iso8601Regex.test(dateTime) && !isNaN(Date.parse(dateTime));
+  }
+
+  /**
    * Map city names to Ticketmaster-compatible variations
    */
   private mapCityForTicketmaster(city: string): string[] {
@@ -804,41 +958,13 @@ export class TicketmasterService {
 
   /**
    * Get Ticketmaster market ID for major cities
-   * Returns numeric market IDs for known cities
+   * DISABLED: Market ID functionality removed due to fake IDs causing zero results
+   * Using geographic parameters (city + countryCode + radius) instead for better reliability
    */
   private getCityMarketId(city: string): string | undefined {
-    const marketMap: Record<string, string> = {
-      'Prague': '353',     // Numeric market ID for Prague
-      'Berlin': '344',     // Numeric market ID for Berlin
-      'London': '102',     // Numeric market ID for London
-      'Paris': '75',       // Numeric market ID for Paris
-      'Amsterdam': '73',   // Numeric market ID for Amsterdam
-      'Vienna': '351',     // Numeric market ID for Vienna
-      'Warsaw': '352',     // Numeric market ID for Warsaw
-      'Budapest': '354',   // Numeric market ID for Budapest
-      'Zurich': '355',     // Numeric market ID for Zurich
-      'Munich': '345',     // Numeric market ID for Munich
-      'Stockholm': '356',  // Numeric market ID for Stockholm
-      'Copenhagen': '357', // Numeric market ID for Copenhagen
-      'Helsinki': '358',   // Numeric market ID for Helsinki
-      'Oslo': '359',       // Numeric market ID for Oslo
-      'Madrid': '360',     // Numeric market ID for Madrid
-      'Barcelona': '361',  // Numeric market ID for Barcelona
-      'Rome': '362',       // Numeric market ID for Rome
-      'Milan': '363',      // Numeric market ID for Milan
-      'Athens': '364',     // Numeric market ID for Athens
-      'Lisbon': '365',     // Numeric market ID for Lisbon
-      'Dublin': '366',     // Numeric market ID for Dublin
-    };
-    
-    const marketId = marketMap[city];
-    if (marketId) {
-      console.log(`🎟️ Ticketmaster: Using market ID ${marketId} for ${city}`);
-    } else {
-      console.log(`🎟️ Ticketmaster: No market ID found for ${city} - using geographic parameters instead`);
-    }
-    
-    return marketId;
+    // Market ID functionality disabled - use city + countryCode + radius for geographic targeting
+    console.log(`🎟️ Ticketmaster: Market ID lookup disabled for ${city} - using geographic parameters instead`);
+    return undefined;
   }
 
   /**
@@ -1079,23 +1205,9 @@ export class TicketmasterService {
       console.log(`🎟️ Ticketmaster: Strategy 4 failed: ${error}`);
     }
 
-    // Strategy 5: Market-based search (if market ID is available)
-    const marketId = this.getCityMarketId(city);
-    if (marketId) {
-      try {
-        console.log(`🎟️ Ticketmaster: Strategy 5 - Market-based search (${marketId})`);
-        const marketEvents = await this.getEvents({
-          marketId,
-          startDateTime: `${startDate}T00:00:00Z`,
-          endDateTime: `${endDate}T23:59:59Z`,
-          classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
-          size: 200,
-        });
-        this.addUniqueEvents(allEvents, marketEvents.events, seenEvents);
-      } catch (error) {
-        console.log(`🎟️ Ticketmaster: Strategy 5 failed: ${error}`);
-      }
-    }
+    // Strategy 5: Market-based search DISABLED
+    // Market ID functionality removed due to fake IDs causing zero results
+    console.log(`🎟️ Ticketmaster: Strategy 5 - Market-based search disabled (using geographic parameters instead)`);
 
     console.log(`🎟️ Ticketmaster: Comprehensive fallback completed - found ${allEvents.length} unique events`);
     return allEvents;
@@ -1209,6 +1321,7 @@ export class TicketmasterService {
 
   /**
    * Get events for a specific market ID
+   * DISABLED: Market ID functionality removed due to fake IDs causing zero results
    */
   private async getEventsForMarket(
     marketId: string,
@@ -1216,35 +1329,8 @@ export class TicketmasterService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
-    const allEvents: Event[] = [];
-    let page = 0;
-    const pageSize = 199;
-    let totalAvailable = 0;
-    
-    while (true) {
-      console.log(`🎟️ Ticketmaster: Fetching market page ${page + 1} for ${marketId}`);
-      
-      const { events, total } = await this.getEvents({
-        marketId,
-        startDateTime: `${startDate}T00:00:00Z`,
-        endDateTime: `${endDate}T23:59:59Z`,
-        classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
-        size: pageSize,
-        page,
-      });
-
-      allEvents.push(...events);
-      totalAvailable = total;
-      
-      if (events.length < pageSize || allEvents.length >= total || page >= 9) {
-        break;
-      }
-      
-      page++;
-    }
-    
-    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total events for market ${marketId} (${totalAvailable} available)`);
-    return allEvents;
+    console.log(`🎟️ Ticketmaster: Market-based search disabled for market ${marketId} - using geographic parameters instead`);
+    return [];
   }
 
   /**

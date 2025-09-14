@@ -40,11 +40,59 @@ export async function GET(request: NextRequest) {
       const radiusValue = parseInt(radius.replace(/[^\d]/g, ''));
       if (isNaN(radiusValue) || radiusValue < 0 || radiusValue > 19999) {
         return NextResponse.json(
-          { error: 'Radius must be a number between 0 and 19,999' },
+          { 
+            error: 'Invalid radius parameter',
+            details: 'Radius must be a number between 0 and 19,999',
+            received: radius,
+            parsed: radiusValue
+          },
           { status: 400 }
         );
       }
       cleanRadius = radiusValue.toString(); // Convert to clean number string
+    }
+
+    // Validate other parameters
+    const validationErrors: string[] = [];
+    
+    // Validate size parameter
+    if (rawSize < 1 || rawSize > 199) {
+      validationErrors.push(`Size must be between 1 and 199, got ${rawSize}`);
+    }
+    
+    // Validate page parameter
+    if (page < 0) {
+      validationErrors.push(`Page must be non-negative, got ${page}`);
+    }
+    
+    // Validate date format if provided
+    if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      validationErrors.push(`Invalid startDate format: ${startDate}. Expected YYYY-MM-DD format.`);
+    }
+    
+    if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      validationErrors.push(`Invalid endDate format: ${endDate}. Expected YYYY-MM-DD format.`);
+    }
+    
+    // Return validation errors if any
+    if (validationErrors.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Parameter validation failed',
+          details: validationErrors,
+          received: {
+            city,
+            startDate,
+            endDate,
+            category,
+            keyword,
+            radius,
+            page,
+            size: rawSize
+          }
+        },
+        { status: 400 }
+      );
     }
 
     console.log('🎟️ Ticketmaster API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
@@ -191,7 +239,7 @@ export async function GET(request: NextRequest) {
           countryCode: transformedParams?.countryCode,
           radius: searchRadius,
           postalCode: transformedParams?.postalCode,
-          marketId: transformedParams?.marketId,
+          // marketId removed - using geographic parameters instead
           startDateTime: `${startDate}T00:00:00Z`,
           endDateTime: `${endDate}T23:59:59Z`,
           classificationName: searchCategory || undefined, // Only pass if not undefined
@@ -207,7 +255,7 @@ export async function GET(request: NextRequest) {
         const result = await ticketmasterService.getEvents({
           city: searchCity || undefined,
           countryCode: transformedParams?.countryCode,
-          marketId: transformedParams?.marketId,
+          // marketId removed - using geographic parameters instead
           startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
           endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
           classificationName: searchClassification || undefined,
@@ -219,7 +267,56 @@ export async function GET(request: NextRequest) {
       }
     } catch (serviceError) {
       console.error('🎟️ Ticketmaster service error:', serviceError);
-      // Return empty results instead of failing
+      
+      // Handle specific error types gracefully
+      if (serviceError instanceof Error) {
+        // Rate limit errors
+        if (serviceError.message.includes('rate limit') || serviceError.message.includes('429')) {
+          console.warn('🎟️ Ticketmaster: Rate limit exceeded');
+          return NextResponse.json({
+            success: false,
+            error: 'Rate limit exceeded',
+            data: {
+              events: [],
+              total: 0,
+              source: 'ticketmaster',
+              message: 'Ticketmaster API rate limit exceeded. Please try again later.'
+            }
+          }, { status: 429 });
+        }
+        
+        // API key errors
+        if (serviceError.message.includes('API key') || serviceError.message.includes('401') || serviceError.message.includes('403')) {
+          console.warn('🎟️ Ticketmaster: API key issue');
+          return NextResponse.json({
+            success: false,
+            error: 'API key issue',
+            data: {
+              events: [],
+              total: 0,
+              source: 'ticketmaster',
+              message: 'Ticketmaster API key issue. Please check configuration.'
+            }
+          }, { status: 401 });
+        }
+        
+        // Network errors
+        if (serviceError.message.includes('fetch') || serviceError.message.includes('network') || serviceError.message.includes('timeout')) {
+          console.warn('🎟️ Ticketmaster: Network error');
+          return NextResponse.json({
+            success: false,
+            error: 'Network error',
+            data: {
+              events: [],
+              total: 0,
+              source: 'ticketmaster',
+              message: 'Network error connecting to Ticketmaster API. Please try again later.'
+            }
+          }, { status: 503 });
+        }
+      }
+      
+      // For other errors, return empty results instead of failing
       events = [];
     }
 
@@ -252,6 +349,29 @@ export async function GET(request: NextRequest) {
       searchParams: Object.fromEntries(new URL(request.url).searchParams),
       timestamp: new Date().toISOString()
     });
+    
+    // Handle specific error types
+    if (error instanceof Error) {
+      // Parameter validation errors
+      if (error.message.includes('validation') || error.message.includes('Invalid')) {
+        return NextResponse.json({
+          success: false,
+          error: 'Parameter validation failed',
+          details: error.message,
+          timestamp: new Date().toISOString()
+        }, { status: 400 });
+      }
+      
+      // API errors
+      if (error.message.includes('Ticketmaster API')) {
+        return NextResponse.json({
+          success: false,
+          error: 'Ticketmaster API error',
+          details: error.message,
+          timestamp: new Date().toISOString()
+        }, { status: 502 });
+      }
+    }
     
     // Return empty results instead of failing to keep the analysis working
     return NextResponse.json({
