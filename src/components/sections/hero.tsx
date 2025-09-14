@@ -45,16 +45,12 @@ export function Hero() {
           
           {/* CTA buttons with animation */}
           <div className={`transition-all duration-1000 delay-500 ${isVisible ? 'animate-fade-in-up opacity-100' : 'opacity-0 translate-y-8'}`}>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
+            <div className="flex justify-center mb-16">
               <Button size="lg" className="text-lg px-8 py-4 h-auto interactive-element shadow-lg" asChild>
                 <Link href="#conflict-analyzer">
                   <Target className="mr-2 h-5 w-5" />
-                  Get Your Date Score
+                  Get Your Date
                 </Link>
-              </Button>
-              <Button variant="outline" size="lg" className="text-lg px-8 py-4 h-auto glass-effect hover:bg-background/50">
-                <BarChart3 className="mr-2 h-5 w-5" />
-                View Sample Analysis
               </Button>
             </div>
           </div>
