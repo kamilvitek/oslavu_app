@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
           useComprehensiveFallback
         });
         
-        // Use direct getEvents method for better reliability
+        // Use direct getEvents method for better reliability, with comprehensive fallback if needed
         const result = await ticketmasterService.getEvents({
           city: searchCity,
           countryCode: transformedParams?.countryCode,
@@ -225,6 +225,18 @@ export async function GET(request: NextRequest) {
           page,
         });
         events = result.events;
+        
+        // If no events found and useComprehensiveFallback is enabled, try comprehensive fallback
+        if (events.length === 0 && useComprehensiveFallback) {
+          console.log('🎟️ Ticketmaster: No events found with direct search, trying comprehensive fallback');
+          events = await ticketmasterService.getEventsWithComprehensiveFallback(
+            searchCity,
+            startDate,
+            endDate,
+            searchCategory || undefined,
+            searchRadius || '50'
+          );
+        }
       } else {
         // Get general events with transformed params
         const searchCity = transformedParams?.city || city;

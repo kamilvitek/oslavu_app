@@ -1138,7 +1138,7 @@ export class TicketmasterService {
   }
 
   /**
-   * Get events with comprehensive fallback strategy including radius search
+   * Get events with comprehensive fallback strategy including radius search and date flexibility
    */
   async getEventsWithComprehensiveFallback(
     city: string,
@@ -1150,7 +1150,21 @@ export class TicketmasterService {
     const allEvents: Event[] = [];
     const seenEvents = new Set<string>();
 
-    // Strategy 1: Exact city match with category
+    // Check if the date range is too far in the future (more than 6 months)
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+    const now = new Date();
+    const sixMonthsFromNow = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate());
+    
+    const isFarFuture = startDateObj > sixMonthsFromNow;
+    
+    if (isFarFuture) {
+      console.log(`🎟️ Ticketmaster: Date range ${startDate} to ${endDate} is more than 6 months in the future`);
+      console.log(`🎟️ Ticketmaster: Ticketmaster typically doesn't have events scheduled this far in advance`);
+      console.log(`🎟️ Ticketmaster: Will search for available events and apply temporal fallback strategies`);
+    }
+
+    // Strategy 1: Exact city match with category (original date range)
     if (category) {
       try {
         console.log(`🎟️ Ticketmaster: Strategy 1 - Exact city match with category "${category}"`);
@@ -1166,7 +1180,7 @@ export class TicketmasterService {
       }
     }
 
-    // Strategy 2: Exact city match without category
+    // Strategy 2: Exact city match without category (original date range)
     try {
       console.log(`🎟️ Ticketmaster: Strategy 2 - Exact city match without category`);
       const cityEvents = await this.getEventsForCity(city, startDate, endDate);
@@ -1180,10 +1194,48 @@ export class TicketmasterService {
       console.log(`🎟️ Ticketmaster: Strategy 2 failed: ${error}`);
     }
 
-    // Strategy 3: Radius search with category
+    // Strategy 3: Temporal fallback - search nearer dates if original range is far future
+    if (isFarFuture && allEvents.length < 5) {
+      try {
+        console.log(`🎟️ Ticketmaster: Strategy 3 - Temporal fallback to nearer dates`);
+        
+        // Search the next 6 months for similar events
+        const nearStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        const nearEndDate = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate());
+        
+        const nearStartStr = nearStartDate.toISOString().split('T')[0];
+        const nearEndStr = nearEndDate.toISOString().split('T')[0];
+        
+        console.log(`🎟️ Ticketmaster: Searching ${nearStartStr} to ${nearEndStr} for reference events`);
+        
+        const nearEvents = category 
+          ? await this.getEventsForCity(city, nearStartStr, nearEndStr, category)
+          : await this.getEventsForCity(city, nearStartStr, nearEndStr);
+        
+        // Mark these as reference events for the far future
+        const referenceEvents = nearEvents.map(event => ({
+          ...event,
+          id: `ref_${event.id}`,
+          title: `${event.title} (Reference Event - Similar events may occur in ${startDate.substring(0, 7)})`,
+          date: startDate, // Project to the requested date
+          description: `${event.description}\n\nNote: This is a reference event. Similar events typically occur around this time of year. The actual ${endDate.substring(0, 7)} schedule may not be available yet.`
+        }));
+        
+        this.addUniqueEvents(allEvents, referenceEvents, seenEvents);
+        
+        if (allEvents.length >= 10) {
+          console.log(`🎟️ Ticketmaster: Found ${allEvents.length} events with temporal fallback, returning`);
+          return allEvents;
+        }
+      } catch (error) {
+        console.log(`🎟️ Ticketmaster: Strategy 3 (temporal fallback) failed: ${error}`);
+      }
+    }
+
+    // Strategy 4: Radius search with category
     if (category) {
       try {
-        console.log(`🎟️ Ticketmaster: Strategy 3 - Radius search (${radius} miles) with category "${category}"`);
+        console.log(`🎟️ Ticketmaster: Strategy 4 - Radius search (${radius} miles) with category "${category}"`);
         const radiusCategoryEvents = await this.getEventsWithRadius(city, startDate, endDate, radius, category);
         this.addUniqueEvents(allEvents, radiusCategoryEvents, seenEvents);
         
@@ -1192,24 +1244,58 @@ export class TicketmasterService {
           return allEvents;
         }
       } catch (error) {
-        console.log(`🎟️ Ticketmaster: Strategy 3 failed: ${error}`);
+        console.log(`🎟️ Ticketmaster: Strategy 4 failed: ${error}`);
       }
     }
 
-    // Strategy 4: Radius search without category
+    // Strategy 5: Radius search without category
     try {
-      console.log(`🎟️ Ticketmaster: Strategy 4 - Radius search (${radius} miles) without category`);
+      console.log(`🎟️ Ticketmaster: Strategy 5 - Radius search (${radius} miles) without category`);
       const radiusEvents = await this.getEventsWithRadius(city, startDate, endDate, radius);
       this.addUniqueEvents(allEvents, radiusEvents, seenEvents);
     } catch (error) {
-      console.log(`🎟️ Ticketmaster: Strategy 4 failed: ${error}`);
+      console.log(`🎟️ Ticketmaster: Strategy 5 failed: ${error}`);
     }
 
-    // Strategy 5: Market-based search DISABLED
-    // Market ID functionality removed due to fake IDs causing zero results
-    console.log(`🎟️ Ticketmaster: Strategy 5 - Market-based search disabled (using geographic parameters instead)`);
+    // Strategy 6: Broader temporal search if still no results and far future
+    if (allEvents.length === 0 && isFarFuture) {
+      try {
+        console.log(`🎟️ Ticketmaster: Strategy 6 - Broader temporal search for any events in the city`);
+        
+        // Search any available events in the city (no date restriction)
+        const { events: anyEvents } = await this.getEvents({
+          city,
+          countryCode: this.getCityCountryCode(city),
+          classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
+          size: 10,
+          page: 0,
+        });
+        
+        if (anyEvents.length > 0) {
+          // Project these events as "similar events may occur"
+          const projectedEvents = anyEvents.map(event => ({
+            ...event,
+            id: `proj_${event.id}`,
+            title: `${event.title} (Similar Event - Check for ${startDate.substring(0, 7)} Schedule)`,
+            date: startDate, // Project to the requested date
+            description: `${event.description}\n\nNote: This type of event occurs in ${city}. Check the venue's official schedule for ${endDate.substring(0, 7)} availability.`
+          }));
+          
+          this.addUniqueEvents(allEvents, projectedEvents, seenEvents);
+        }
+      } catch (error) {
+        console.log(`🎟️ Ticketmaster: Strategy 6 (broader temporal) failed: ${error}`);
+      }
+    }
 
     console.log(`🎟️ Ticketmaster: Comprehensive fallback completed - found ${allEvents.length} unique events`);
+    
+    if (allEvents.length === 0 && isFarFuture) {
+      console.log(`🎟️ Ticketmaster: No events found for ${city} in ${startDate.substring(0, 7)}`);
+      console.log(`🎟️ Ticketmaster: This is likely because Ticketmaster doesn't have events scheduled that far in advance`);
+      console.log(`🎟️ Ticketmaster: Consider checking back closer to the date or contacting venues directly`);
+    }
+    
     return allEvents;
   }
 

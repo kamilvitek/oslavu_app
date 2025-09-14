@@ -134,7 +134,7 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       size: '199', // Ticketmaster's maximum page size limit
-      useComprehensiveFallback: params.useComprehensiveFallback ? 'true' : 'false'
+      useComprehensiveFallback: params.useComprehensiveFallback !== false ? 'true' : 'false' // Default to true
     });
 
     // Add radius only for PredictHQ (Ticketmaster city variations work better without radius)
