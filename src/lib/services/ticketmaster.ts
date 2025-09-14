@@ -445,9 +445,12 @@ export class TicketmasterService {
 
         // Add unique events only
         for (const event of events) {
-          if (!seenEventIds.has(event.sourceId)) {
+          if (event.sourceId && !seenEventIds.has(event.sourceId)) {
             allEvents.push(event);
             seenEventIds.add(event.sourceId);
+          } else if (!event.sourceId) {
+            // If no sourceId, add the event anyway (can't deduplicate)
+            allEvents.push(event);
           }
         }
         
@@ -507,9 +510,12 @@ export class TicketmasterService {
 
         // Add unique events only
         for (const event of events) {
-          if (!seenEventIds.has(event.sourceId)) {
+          if (event.sourceId && !seenEventIds.has(event.sourceId)) {
             allEvents.push(event);
             seenEventIds.add(event.sourceId);
+          } else if (!event.sourceId) {
+            // If no sourceId, add the event anyway (can't deduplicate)
+            allEvents.push(event);
           }
         }
         

@@ -3,6 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ticketmasterService } from '@/lib/services/ticketmaster';
 import { Event } from '@/types';
 
+// Define the interface for transformed parameters
+interface TicketmasterTransformation {
+  city?: string;
+  countryCode?: string;
+  postalCode?: string;
+  classificationName?: string;
+  keyword?: string;
+  radius?: string;
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Log environment check
@@ -144,7 +154,7 @@ export async function GET(request: NextRequest) {
 
     try {
       // Apply input optimizations for Ticketmaster API
-      let transformedParams = null;
+      let transformedParams: TicketmasterTransformation | null = null;
       // Note: AI transformer temporarily disabled to ensure basic Ticketmaster integration works
       // TODO: Re-enable and optimize AI transformer after confirming basic functionality
       console.log('🔧 Using basic Ticketmaster integration (AI transformer disabled)');
@@ -153,16 +163,9 @@ export async function GET(request: NextRequest) {
       const isComprehensiveSearch = searchParams.get('comprehensive') === 'true';
 
       if (isComprehensiveSearch && city && startDate && endDate) {
-        // Use the new comprehensive multi-strategy search with transformed params
-        const searchCity = transformedParams?.city || city;
-        const searchCategory = transformedParams?.classificationName ? 
-          Object.entries({
-            'Music': 'Music',
-            'Sports': 'Sports', 
-            'Arts & Theatre': 'Arts & Culture',
-            'Miscellaneous': category
-          }).find(([key]) => key === transformedParams.classificationName)?.[1] || category : 
-          category;
+        // Use the new comprehensive multi-strategy search (AI transformer disabled, using original params)
+        const searchCity = city;
+        const searchCategory = category;
         
         events = await ticketmasterService.getEventsComprehensive(
           searchCity,
@@ -170,21 +173,21 @@ export async function GET(request: NextRequest) {
           endDate,
           searchCategory || undefined
         );
-      } else if (keyword || transformedParams?.keyword) {
-        // Search by keyword with full transformed parameters
-        const searchKeyword = transformedParams?.keyword || keyword;
-        const searchCity = transformedParams?.city || city;
+      } else if (keyword) {
+        // Search by keyword (AI transformer disabled, using original params)
+        const searchKeyword = keyword;
+        const searchCity = city;
         
         // Ensure we have a valid keyword string before calling searchEvents
         if (searchKeyword) {
           // Use getEvents with full parameters instead of limited searchEvents
           const result = await ticketmasterService.getEvents({
             city: searchCity || undefined,
-            countryCode: transformedParams?.countryCode,
-            radius: transformedParams?.radius || radius?.replace(/[^\d]/g, '') || undefined,
+            countryCode: undefined,
+            radius: radius?.replace(/[^\d]/g, '') || undefined,
             startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
             endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
-            classificationName: transformedParams?.classificationName || category,
+            classificationName: category || undefined,
             keyword: searchKeyword,
             page,
             size,
@@ -195,12 +198,12 @@ export async function GET(request: NextRequest) {
           events = [];
         }
       } else if (city && startDate && endDate) {
-        // Get events for city and date range - use direct getEvents method for better reliability
-        const searchCity = transformedParams?.city || city;
-        const searchRadius = transformedParams?.radius || cleanRadius;
+        // Get events for city and date range - use direct getEvents method for better reliability (AI transformer disabled, using original params)
+        const searchCity = city;
+        const searchRadius = cleanRadius;
         
         // Use the Ticketmaster service's category mapping (don't duplicate logic)
-        const searchCategory = transformedParams?.classificationName || category;
+        const searchCategory = category;
         
         console.log('🎟️ Using direct getEvents method for city search:', {
           city: searchCity,
@@ -214,9 +217,9 @@ export async function GET(request: NextRequest) {
         // Use direct getEvents method for better reliability, with comprehensive fallback if needed
         const result = await ticketmasterService.getEvents({
           city: searchCity,
-          countryCode: transformedParams?.countryCode,
-          radius: searchRadius,
-          postalCode: transformedParams?.postalCode,
+          countryCode: undefined,
+          radius: searchRadius || undefined,
+          postalCode: undefined,
           // marketId removed - using geographic parameters instead
           startDateTime: `${startDate}T00:00:00Z`,
           endDateTime: `${endDate}T23:59:59Z`,
@@ -238,18 +241,18 @@ export async function GET(request: NextRequest) {
           );
         }
       } else {
-        // Get general events with transformed params
-        const searchCity = transformedParams?.city || city;
-        const searchClassification = transformedParams?.classificationName || category;
+        // Get general events (AI transformer disabled, using original params)
+        const searchCity = city;
+        const searchClassification = category;
         
         const result = await ticketmasterService.getEvents({
           city: searchCity || undefined,
-          countryCode: transformedParams?.countryCode,
+          countryCode: undefined,
           // marketId removed - using geographic parameters instead
           startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
           endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
           classificationName: searchClassification || undefined,
-          keyword: transformedParams?.keyword,
+          keyword: keyword || undefined,
           page,
           size,
         });
@@ -411,8 +414,8 @@ export async function POST(request: NextRequest) {
       console.error('🧪 Test connection failed:', error);
       return NextResponse.json({ 
         success: false, 
-        error: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : undefined
       }, { status: 500 });
     }
   } catch (error) {
@@ -420,7 +423,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: false, 
       error: 'Invalid request format',
-      details: error.message
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 400 });
   }
 }
