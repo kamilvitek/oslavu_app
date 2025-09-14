@@ -276,6 +276,7 @@ export class TicketmasterService {
 
   /**
    * Get events with radius-based search for better geographic coverage
+   * Now searches multiple city variations to handle district names like "Praha 9"
    */
   async getEventsWithRadius(
     city: string,
@@ -284,47 +285,63 @@ export class TicketmasterService {
     radius: string = '50',
     category?: string
   ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+    const seenEventIds = new Set<string>();
     const countryCode = this.getCityCountryCode(city);
     const postalCode = this.getCityPostalCode(city);
     const marketId = this.getCityMarketId(city);
+    const cityVariations = this.mapCityForTicketmaster(city);
     
     // Validate and sanitize radius parameter
     const radiusValue = this.validateRadius(radius);
     
-    console.log(`🎟️ Ticketmaster: Searching ${city} with radius ${radiusValue} miles`);
+    console.log(`🎟️ Ticketmaster: Searching ${city} using variations: ${cityVariations.join(', ')} with radius ${radiusValue} miles`);
     
-    const allEvents: Event[] = [];
-    let page = 0;
-    const pageSize = 199;
-    let totalAvailable = 0;
-    
-    while (true) {
-      console.log(`🎟️ Ticketmaster: Fetching page ${page + 1} for ${city} (radius: ${radiusValue} miles)`);
+    // Search each city variation with radius
+    for (const cityVariation of cityVariations) {
+      let page = 0;
+      const pageSize = 199;
+      let totalAvailable = 0;
       
-      const { events, total } = await this.getEvents({
-        city,
-        countryCode,
-        radius: radiusValue,
-        postalCode,
-        marketId,
-        startDateTime: `${startDate}T00:00:00Z`,
-        endDateTime: `${endDate}T23:59:59Z`,
-        classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
-        size: pageSize,
-        page,
-      });
+      console.log(`🎟️ Ticketmaster: Searching city variation "${cityVariation}" with radius ${radiusValue} miles`);
+      
+      while (true) {
+        console.log(`🎟️ Ticketmaster: Fetching page ${page + 1} for ${cityVariation} (radius: ${radiusValue} miles)`);
+        
+        const { events, total } = await this.getEvents({
+          city: cityVariation,
+          countryCode,
+          radius: radiusValue,
+          postalCode,
+          marketId,
+          startDateTime: `${startDate}T00:00:00Z`,
+          endDateTime: `${endDate}T23:59:59Z`,
+          classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
+          size: pageSize,
+          page,
+        });
 
-      allEvents.push(...events);
-      totalAvailable = total;
-      
-      if (events.length < pageSize || allEvents.length >= total || page >= 9) {
-        break;
+        // Add unique events only
+        for (const event of events) {
+          if (!seenEventIds.has(event.sourceId)) {
+            allEvents.push(event);
+            seenEventIds.add(event.sourceId);
+          }
+        }
+        
+        totalAvailable = total;
+        
+        if (events.length < pageSize || events.length >= total || page >= 9) {
+          break;
+        }
+        
+        page++;
       }
       
-      page++;
+      console.log(`🎟️ Ticketmaster: Found ${totalAvailable} events for city variation "${cityVariation}" with radius ${radiusValue} miles`);
     }
     
-    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total events for ${city} with radius ${radiusValue} miles (${totalAvailable} available)`);
+    console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total unique events for ${city} across all variations with radius ${radiusValue} miles`);
     return allEvents;
   }
 

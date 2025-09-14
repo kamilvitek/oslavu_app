@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
     const rawSize = parseInt(searchParams.get('size') || '200');
     const size = Math.min(rawSize, 199); // Ticketmaster's maximum page size is 199
 
-    // Validate radius parameter
+    // Validate radius parameter and clean format
+    let cleanRadius = radius;
     if (radius) {
       const radiusValue = parseInt(radius.replace(/[^\d]/g, ''));
       if (isNaN(radiusValue) || radiusValue < 0 || radiusValue > 19999) {
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
+      cleanRadius = radiusValue.toString(); // Convert to clean number string
     }
 
     console.log('🎟️ Ticketmaster API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
@@ -129,7 +131,7 @@ export async function GET(request: NextRequest) {
       } else if (city && startDate && endDate) {
         // Get events for city and date range with radius and fallback options
         const searchCity = transformedParams?.city || city;
-        const searchRadius = transformedParams?.radius || radius?.replace(/[^\d]/g, '') || '50';
+        const searchRadius = transformedParams?.radius || cleanRadius || '50';
         const searchCategory = transformedParams?.classificationName ? 
           Object.entries({
             'Music': 'Music',
@@ -147,12 +149,12 @@ export async function GET(request: NextRequest) {
             searchCategory || undefined,
             searchRadius
           );
-        } else if (radius || transformedParams?.radius) {
+        } else if (cleanRadius || transformedParams?.radius) {
           events = await ticketmasterService.getEventsWithRadius(
             searchCity,
             startDate,
             endDate,
-            searchRadius,
+            cleanRadius || transformedParams?.radius || '50',
             searchCategory || undefined
           );
         } else {

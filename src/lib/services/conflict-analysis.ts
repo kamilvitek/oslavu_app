@@ -134,9 +134,13 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       size: '500', // Increased from 100 to 500 for better event coverage
-      radius: params.searchRadius || '50km', // Default radius
       useComprehensiveFallback: params.useComprehensiveFallback ? 'true' : 'false'
     });
+
+    // Add radius only for PredictHQ (Ticketmaster city variations work better without radius)
+    const ticketmasterQueryParams = new URLSearchParams(queryParams);
+    const predicthqQueryParams = new URLSearchParams(queryParams);
+    predicthqQueryParams.set('radius', params.searchRadius || '50km');
 
     console.log('Fetching events with params:', queryParams.toString());
 
@@ -155,8 +159,8 @@ export class ConflictAnalysisService {
     console.log('- TICKETMASTER_API_KEY:', !!process.env.TICKETMASTER_API_KEY);
     console.log('- PREDICTHQ_API_KEY:', !!process.env.PREDICTHQ_API_KEY);
     console.log('API URLs being called:');
-    console.log('- Ticketmaster:', `${baseUrl}/api/analyze/events/ticketmaster?${queryParams.toString()}`);
-    console.log('- PredictHQ:', `${baseUrl}/api/analyze/events/predicthq?${queryParams.toString()}`);
+    console.log('- Ticketmaster:', `${baseUrl}/api/analyze/events/ticketmaster?${ticketmasterQueryParams.toString()}`);
+    console.log('- PredictHQ:', `${baseUrl}/api/analyze/events/predicthq?${predicthqQueryParams.toString()}`);
     console.log('- Brno:', `${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd
@@ -166,7 +170,17 @@ export class ConflictAnalysisService {
     const useComprehensiveSearch = params.useComprehensiveFallback || false;
     
     // Create comprehensive search query params
-    const comprehensiveQueryParams = new URLSearchParams({
+    const comprehensiveTicketmasterParams = new URLSearchParams({
+      city: params.city,
+      startDate: params.dateRangeStart,
+      endDate: params.dateRangeEnd,
+      category: params.category,
+      comprehensive: 'true', // Enable comprehensive search
+      size: '500'
+      // No radius for Ticketmaster comprehensive search
+    });
+
+    const comprehensivePredicthqParams = new URLSearchParams({
       city: params.city,
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
@@ -178,8 +192,8 @@ export class ConflictAnalysisService {
 
     // Fetch from Ticketmaster, PredictHQ, and Brno ArcGIS in parallel
     const [ticketmasterResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
-      fetch(`${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveQueryParams.toString() : queryParams.toString()}`),
-      fetch(`${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensiveQueryParams.toString() : queryParams.toString()}`),
+      fetch(`${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveTicketmasterParams.toString() : ticketmasterQueryParams.toString()}`),
+      fetch(`${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensivePredicthqParams.toString() : predicthqQueryParams.toString()}`),
       fetch(`${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
         startDate: params.dateRangeStart,
         endDate: params.dateRangeEnd
