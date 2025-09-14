@@ -148,7 +148,7 @@ export async function exampleMarketBasedSearch() {
     startDateTime: `${startDate}T00:00:00Z`,
     endDateTime: `${endDate}T23:59:59Z`,
     classificationName: 'Arts & Theatre',
-    size: 200
+    size: 199 // Ticketmaster's maximum page size
   });
 
   console.log(`🎟️ Geographic search: Found ${events.events.length} events`);
@@ -173,7 +173,7 @@ export async function examplePostalCodeSearch() {
     startDateTime: `${startDate}T00:00:00Z`,
     endDateTime: `${endDate}T23:59:59Z`,
     classificationName: 'Arts & Theatre',
-    size: 200
+    size: 199 // Ticketmaster's maximum page size
   });
 
   console.log(`🎟️ Postal code search: Found ${events.events.length} events`);

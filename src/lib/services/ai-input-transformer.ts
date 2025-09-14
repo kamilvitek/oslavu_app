@@ -151,16 +151,21 @@ Respond with only valid JSON.`;
     
     const countryCode = countryMap[normalizedCity.toLowerCase()];
     
-    // Map category to Ticketmaster classification
+    // Map category to Ticketmaster classification - use undefined for better broader search
     const categoryMap: Record<string, string | undefined> = {
-      'Technology': 'Miscellaneous',
-      'Business': 'Miscellaneous',
-      'Marketing': 'Miscellaneous',
-      'Finance': 'Miscellaneous',
+      'Technology': undefined, // Business events are often better found with broader search
+      'Business': undefined,   // Business events vary widely in classification
+      'Marketing': undefined,  // Marketing events could be in various segments
+      'Finance': undefined,    // Finance events could be in various segments
+      'Conferences': undefined, // Conferences span multiple segments
       'Entertainment': 'Arts & Theatre',
       'Arts & Culture': 'Arts & Theatre',
       'Music': 'Music',
       'Sports': 'Sports',
+      'Film': 'Film',
+      'Movies': 'Film',
+      'Theater': 'Arts & Theatre',
+      'Theatre': 'Arts & Theatre',
       'Other': undefined,
     };
     
@@ -174,12 +179,22 @@ Respond with only valid JSON.`;
       radius = '100'; // Larger radius for business events
     }
     
-    // Generate keywords for better search
+    // Generate keywords for better search - more specific and effective
     let keyword = undefined;
     if (params.category === 'Technology') {
-      keyword = 'tech conference summit';
+      keyword = 'tech conference summit innovation startup digital';
     } else if (params.category === 'Business') {
-      keyword = 'business conference networking';
+      keyword = 'business conference summit networking professional';
+    } else if (params.category === 'Marketing') {
+      keyword = 'marketing conference summit advertising digital';
+    } else if (params.category === 'Finance') {
+      keyword = 'finance conference summit fintech banking investment';
+    } else if (params.category === 'Conferences') {
+      keyword = 'conference summit symposium meeting professional';
+    } else if (params.category === 'Education') {
+      keyword = 'education conference summit academic learning';
+    } else if (params.category === 'Healthcare') {
+      keyword = 'medical conference summit healthcare health';
     } else if (params.subcategory) {
       keyword = params.subcategory;
     }

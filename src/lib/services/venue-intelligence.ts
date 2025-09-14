@@ -15,7 +15,7 @@ export class VenueIntelligenceService {
   /**
    * Get comprehensive venue intelligence for a specific venue and date
    */
-  async getVenueIntelligence(venueName: string, date: string): Promise<VenueIntelligence> {
+  async getVenueIntelligence(venueName: string, date: string, city?: string): Promise<VenueIntelligence> {
     try {
       // Get venue basic information
       const venueInfo = await this.getVenueInfo(venueName);
@@ -50,7 +50,7 @@ export class VenueIntelligenceService {
     } catch (error) {
       console.error('Error getting venue intelligence:', error);
       // Return default venue intelligence if error occurs
-      return this.getDefaultVenueIntelligence(venueName, date);
+      return this.getDefaultVenueIntelligence(venueName, date, city);
     }
   }
 
@@ -60,9 +60,10 @@ export class VenueIntelligenceService {
   async analyzeVenueConflict(
     venueName: string, 
     date: string, 
-    expectedAttendees: number
+    expectedAttendees: number,
+    city?: string
   ): Promise<VenueConflictAnalysis> {
-    const intelligence = await this.getVenueIntelligence(venueName, date);
+    const intelligence = await this.getVenueIntelligence(venueName, date, city);
     
     // Calculate capacity utilization
     const capacityUtilization = this.calculateCapacityUtilization(
@@ -599,46 +600,184 @@ export class VenueIntelligenceService {
     };
   }
 
-  private getDefaultVenueIntelligence(venueName: string, date: string): VenueIntelligence {
+  private getDefaultVenueIntelligence(venueName: string, date: string, city?: string): VenueIntelligence {
+    // Dynamic capacity based on venue name patterns
+    const capacity = this.estimateVenueCapacity(venueName);
+    
+    // Dynamic pricing based on city and venue type
+    const basePrice = this.estimateVenueBasePrice(venueName, city);
+    
+    // Get city-specific coordinates and details
+    const locationData = this.getCityLocationData(city || 'Prague');
+    
     return {
       venueId: `default_${venueName.replace(/\s+/g, '_').toLowerCase()}`,
       name: venueName,
-      capacity: 200,
+      capacity,
       currentBookings: [],
       pricingTiers: [{
         date,
-        basePrice: 1000,
+        basePrice,
         multiplier: 1.0,
         availability: 'available',
-        minimumBooking: 20
+        minimumBooking: Math.max(10, Math.floor(capacity * 0.1)) // 10% of capacity minimum
       }],
       competitorEvents: [],
       demandForecast: {
         date,
         demandLevel: 0.5,
         factors: {
-          seasonality: 1.0,
+          seasonality: this.getSeasonalityFactor(date),
           competitorActivity: 0.5,
-          economicFactors: 0.8,
+          economicFactors: this.getEconomicFactor(city),
           socialTrends: 0.9
         },
         confidence: 0.5,
         recommendations: ['Standard market conditions']
       },
-      amenities: ['wifi', 'parking'],
+      amenities: this.getDefaultAmenities(venueName),
       location: {
-        address: `${venueName}, City Center`,
-        city: 'Prague',
-        coordinates: { lat: 50.0755, lng: 14.4378 },
+        address: `${venueName}, ${locationData.cityCenter}`,
+        city: locationData.city,
+        coordinates: locationData.coordinates,
         accessibility: ['wheelchair_accessible']
       },
       reputation: {
         rating: 4.0,
-        reviews: 100,
+        reviews: this.estimateReviewCount(capacity),
         cancellationRate: 0.05,
         organizerSatisfaction: 0.8
       }
     };
+  }
+
+  private estimateVenueCapacity(venueName: string): number {
+    const name = venueName.toLowerCase();
+    
+    // Estimate based on venue type indicators
+    if (name.includes('stadium') || name.includes('arena')) return 15000;
+    if (name.includes('theater') || name.includes('theatre')) return 800;
+    if (name.includes('conference center') || name.includes('convention')) return 2000;
+    if (name.includes('hotel') || name.includes('ballroom')) return 300;
+    if (name.includes('club') || name.includes('bar')) return 150;
+    if (name.includes('hall') || name.includes('center')) return 500;
+    if (name.includes('auditorium')) return 1200;
+    if (name.includes('gallery') || name.includes('museum')) return 100;
+    
+    // Default capacity for unknown venue types
+    return 200;
+  }
+
+  private estimateVenueBasePrice(venueName: string, city?: string): number {
+    const capacity = this.estimateVenueCapacity(venueName);
+    const cityMultiplier = this.getCityPriceMultiplier(city);
+    
+    // Base price calculation: €0.5-2 per person capacity depending on venue type
+    let baseRate = 1.0; // €1 per person base rate
+    
+    const name = venueName.toLowerCase();
+    if (name.includes('premium') || name.includes('luxury')) baseRate = 2.0;
+    else if (name.includes('budget') || name.includes('basic')) baseRate = 0.5;
+    else if (name.includes('conference') || name.includes('business')) baseRate = 1.5;
+    
+    return Math.round(capacity * baseRate * cityMultiplier);
+  }
+
+  private getCityPriceMultiplier(city?: string): number {
+    if (!city) return 1.0;
+    
+    const cityMultipliers: Record<string, number> = {
+      'Prague': 0.8,
+      'London': 2.0,
+      'Paris': 1.8,
+      'Berlin': 1.2,
+      'Vienna': 1.1,
+      'Amsterdam': 1.5,
+      'Zurich': 2.5,
+      'Munich': 1.3,
+      'Stockholm': 1.6,
+      'Copenhagen': 1.7,
+      'Brno': 0.6,
+      'Ostrava': 0.5,
+    };
+    
+    return cityMultipliers[city] || 1.0;
+  }
+
+  private getCityLocationData(city: string): { city: string; cityCenter: string; coordinates: { lat: number; lng: number } } {
+    const cityData: Record<string, { city: string; cityCenter: string; coordinates: { lat: number; lng: number } }> = {
+      'Prague': { city: 'Prague', cityCenter: 'Old Town', coordinates: { lat: 50.0755, lng: 14.4378 } },
+      'Brno': { city: 'Brno', cityCenter: 'City Center', coordinates: { lat: 49.1951, lng: 16.6068 } },
+      'London': { city: 'London', cityCenter: 'Central London', coordinates: { lat: 51.5074, lng: -0.1278 } },
+      'Berlin': { city: 'Berlin', cityCenter: 'Mitte', coordinates: { lat: 52.5200, lng: 13.4050 } },
+      'Paris': { city: 'Paris', cityCenter: '1st Arrondissement', coordinates: { lat: 48.8566, lng: 2.3522 } },
+      'Vienna': { city: 'Vienna', cityCenter: 'Innere Stadt', coordinates: { lat: 48.2082, lng: 16.3738 } },
+      'Amsterdam': { city: 'Amsterdam', cityCenter: 'Centrum', coordinates: { lat: 52.3676, lng: 4.9041 } },
+      'Munich': { city: 'Munich', cityCenter: 'Altstadt', coordinates: { lat: 48.1351, lng: 11.5820 } },
+    };
+    
+    return cityData[city] || { city, cityCenter: 'City Center', coordinates: { lat: 50.0755, lng: 14.4378 } };
+  }
+
+  private getSeasonalityFactor(date: string): number {
+    const month = new Date(date).getMonth() + 1; // 1-12
+    
+    // Higher demand in spring/fall conference seasons, lower in summer/winter
+    const seasonalFactors: Record<number, number> = {
+      1: 0.7,  // January - post-holiday low
+      2: 0.8,  // February - winter
+      3: 1.1,  // March - spring conference season
+      4: 1.2,  // April - peak spring
+      5: 1.1,  // May - late spring
+      6: 0.9,  // June - early summer
+      7: 0.7,  // July - summer vacation
+      8: 0.8,  // August - late summer
+      9: 1.2,  // September - fall conference season
+      10: 1.3, // October - peak fall
+      11: 1.1, // November - late fall
+      12: 0.6, // December - holiday season
+    };
+    
+    return seasonalFactors[month] || 1.0;
+  }
+
+  private getEconomicFactor(city?: string): number {
+    if (!city) return 0.8;
+    
+    // Economic strength indicators by city
+    const economicFactors: Record<string, number> = {
+      'London': 0.9,
+      'Zurich': 0.95,
+      'Paris': 0.85,
+      'Amsterdam': 0.88,
+      'Berlin': 0.82,
+      'Munich': 0.86,
+      'Vienna': 0.84,
+      'Stockholm': 0.87,
+      'Copenhagen': 0.89,
+      'Prague': 0.78,
+      'Brno': 0.75,
+      'Ostrava': 0.72,
+    };
+    
+    return economicFactors[city] || 0.8;
+  }
+
+  private getDefaultAmenities(venueName: string): string[] {
+    const name = venueName.toLowerCase();
+    const baseAmenities = ['wifi', 'parking'];
+    
+    if (name.includes('hotel')) baseAmenities.push('catering', 'accommodation');
+    if (name.includes('conference') || name.includes('business')) baseAmenities.push('av_equipment', 'presentation_tools');
+    if (name.includes('theater') || name.includes('auditorium')) baseAmenities.push('stage', 'lighting', 'sound_system');
+    if (name.includes('premium') || name.includes('luxury')) baseAmenities.push('vip_area', 'concierge');
+    
+    return baseAmenities;
+  }
+
+  private estimateReviewCount(capacity: number): number {
+    // Larger venues tend to have more reviews
+    return Math.max(10, Math.floor(capacity / 10));
   }
 }
 

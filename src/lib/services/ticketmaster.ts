@@ -1071,7 +1071,7 @@ export class TicketmasterService {
       startDateTime: `${startDate}T00:00:00Z`,
       endDateTime: `${endDate}T23:59:59Z`,
       classificationName: mappedCategory,
-      size: 200,
+      size: 199, // Ticketmaster's maximum page size
       page: 0,
     });
 
@@ -1081,7 +1081,7 @@ export class TicketmasterService {
       countryCode,
       startDateTime: `${startDate}T00:00:00Z`,
       endDateTime: `${endDate}T23:59:59Z`,
-      size: 200,
+      size: 199, // Ticketmaster's maximum page size
       page: 0,
     });
 

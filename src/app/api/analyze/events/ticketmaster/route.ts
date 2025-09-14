@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const radius = searchParams.get('radius');
     const useComprehensiveFallback = searchParams.get('useComprehensiveFallback') === 'true';
     const page = parseInt(searchParams.get('page') || '0');
-    const rawSize = parseInt(searchParams.get('size') || '200');
+    const rawSize = parseInt(searchParams.get('size') || '199'); // Ticketmaster's maximum page size is 199
     const size = Math.min(rawSize, 199); // Ticketmaster's maximum page size is 199
 
     // Validate radius parameter and clean format
@@ -199,30 +199,8 @@ export async function GET(request: NextRequest) {
         const searchCity = transformedParams?.city || city;
         const searchRadius = transformedParams?.radius || cleanRadius;
         
-        // Map category to Ticketmaster classification
-        const mappedCategory = category ? (() => {
-          const categoryMap: Record<string, string | undefined> = {
-            'Music': 'Music',
-            'Sports': 'Sports', 
-            'Arts & Theatre': 'Arts & Theatre',
-            'Film': 'Film',
-            'Arts & Culture': 'Arts & Theatre',
-            'Entertainment': undefined, // Entertainment spans multiple categories
-            'Concerts': 'Music',
-            'Live Music': 'Music',
-            'Movies': 'Film',
-            'Cinema': 'Film',
-            'Theater': 'Arts & Theatre',
-            'Theatre': 'Arts & Theatre',
-            'Comedy': 'Arts & Theatre',
-            'Dance': 'Arts & Theatre',
-            'Opera': 'Arts & Theatre',
-            'Miscellaneous': 'Miscellaneous',
-          };
-          return categoryMap[category];
-        })() : undefined;
-        
-        const searchCategory = transformedParams?.classificationName || mappedCategory;
+        // Use the Ticketmaster service's category mapping (don't duplicate logic)
+        const searchCategory = transformedParams?.classificationName || category;
         
         console.log('🎟️ Using direct getEvents method for city search:', {
           city: searchCity,
