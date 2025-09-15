@@ -134,7 +134,7 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       size: '50', // Reduced from 100 for much faster responses
-      useComprehensiveFallback: params.useComprehensiveFallback === true ? 'true' : 'false' // Default to false for better performance
+      useComprehensiveFallback: params.useComprehensiveFallback !== false ? 'true' : 'false' // Default to true for better event discovery
     });
 
     // Add radius only for PredictHQ (Ticketmaster city variations work better without radius)
@@ -166,8 +166,8 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd
     }).toString()}`);
 
-    // Use comprehensive search if enabled - FORCE DISABLED for performance
-    const useComprehensiveSearch = false; // FORCE DISABLE comprehensive search for performance
+    // Use comprehensive search if enabled - ENABLED for better event discovery
+    const useComprehensiveSearch = params.enableAdvancedAnalysis || false; // Enable comprehensive search when advanced analysis is requested
     
     // Create comprehensive search query params
     const comprehensiveTicketmasterParams = new URLSearchParams({
@@ -191,7 +191,7 @@ export class ConflictAnalysisService {
     });
 
     // Create timeout controller for API requests
-    const timeoutMs = 8000; // 8 seconds timeout per API (reduced from 30s for better performance)
+    const timeoutMs = useComprehensiveSearch ? 15000 : 8000; // 15s for comprehensive search, 8s for fast search
     const createTimeoutFetch = (url: string) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -201,7 +201,8 @@ export class ConflictAnalysisService {
     };
 
     // Fetch from Ticketmaster, PredictHQ, and Brno ArcGIS in parallel with timeout
-    console.log('🚀 Starting parallel API requests with 8s timeout each (FAST MODE)...');
+    const searchMode = useComprehensiveSearch ? 'COMPREHENSIVE MODE' : 'FAST MODE';
+    console.log(`🚀 Starting parallel API requests with ${timeoutMs/1000}s timeout each (${searchMode})...`);
     const startTime = Date.now();
     
     const [ticketmasterResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
