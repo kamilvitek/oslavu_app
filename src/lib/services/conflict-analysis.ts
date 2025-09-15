@@ -1175,7 +1175,20 @@ export class ConflictAnalysisService {
     }
 
     try {
-      const result = await response.json();
+      // Clone the response to avoid "body already read" errors
+      const responseClone = response.clone();
+      let result;
+      
+      try {
+        result = await responseClone.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, try reading as text for debugging
+        console.error(`${apiName}: JSON parsing failed, trying text:`, jsonError);
+        const responseText = await response.text();
+        console.error(`${apiName}: Response text:`, responseText.substring(0, 500));
+        return [];
+      }
+      
       let events: Event[] = [];
 
       // Handle different response structures based on API

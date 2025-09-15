@@ -2,13 +2,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { brnoEventsService } from '@/lib/services/brno';
 
-// Helper function to create compressed responses
-function createCompressedResponse(data: any, options: { status?: number } = {}) {
+// Helper function to create responses with proper headers
+function createResponse(data: any, options: { status?: number } = {}) {
   const headers = new Headers({
     'Content-Type': 'application/json',
-    'Content-Encoding': 'gzip',
     'Cache-Control': 'public, max-age=60', // 1 minute cache for performance
-    'Vary': 'Accept-Encoding'
   });
   
   return NextResponse.json(data, { 
@@ -28,14 +26,14 @@ export async function GET(request: NextRequest) {
 
     const events = await brnoEventsService.getEvents({ startDate, endDate, page, pageSize });
 
-    return createCompressedResponse({
+    return createResponse({
       data: events,
       count: events.length,
       source: 'brno'
     });
   } catch (error) {
     console.error('Brno events API error:', error);
-    return createCompressedResponse({
+    return createResponse({
       error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }

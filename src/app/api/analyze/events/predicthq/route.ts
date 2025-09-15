@@ -2,13 +2,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { predicthqService } from '@/lib/services/predicthq';
 
-// Helper function to create compressed responses
-function createCompressedResponse(data: any, options: { status?: number } = {}) {
+// Helper function to create responses with proper headers
+function createResponse(data: any, options: { status?: number } = {}) {
   const headers = new Headers({
     'Content-Type': 'application/json',
-    'Content-Encoding': 'gzip',
     'Cache-Control': 'public, max-age=60', // 1 minute cache for performance
-    'Vary': 'Accept-Encoding'
   });
   
   return NextResponse.json(data, { 
@@ -46,7 +44,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!city && !keyword) {
-      return createCompressedResponse(
+      return createResponse(
         { error: 'Either city or keyword parameter is required' },
         { status: 400 }
       );
@@ -55,7 +53,7 @@ export async function GET(request: NextRequest) {
     // Check if API key is configured
     if (!process.env.PREDICTHQ_API_KEY) {
       console.error('PREDICTHQ_API_KEY is not configured');
-      return createCompressedResponse(
+      return createResponse(
         { 
           success: false,
           error: 'PredictHQ API key is not configured. Please set the PREDICTHQ_API_KEY environment variable.',
@@ -89,7 +87,7 @@ export async function GET(request: NextRequest) {
     } else if (minAttendance) {
       // Get high attendance events
       if (!startDate || !endDate) {
-        return createCompressedResponse(
+        return createResponse(
           { error: 'startDate and endDate are required for high attendance search' },
           { status: 400 }
         );
@@ -104,7 +102,7 @@ export async function GET(request: NextRequest) {
     } else if (minRank) {
       // Get high rank events
       if (!startDate || !endDate) {
-        return createCompressedResponse(
+        return createResponse(
           { error: 'startDate and endDate are required for high rank search' },
           { status: 400 }
         );
@@ -119,7 +117,7 @@ export async function GET(request: NextRequest) {
     } else {
       // Search by city and date range
       if (!startDate || !endDate) {
-        return createCompressedResponse(
+        return createResponse(
           { error: 'startDate and endDate are required when searching by city' },
           { status: 400 }
         );
@@ -154,7 +152,7 @@ export async function GET(request: NextRequest) {
 
     console.log(`Found ${events.length} PredictHQ events`);
 
-    return createCompressedResponse({
+    return createResponse({
       success: true,
       data: {
         events,
@@ -183,7 +181,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString()
     });
     
-    return createCompressedResponse(
+    return createResponse(
       { 
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
