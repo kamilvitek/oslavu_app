@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       dateRangeEnd: body.dateRange.end,
       venue: body.venue,
       enableAdvancedAnalysis: body.enableAdvancedAnalysis,
-      useComprehensiveFallback: true, // Enable comprehensive fallback by default
+      useComprehensiveFallback: false, // DISABLED for performance - was causing 5min delays
     });
     
     console.log('Analysis completed:', {
