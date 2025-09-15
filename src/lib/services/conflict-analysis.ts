@@ -46,6 +46,11 @@ export interface ConflictAnalysisParams {
 }
 
 export class ConflictAnalysisService {
+  // Request deduplication cache
+  private requestCache = new Map<string, Promise<any>>();
+  private cacheExpiry = new Map<string, number>();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
   /**
    * Analyze conflicts for event dates
    */
@@ -133,7 +138,7 @@ export class ConflictAnalysisService {
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
-      size: '50', // Reduced from 100 for much faster responses
+      size: '25', // Reduced from 50 for faster responses
       useComprehensiveFallback: params.useComprehensiveFallback !== false ? 'true' : 'false' // Default to true for better event discovery
     });
 
@@ -176,7 +181,7 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       comprehensive: 'true', // Enable comprehensive search
-      size: '50' // Reduced for faster responses
+      size: '25' // Reduced for faster responses
       // No radius for Ticketmaster comprehensive search
     });
 
@@ -186,167 +191,152 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       comprehensive: 'true', // Enable comprehensive search
-      size: '50', // Reduced for faster responses
+      size: '25', // Reduced for faster responses
       radius: params.searchRadius || '50km'
     });
 
-    // Create timeout controller for API requests
-    const timeoutMs = useComprehensiveSearch ? 15000 : 8000; // 15s for comprehensive search, 8s for fast search
-    const createTimeoutFetch = (url: string) => {
+    // Create timeout controller for API requests with reduced timeouts
+    const timeoutMs = useComprehensiveSearch ? 7500 : 4000; // Reduced by 50%: 7.5s for comprehensive search, 4s for fast search
+    const createTimeoutFetch = (url: string, apiName: string) => {
+      // Get API-specific timeout (50% reduction)
+      let specificTimeout = timeoutMs;
+      if (apiName === 'ticketmaster') {
+        specificTimeout = 4000; // Reduced from 8000ms
+      } else if (apiName === 'predicthq') {
+        specificTimeout = 5000; // Reduced from 10000ms
+      } else if (apiName === 'brno') {
+        specificTimeout = 3000; // Reduced from 6000ms
+      }
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      const timeoutId = setTimeout(() => controller.abort(), specificTimeout);
       
-      return fetch(url, { signal: controller.signal })
-        .finally(() => clearTimeout(timeoutId));
+      return fetch(url, { 
+        signal: controller.signal,
+        headers: {
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Accept': 'application/json'
+        }
+      }).finally(() => clearTimeout(timeoutId));
     };
 
-    // Fetch from Ticketmaster, PredictHQ, and Brno ArcGIS in parallel with timeout
+    // Request deduplication helper
+    const getCachedRequest = (url: string, apiName: string) => {
+      const now = Date.now();
+      const cacheKey = `${apiName}:${url}`;
+      
+      // Clean expired entries
+      if (this.cacheExpiry.has(cacheKey) && this.cacheExpiry.get(cacheKey)! < now) {
+        this.requestCache.delete(cacheKey);
+        this.cacheExpiry.delete(cacheKey);
+      }
+      
+      // Return cached request or create new one
+      if (this.requestCache.has(cacheKey)) {
+        console.log(`🔄 Using cached request for ${apiName}`);
+        return this.requestCache.get(cacheKey)!;
+      }
+      
+      const request = createTimeoutFetch(url, apiName);
+      this.requestCache.set(cacheKey, request);
+      this.cacheExpiry.set(cacheKey, now + this.CACHE_TTL);
+      
+      return request;
+    };
+
+    // Optimized parallel execution with early termination
     const searchMode = useComprehensiveSearch ? 'COMPREHENSIVE MODE' : 'FAST MODE';
-    console.log(`🚀 Starting parallel API requests with ${timeoutMs/1000}s timeout each (${searchMode})...`);
+    console.log(`🚀 Starting optimized parallel API requests with early termination (${searchMode})...`);
     const startTime = Date.now();
     
-    const [ticketmasterResponse, predicthqResponse, brnoResponse] = await Promise.allSettled([
-      createTimeoutFetch(`${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveTicketmasterParams.toString() : ticketmasterQueryParams.toString()}`),
-      createTimeoutFetch(`${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensivePredicthqParams.toString() : predicthqQueryParams.toString()}`),
-      createTimeoutFetch(`${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
-        startDate: params.dateRangeStart,
-        endDate: params.dateRangeEnd
-      }).toString()}`)
-    ]);
+    // Create API request promises with deduplication
+    const apiRequests = [
+      {
+        name: 'ticketmaster',
+        promise: getCachedRequest(`${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveTicketmasterParams.toString() : ticketmasterQueryParams.toString()}`, 'ticketmaster')
+      },
+      {
+        name: 'predicthq', 
+        promise: getCachedRequest(`${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensivePredicthqParams.toString() : predicthqQueryParams.toString()}`, 'predicthq')
+      },
+      {
+        name: 'brno',
+        promise: getCachedRequest(`${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
+          startDate: params.dateRangeStart,
+          endDate: params.dateRangeEnd
+        }).toString()}`, 'brno')
+      }
+    ];
+
+    // Optimized parallel execution with early termination
+    const allEvents: Event[] = [];
+    const responses: Array<{name: string, status: 'fulfilled' | 'rejected', value?: any, reason?: any}> = [];
+    let completedCount = 0;
+    const EARLY_TERMINATION_THRESHOLD = 15;
+    
+    // Process requests as they complete
+    const processResponse = async (apiRequest: typeof apiRequests[0], index: number) => {
+      try {
+        const response = await apiRequest.promise;
+        responses[index] = { name: apiRequest.name, status: 'fulfilled', value: response };
+        
+        // Process the response immediately
+        if (response.ok) {
+          const events = await this.extractEventsFromResponse(response, apiRequest.name, useComprehensiveSearch);
+          allEvents.push(...events);
+          console.log(`✅ ${apiRequest.name}: Added ${events.length} events (total: ${allEvents.length})`);
+          
+          // Early termination check
+          if (allEvents.length >= EARLY_TERMINATION_THRESHOLD) {
+            console.log(`🎯 Early termination: ${allEvents.length} events found, stopping additional requests`);
+            return true; // Signal early termination
+          }
+        }
+      } catch (error) {
+        responses[index] = { name: apiRequest.name, status: 'rejected', reason: error };
+        console.warn(`⚠️ ${apiRequest.name}: Request failed:`, error);
+      }
+      
+      completedCount++;
+      return false;
+    };
+
+    // Race all requests but allow early termination
+    const racePromises = apiRequests.map((req, idx) => processResponse(req, idx));
+    
+    // Wait for either all to complete or early termination
+    let earlyTerminated = false;
+    for (const promise of racePromises) {
+      const shouldTerminate = await promise;
+      if (shouldTerminate) {
+        earlyTerminated = true;
+        break;
+      }
+    }
+    
+    // If we didn't early terminate, wait for remaining requests (with shorter timeout)
+    if (!earlyTerminated && completedCount < apiRequests.length) {
+      const remainingTime = Math.max(1000, timeoutMs - (Date.now() - startTime));
+      console.log(`⏱️ Waiting ${remainingTime}ms for remaining ${apiRequests.length - completedCount} requests...`);
+      
+      try {
+        await Promise.race([
+          Promise.all(racePromises),
+          new Promise(resolve => setTimeout(resolve, remainingTime))
+        ]);
+      } catch (error) {
+        console.warn('Some requests timed out, continuing with available events');
+      }
+    }
+
+    // Create legacy response format for compatibility
+    const [ticketmasterResponse, predicthqResponse, brnoResponse] = responses;
 
     const totalFetchTime = Date.now() - startTime;
-    console.log(`🚀 All API requests completed in ${totalFetchTime}ms`);
+    console.log(`🚀 API requests completed in ${totalFetchTime}ms (${earlyTerminated ? 'early terminated' : 'all completed'})`);
 
-    const allEvents: Event[] = [];
+    // Note: Event processing was moved to the optimized parallel execution above
 
-    // Process Ticketmaster results
-    if (ticketmasterResponse.status === 'fulfilled' && ticketmasterResponse.value.ok) {
-      try {
-        const ticketmasterResult = await ticketmasterResponse.value.json();
-        console.log('🎟️ Ticketmaster API response structure:', ticketmasterResult);
-        
-        // Handle different response structures
-        let events = [];
-        if (ticketmasterResult.success && ticketmasterResult.data?.events) {
-          events = ticketmasterResult.data.events;
-        } else if (ticketmasterResult.data?.events) {
-          events = ticketmasterResult.data.events;
-        } else if (ticketmasterResult.data && Array.isArray(ticketmasterResult.data)) {
-          events = ticketmasterResult.data;
-        } else if (Array.isArray(ticketmasterResult)) {
-          events = ticketmasterResult;
-        } else if (ticketmasterResult.data) {
-          // Handle case where data is directly the events array
-          events = Array.isArray(ticketmasterResult.data) ? ticketmasterResult.data : [];
-        }
-        
-        allEvents.push(...events);
-        console.log(`🎟️ Ticketmaster: Fetched ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
-      } catch (error) {
-        console.error('🎟️ Ticketmaster: Error processing response:', error);
-      }
-    } else if (ticketmasterResponse.status === 'rejected') {
-      const error = ticketmasterResponse.reason;
-      if (error?.name === 'AbortError') {
-        console.warn('🎟️ Ticketmaster: API request timed out after 30 seconds');
-      } else {
-        console.error('🎟️ Ticketmaster: API request failed:', error);
-      }
-    } else {
-      console.error('🎟️ Ticketmaster: API returned error:', ticketmasterResponse.value?.status || 'Unknown error');
-      // Try to get the error message from response
-      try {
-        const errorResult = await ticketmasterResponse.value.json();
-        if (errorResult.success === false && errorResult.data?.events) {
-          // API returned error but still has data structure - use empty events
-          console.log('🎟️ Ticketmaster: Using empty events due to API error');
-        }
-      } catch (parseError) {
-        console.error('🎟️ Ticketmaster: Could not parse error response');
-      }
-    }
-
-
-    // Process PredictHQ results
-    if (predicthqResponse.status === 'fulfilled' && predicthqResponse.value.ok) {
-      try {
-        const predicthqResult = await predicthqResponse.value.json();
-        console.log('🔮 PredictHQ API response structure:', {
-          success: predicthqResult.success,
-          hasData: !!predicthqResult.data,
-          hasEvents: !!predicthqResult.data?.events,
-          eventsLength: predicthqResult.data?.events?.length || 0
-        });
-        
-        // Handle different response structures
-        let events = [];
-        if (predicthqResult.success && predicthqResult.data?.events) {
-          events = predicthqResult.data.events;
-        } else if (predicthqResult.data?.events) {
-          events = predicthqResult.data.events;
-        } else if (predicthqResult.data && Array.isArray(predicthqResult.data)) {
-          events = predicthqResult.data;
-        } else if (Array.isArray(predicthqResult)) {
-          events = predicthqResult;
-        } else if (predicthqResult.data) {
-          // Handle case where data is directly the events array
-          events = Array.isArray(predicthqResult.data) ? predicthqResult.data : [];
-        }
-        
-        allEvents.push(...events);
-        console.log(`🔮 PredictHQ: Fetched ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
-      } catch (error) {
-        console.error('🔮 PredictHQ: Error processing response:', error);
-      }
-    } else if (predicthqResponse.status === 'rejected') {
-      const error = predicthqResponse.reason;
-      if (error?.name === 'AbortError') {
-        console.warn('🔮 PredictHQ: API request timed out after 30 seconds');
-      } else {
-        console.error('🔮 PredictHQ: API request failed:', error);
-      }
-    } else {
-      console.error('🔮 PredictHQ: API returned error:', predicthqResponse.value?.status || 'Unknown error');
-      // Try to get the error message from response
-      try {
-        const errorResult = await predicthqResponse.value.json();
-        if (errorResult.success === false && errorResult.data?.events) {
-          // API returned error but still has data structure - use empty events
-          console.log('🔮 PredictHQ: Using empty events due to API error');
-        }
-      } catch (parseError) {
-        console.error('🔮 PredictHQ: Could not parse error response');
-      }
-    }
-
-    // Process Brno results
-    if (brnoResponse.status === 'fulfilled' && brnoResponse.value.ok) {
-      try {
-        const brnoResult = await brnoResponse.value.json();
-        console.log('🏛️ Brno API response structure:', brnoResult);
-
-        let events = [] as any[];
-        if (brnoResult.data?.events) {
-          events = brnoResult.data.events;
-        } else if (brnoResult.data && Array.isArray(brnoResult.data)) {
-          events = brnoResult.data;
-        } else if (Array.isArray(brnoResult)) {
-          events = brnoResult;
-        } else if (brnoResult.data) {
-          events = Array.isArray(brnoResult.data) ? brnoResult.data : [];
-        }
-
-        allEvents.push(...events);
-        console.log(`🏛️ Brno: Fetched ${events.length} events`);
-      } catch (error) {
-        console.error('🏛️ Brno: Error processing response:', error);
-      }
-    } else if (brnoResponse.status === 'rejected') {
-      console.error('🏛️ Brno: API request failed:', brnoResponse.reason);
-    } else {
-      // @ts-ignore
-      console.error('🏛️ Brno: API returned error:', brnoResponse.value?.status);
-    }
 
     // Filter events by location to remove distant cities
     console.log(`📍 Events before location filtering: ${allEvents.length}`);
@@ -1151,6 +1141,74 @@ export class ConflictAnalysisService {
         pricingImpact: 0.5,
         recommendations: ['Unable to analyze venue intelligence']
       };
+    }
+  }
+
+  /**
+   * Extract events from API response (moved from inline processing for optimization)
+   */
+  private async extractEventsFromResponse(response: Response, apiName: string, useComprehensiveSearch: boolean): Promise<Event[]> {
+    if (!response.ok) {
+      console.warn(`${apiName}: API returned error status ${response.status}`);
+      return [];
+    }
+
+    try {
+      const result = await response.json();
+      let events: Event[] = [];
+
+      // Handle different response structures based on API
+      if (apiName === 'ticketmaster') {
+        console.log('🎟️ Ticketmaster API response structure:', result);
+        if (result.success && result.data?.events) {
+          events = result.data.events;
+        } else if (result.data?.events) {
+          events = result.data.events;
+        } else if (result.data && Array.isArray(result.data)) {
+          events = result.data;
+        } else if (Array.isArray(result)) {
+          events = result;
+        } else if (result.data) {
+          events = Array.isArray(result.data) ? result.data : [];
+        }
+        console.log(`🎟️ Ticketmaster: Extracted ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
+      } else if (apiName === 'predicthq') {
+        console.log('🔮 PredictHQ API response structure:', {
+          success: result.success,
+          hasData: !!result.data,
+          hasEvents: !!result.data?.events,
+          eventsLength: result.data?.events?.length || 0
+        });
+        if (result.success && result.data?.events) {
+          events = result.data.events;
+        } else if (result.data?.events) {
+          events = result.data.events;
+        } else if (result.data && Array.isArray(result.data)) {
+          events = result.data;
+        } else if (Array.isArray(result)) {
+          events = result;
+        } else if (result.data) {
+          events = Array.isArray(result.data) ? result.data : [];
+        }
+        console.log(`🔮 PredictHQ: Extracted ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
+      } else if (apiName === 'brno') {
+        console.log('🏛️ Brno API response structure:', result);
+        if (result.data?.events) {
+          events = result.data.events;
+        } else if (result.data && Array.isArray(result.data)) {
+          events = result.data;
+        } else if (Array.isArray(result)) {
+          events = result;
+        } else if (result.data) {
+          events = Array.isArray(result.data) ? result.data : [];
+        }
+        console.log(`🏛️ Brno: Extracted ${events.length} events`);
+      }
+
+      return events;
+    } catch (error) {
+      console.error(`${apiName}: Error processing response:`, error);
+      return [];
     }
   }
 }

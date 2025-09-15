@@ -3,6 +3,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ticketmasterService } from '@/lib/services/ticketmaster';
 import { Event } from '@/types';
 
+// Helper function to create compressed responses
+function createCompressedResponse(data: any, options: { status?: number } = {}) {
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    'Content-Encoding': 'gzip',
+    'Cache-Control': 'public, max-age=60', // 1 minute cache for performance
+    'Vary': 'Accept-Encoding'
+  });
+  
+  return NextResponse.json(data, { 
+    status: options.status || 200,
+    headers 
+  });
+}
+
 // Define the interface for transformed parameters
 interface TicketmasterTransformation {
   city?: string;
@@ -49,7 +64,7 @@ export async function GET(request: NextRequest) {
     if (radius) {
       const radiusValue = parseInt(radius.replace(/[^\d]/g, ''));
       if (isNaN(radiusValue) || radiusValue < 0 || radiusValue > 19999) {
-        return NextResponse.json(
+        return createCompressedResponse(
           { 
             error: 'Invalid radius parameter',
             details: 'Radius must be a number between 0 and 19,999',
@@ -86,7 +101,7 @@ export async function GET(request: NextRequest) {
     
     // Return validation errors if any
     if (validationErrors.length > 0) {
-      return NextResponse.json(
+      return createCompressedResponse(
         {
           error: 'Parameter validation failed',
           details: validationErrors,
@@ -108,7 +123,7 @@ export async function GET(request: NextRequest) {
     console.log('🎟️ Ticketmaster API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
 
     if (!city && !keyword) {
-      return NextResponse.json(
+      return createCompressedResponse(
         { error: 'Either city or keyword parameter is required' },
         { status: 400 }
       );
@@ -129,7 +144,7 @@ export async function GET(request: NextRequest) {
       console.error('🎟️ Please set TICKETMASTER_API_KEY in your .env.local file');
       console.error('🎟️ Get your API key from: https://developer.ticketmaster.com/');
       
-      return NextResponse.json(
+      return createCompressedResponse(
         { 
           success: false,
           error: 'Ticketmaster API key not configured',
@@ -266,7 +281,7 @@ export async function GET(request: NextRequest) {
         // Rate limit errors
         if (serviceError.message.includes('rate limit') || serviceError.message.includes('429')) {
           console.warn('🎟️ Ticketmaster: Rate limit exceeded');
-          return NextResponse.json({
+          return createCompressedResponse({
             success: false,
             error: 'Rate limit exceeded',
             data: {
@@ -281,7 +296,7 @@ export async function GET(request: NextRequest) {
         // API key errors
         if (serviceError.message.includes('API key') || serviceError.message.includes('401') || serviceError.message.includes('403')) {
           console.warn('🎟️ Ticketmaster: API key issue');
-          return NextResponse.json({
+          return createCompressedResponse({
             success: false,
             error: 'API key issue',
             data: {
@@ -296,7 +311,7 @@ export async function GET(request: NextRequest) {
         // Network errors
         if (serviceError.message.includes('fetch') || serviceError.message.includes('network') || serviceError.message.includes('timeout')) {
           console.warn('🎟️ Ticketmaster: Network error');
-          return NextResponse.json({
+          return createCompressedResponse({
             success: false,
             error: 'Network error',
             data: {
@@ -315,7 +330,7 @@ export async function GET(request: NextRequest) {
 
     console.log(`🎟️ Ticketmaster: Retrieved ${events.length} total events for ${city} with radius ${radius || '50'} miles (0 available)`);
 
-    return NextResponse.json({
+    return createCompressedResponse({
       success: true,
       data: {
         events,
@@ -347,7 +362,7 @@ export async function GET(request: NextRequest) {
     if (error instanceof Error) {
       // Parameter validation errors
       if (error.message.includes('validation') || error.message.includes('Invalid')) {
-        return NextResponse.json({
+        return createCompressedResponse({
           success: false,
           error: 'Parameter validation failed',
           details: error.message,
@@ -357,7 +372,7 @@ export async function GET(request: NextRequest) {
       
       // API errors
       if (error.message.includes('Ticketmaster API')) {
-        return NextResponse.json({
+        return createCompressedResponse({
           success: false,
           error: 'Ticketmaster API error',
           details: error.message,
@@ -367,7 +382,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Return empty results instead of failing to keep the analysis working
-    return NextResponse.json({
+    return createCompressedResponse({
       success: true,
       data: {
         events: [],
@@ -396,7 +411,7 @@ export async function POST(request: NextRequest) {
           endDateTime: `${endDate}T23:59:59Z`,
           size: 5
         });
-        return NextResponse.json({ 
+        return createCompressedResponse({ 
           success: true, 
           data: result,
           message: 'Date range test successful'
@@ -404,7 +419,7 @@ export async function POST(request: NextRequest) {
       } else {
         // Test basic connection
         const result = await ticketmasterService.testBasicConnection(city || 'New York');
-        return NextResponse.json({ 
+        return createCompressedResponse({ 
           success: true, 
           data: result,
           message: 'Basic connection test successful'
@@ -412,7 +427,7 @@ export async function POST(request: NextRequest) {
       }
     } catch (error) {
       console.error('🧪 Test connection failed:', error);
-      return NextResponse.json({ 
+      return createCompressedResponse({ 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error',
         stack: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : undefined
@@ -420,7 +435,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('🧪 POST request error:', error);
-    return NextResponse.json({ 
+    return createCompressedResponse({ 
       success: false, 
       error: 'Invalid request format',
       details: error instanceof Error ? error.message : 'Unknown error'
