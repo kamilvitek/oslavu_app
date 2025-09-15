@@ -92,6 +92,3 @@ export class USPUpdater {
     }
   }
 }
-
-// Export for use in other services
-export { USPUpdater };
