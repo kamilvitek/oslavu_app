@@ -1498,126 +1498,111 @@ export class ConflictAnalysisService {
   private filterEventsByLocation(events: Event[], targetCity: string): Event[] {
     const normalizedTargetCity = targetCity.toLowerCase().trim();
     
-    // Define city aliases and nearby cities for better matching
-    const cityAliases: Record<string, string[]> = {
+    // Define Czech Republic cities and their aliases
+    const czechCities: Record<string, string[]> = {
       'prague': ['praha', 'prag', 'prague', 'praha 1', 'praha 2', 'praha 3', 'praha 4', 'praha 5', 'praha 6', 'praha 7', 'praha 8', 'praha 9', 'praha 10', 'praha 11', 'praha 12', 'praha 13', 'praha 14', 'praha 15', 'praha 16', 'praha 17', 'praha 18', 'praha 19', 'praha 20', 'praha 21', 'praha 22'],
       'brno': ['brno', 'brünn'],
       'ostrava': ['ostrava'],
       'olomouc': ['olomouc'],
-      'london': ['london', 'londres'],
-      'berlin': ['berlin', 'berlín'],
-      'paris': ['paris', 'parís'],
-      'amsterdam': ['amsterdam', 'amsterdam'],
-      'vienna': ['vienna', 'wien', 'vienne'],
-      'warsaw': ['warsaw', 'warszawa'],
-      'budapest': ['budapest', 'budapest'],
-      'zurich': ['zurich', 'zürich'],
-      'munich': ['munich', 'münchen'],
-      'stockholm': ['stockholm', 'stockholm'],
-      'copenhagen': ['copenhagen', 'københavn'],
-      'helsinki': ['helsinki', 'helsingfors'],
-      'oslo': ['oslo', 'oslo'],
-      'madrid': ['madrid', 'madrid'],
-      'barcelona': ['barcelona', 'barcelona'],
-      'rome': ['rome', 'roma'],
-      'milan': ['milan', 'milano'],
-      'athens': ['athens', 'athina'],
-      'lisbon': ['lisbon', 'lisboa'],
-      'dublin': ['dublin', 'dublin'],
-      'edinburgh': ['edinburgh', 'edinburgh'],
-      'glasgow': ['glasgow', 'glasgow'],
-      'manchester': ['manchester', 'manchester'],
-      'birmingham': ['birmingham', 'birmingham'],
-      'liverpool': ['liverpool', 'liverpool'],
-      'leeds': ['leeds', 'leeds'],
-      'sheffield': ['sheffield', 'sheffield'],
-      'bristol': ['bristol', 'bristol'],
-      'newcastle': ['newcastle', 'newcastle'],
-      'nottingham': ['nottingham', 'nottingham'],
-      'leicester': ['leicester', 'leicester'],
-      'hamburg': ['hamburg', 'hamburg'],
-      'cologne': ['cologne', 'köln'],
-      'frankfurt': ['frankfurt', 'frankfurt'],
-      'stuttgart': ['stuttgart', 'stuttgart'],
-      'düsseldorf': ['düsseldorf', 'düsseldorf'],
-      'dortmund': ['dortmund', 'dortmund'],
-      'essen': ['essen', 'essen'],
-      'leipzig': ['leipzig', 'leipzig'],
-      'bremen': ['bremen', 'bremen'],
-      'dresden': ['dresden', 'dresden'],
-      'hannover': ['hannover', 'hannover'],
-      'nuremberg': ['nuremberg', 'nürnberg'],
-      'duisburg': ['duisburg', 'duisburg'],
-      'bochum': ['bochum', 'bochum'],
-      'wuppertal': ['wuppertal', 'wuppertal'],
-      'bielefeld': ['bielefeld', 'bielefeld'],
-      'bonn': ['bonn', 'bonn'],
-      'münster': ['münster', 'münster'],
-      'karlsruhe': ['karlsruhe', 'karlsruhe'],
-      'mannheim': ['mannheim', 'mannheim'],
-      'augsburg': ['augsburg', 'augsburg'],
-      'wiesbaden': ['wiesbaden', 'wiesbaden'],
-      'gelsenkirchen': ['gelsenkirchen', 'gelsenkirchen'],
-      'mönchengladbach': ['mönchengladbach', 'mönchengladbach'],
-      'braunschweig': ['braunschweig', 'braunschweig'],
-      'chemnitz': ['chemnitz', 'chemnitz'],
-      'kiel': ['kiel', 'kiel'],
-      'aachen': ['aachen', 'aachen'],
-      'halle': ['halle', 'halle'],
-      'magdeburg': ['magdeburg', 'magdeburg'],
-      'freiburg': ['freiburg', 'freiburg'],
-      'krefeld': ['krefeld', 'krefeld'],
-      'lübeck': ['lübeck', 'lübeck'],
-      'oberhausen': ['oberhausen', 'oberhausen'],
-      'erfurt': ['erfurt', 'erfurt'],
-      'mainz': ['mainz', 'mainz'],
-      'rostock': ['rostock', 'rostock'],
-      'kassel': ['kassel', 'kassel'],
-      'hagen': ['hagen', 'hagen'],
-      'hamm': ['hamm', 'hamm'],
-      'saarbrücken': ['saarbrücken', 'saarbrücken'],
-      'mülheim': ['mülheim', 'mülheim'],
-      'potsdam': ['potsdam', 'potsdam'],
-      'ludwigshafen': ['ludwigshafen', 'ludwigshafen'],
-      'oldenburg': ['oldenburg', 'oldenburg'],
-      'leverkusen': ['leverkusen', 'leverkusen'],
-      'osnabrück': ['osnabrück', 'osnabrück'],
-      'solingen': ['solingen', 'solingen'],
-      'heidelberg': ['heidelberg', 'heidelberg'],
-      'herne': ['herne', 'herne'],
-      'neuss': ['neuss', 'neuss'],
-      'darmstadt': ['darmstadt', 'darmstadt'],
-      'paderborn': ['paderborn', 'paderborn'],
-      'regensburg': ['regensburg', 'regensburg'],
-      'ingolstadt': ['ingolstadt', 'ingolstadt'],
-      'würzburg': ['würzburg', 'würzburg'],
-      'fürth': ['fürth', 'fürth'],
-      'wolfsburg': ['wolfsburg', 'wolfsburg'],
-      'offenbach': ['offenbach', 'offenbach'],
-      'ulm': ['ulm', 'ulm'],
-      'heilbronn': ['heilbronn', 'heilbronn'],
-      'pforzheim': ['pforzheim', 'pforzheim'],
-      'göttingen': ['göttingen', 'göttingen'],
-      'bottrop': ['bottrop', 'bottrop'],
-      'trier': ['trier', 'trier'],
-      'recklinghausen': ['recklinghausen', 'recklinghausen'],
-      'reutlingen': ['reutlingen', 'reutlingen'],
-      'bremerhaven': ['bremerhaven', 'bremerhaven'],
-      'koblenz': ['koblenz', 'koblenz'],
-      'bergisch gladbach': ['bergisch gladbach', 'bergisch gladbach'],
-      'jena': ['jena', 'jena'],
-      'remscheid': ['remscheid', 'remscheid'],
-      'erlangen': ['erlangen', 'erlangen'],
-      'moers': ['moers', 'moers'],
-      'siegen': ['siegen', 'siegen'],
-      'hildesheim': ['hildesheim', 'hildesheim'],
-      'salzgitter': ['salzgitter', 'salzgitter'],
+      'plzen': ['plzen', 'pilsen'],
+      'liberec': ['liberec'],
+      'ceske budejovice': ['ceske budejovice', 'budweis'],
+      'hradec kralove': ['hradec kralove'],
+      'pardubice': ['pardubice'],
+      'zlin': ['zlin', 'gottwaldov'],
+      'havirov': ['havirov'],
+      'kladno': ['kladno'],
+      'most': ['most'],
+      'karlovy vary': ['karlovy vary', 'karlsbad'],
+      'frydek-mistek': ['frydek-mistek'],
+      'opava': ['opava'],
+      'decín': ['decín'],
+      'chomutov': ['chomutov'],
+      'jihlava': ['jihlava'],
+      'teplice': ['teplice'],
+      'prostejov': ['prostejov'],
+      'prerov': ['prerov'],
+      'jablonec nad nisou': ['jablonec nad nisou'],
+      'melnik': ['melnik'],
+      'ceska lipa': ['ceska lipa'],
+      'třebíč': ['trebic'],
+      'trinec': ['trinec'],
+      'tabor': ['tabor'],
+      'znojmo': ['znojmo'],
+      'pribram': ['pribram'],
+      'orlova': ['orlova'],
+      'cheb': ['cheb'],
+      'modrany': ['modrany'],
+      'chrudim': ['chrudim'],
+      'cesky tesin': ['cesky tesin'],
+      'kromeriz': ['kromeriz'],
+      'sumperk': ['sumperk'],
+      'vsetin': ['vsetin'],
+      'valasske mezirici': ['valasske mezirici'],
+      'litvinov': ['litvinov'],
+      'novy jicin': ['novy jicin'],
+      'uhorske hradiste': ['uhorske hradiste'],
+      'breclav': ['breclav'],
+      'krnov': ['krnov'],
+      'sokolov': ['sokolov'],
+      'litomerice': ['litomerice'],
+      'havlickuv brod': ['havlickuv brod'],
+      'jirkov': ['jirkov']
     };
 
-    const targetAliases = cityAliases[normalizedTargetCity] || [normalizedTargetCity];
+    // Define foreign cities that should be filtered out when searching Czech cities
+    const foreignCities: string[] = [
+      'london', 'londres', 'berlin', 'berlín', 'paris', 'parís', 'amsterdam', 'vienna', 'wien', 'vienne',
+      'warsaw', 'warszawa', 'budapest', 'zurich', 'zürich', 'munich', 'münchen', 'stockholm', 'copenhagen', 
+      'københavn', 'helsinki', 'helsingfors', 'oslo', 'madrid', 'barcelona', 'rome', 'roma', 'milan', 'milano',
+      'athens', 'athina', 'lisbon', 'lisboa', 'dublin', 'edinburgh', 'glasgow', 'manchester', 'birmingham',
+      'liverpool', 'leeds', 'sheffield', 'bristol', 'newcastle', 'nottingham', 'leicester', 'hamburg', 'cologne',
+      'köln', 'frankfurt', 'stuttgart', 'düsseldorf', 'dortmund', 'essen', 'leipzig', 'bremen', 'dresden',
+      'hannover', 'nuremberg', 'nürnberg', 'duisburg', 'bochum', 'wuppertal', 'bielefeld', 'bonn', 'münster',
+      'karlsruhe', 'mannheim', 'augsburg', 'wiesbaden', 'gelsenkirchen', 'mönchengladbach', 'braunschweig',
+      'chemnitz', 'kiel', 'aachen', 'halle', 'magdeburg', 'freiburg', 'krefeld', 'lübeck', 'oberhausen',
+      'erfurt', 'mainz', 'rostock', 'kassel', 'hagen', 'hamm', 'saarbrücken', 'mülheim', 'potsdam',
+      'ludwigshafen', 'oldenburg', 'leverkusen', 'osnabrück', 'solingen', 'heidelberg', 'herne', 'neuss',
+      'darmstadt', 'paderborn', 'regensburg', 'ingolstadt', 'würzburg', 'fürth', 'wolfsburg', 'offenbach',
+      'ulm', 'heilbronn', 'pforzheim', 'göttingen', 'bottrop', 'trier', 'recklinghausen', 'reutlingen',
+      'bremerhaven', 'koblenz', 'bergisch gladbach', 'jena', 'remscheid', 'erlangen', 'moers', 'siegen',
+      'hildesheim', 'salzgitter'
+    ];
+
+    // Check if target city is a Czech city
+    const isCzechCity = Object.keys(czechCities).includes(normalizedTargetCity) || 
+                       Object.values(czechCities).some(aliases => aliases.includes(normalizedTargetCity));
+    
+    const targetAliases = czechCities[normalizedTargetCity] || [normalizedTargetCity];
     
     return events.filter(event => {
       const eventCity = event.city?.toLowerCase().trim() || '';
+      const eventVenue = event.venue?.toLowerCase().trim() || '';
+      
+      // If searching for a Czech city, filter out foreign cities
+      if (isCzechCity) {
+        // Check if event city is a known foreign city
+        const isForeignCity = foreignCities.some(foreignCity => 
+          eventCity === foreignCity || 
+          eventCity.includes(foreignCity) || 
+          foreignCity.includes(eventCity)
+        );
+        
+        if (isForeignCity) {
+          console.log(`🚫 Filtered out foreign event "${event.title}" from "${event.city}" when searching Czech city "${targetCity}"`);
+          return false;
+        }
+        
+        // Check if event venue contains foreign city names
+        const isForeignVenue = foreignCities.some(foreignCity => 
+          eventVenue.includes(foreignCity)
+        );
+        
+        if (isForeignVenue) {
+          console.log(`🚫 Filtered out event with foreign venue "${event.venue}" when searching Czech city "${targetCity}"`);
+          return false;
+        }
+      }
       
       // Check if event city matches any of the target city aliases
       let isMatchingCity = targetAliases.some(alias => 
@@ -1628,21 +1613,20 @@ export class ConflictAnalysisService {
       
       // If no city match, check if the event has a venue in the target city
       if (!isMatchingCity && event.venue) {
-        const venue = event.venue.toLowerCase().trim();
         const isMatchingVenue = targetAliases.some(alias => 
-          venue.includes(alias) || 
-          alias.includes(venue)
+          eventVenue.includes(alias) || 
+          alias.includes(eventVenue)
         );
         
         if (isMatchingVenue) {
-          console.log(`Event "${event.title}" matched by venue "${event.venue}" for city "${targetCity}"`);
+          console.log(`✅ Event "${event.title}" matched by venue "${event.venue}" for city "${targetCity}"`);
           return true;
         }
       }
       
       // Log filtered out events for debugging
       if (!isMatchingCity) {
-        console.log(`Filtered out event "${event.title}" from "${event.city}" (target: "${targetCity}")`);
+        console.log(`🚫 Filtered out event "${event.title}" from "${event.city}" (target: "${targetCity}")`);
       }
       
       return isMatchingCity;

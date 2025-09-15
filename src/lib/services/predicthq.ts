@@ -777,21 +777,29 @@ export class PredictHQService {
       console.log(`🔮 PredictHQ: Strategy 5 failed: ${error}`);
     }
 
-    // Strategy 6: Country-wide search for high-impact events
-    try {
-      console.log(`🔮 PredictHQ: Strategy 6 - Country-wide search for high-impact events`);
-      const locationParams = this.getCityLocationParams(city);
-      const { events: countryEvents } = await this.getEvents({
-        country: locationParams.country,
-        'start.gte': `${startDate}T00:00:00`,
-        'start.lte': `${endDate}T23:59:59`,
-        'phq_attendance.gte': 1000, // Only high-attendance events
-        category: category ? this.mapCategoryToPredictHQ(category) : undefined,
-        limit: 200,
-      });
-      this.addUniqueEvents(allEvents, countryEvents, seenEvents);
-    } catch (error) {
-      console.log(`🔮 PredictHQ: Strategy 6 failed: ${error}`);
+    // Strategy 6: Country-wide search for high-impact events (DISABLED for Czech cities to prevent foreign TBA events)
+    // Only enable for non-Czech cities to avoid returning foreign events when searching Czech cities
+    const isCzechCity = ['prague', 'brno', 'ostrava', 'olomouc', 'plzen', 'liberec', 'ceske budejovice', 
+                        'hradec kralove', 'pardubice', 'zlin', 'havirov', 'kladno', 'most', 'karlovy vary'].includes(city.toLowerCase());
+    
+    if (!isCzechCity) {
+      try {
+        console.log(`🔮 PredictHQ: Strategy 6 - Country-wide search for high-impact events (non-Czech city)`);
+        const locationParams = this.getCityLocationParams(city);
+        const { events: countryEvents } = await this.getEvents({
+          country: locationParams.country,
+          'start.gte': `${startDate}T00:00:00`,
+          'start.lte': `${endDate}T23:59:59`,
+          'phq_attendance.gte': 1000, // Only high-attendance events
+          category: category ? this.mapCategoryToPredictHQ(category) : undefined,
+          limit: 200,
+        });
+        this.addUniqueEvents(allEvents, countryEvents, seenEvents);
+      } catch (error) {
+        console.log(`🔮 PredictHQ: Strategy 6 failed: ${error}`);
+      }
+    } else {
+      console.log(`🔮 PredictHQ: Strategy 6 - Country-wide search disabled for Czech city "${city}" to prevent foreign TBA events`);
     }
 
     console.log(`🔮 PredictHQ: Comprehensive fallback completed - found ${allEvents.length} unique events`);
