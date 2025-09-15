@@ -201,5 +201,3 @@ class APIRegistryService {
 // Export singleton instance
 export const apiRegistry = new APIRegistryService();
 
-// Export types for use in other files
-export type { DataSource, USPData };

@@ -25,7 +25,7 @@ export function useUSPData() {
  * Hook to get formatted USP metrics for display
  */
 export function useUSPMetrics() {
-  const { data: uspData, isLoading, error } = useUSPData();
+  const { data: uspData, isLoading, error, refetch } = useUSPData();
 
   return {
     metrics: uspData ? {
@@ -38,5 +38,6 @@ export function useUSPMetrics() {
     isLoading,
     error,
     lastUpdated: uspData?.lastUpdated,
+    refetch,
   };
 }
