@@ -143,12 +143,6 @@ export function DataSourcesList() {
           </Card>
         ))}
       </div>
-
-      <div className="text-center pt-4">
-        <p className="text-sm text-muted-foreground">
-          Total: {metrics.totalDataSources} data sources • {metrics.activeAPIs} active APIs • {metrics.totalEvents.toLocaleString()} events
-        </p>
-      </div>
     </div>
   );
 }

@@ -245,7 +245,7 @@ export function ConflictAnalyzer() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
                       <MetricCard
                         title="Data Sources"
-                        value="5+"
+                        value="3+"
                         icon={BarChart3}
                         colorScheme="info"
                         description="APIs being queried"
@@ -549,7 +549,7 @@ export function ConflictAnalyzer() {
                               </div>
                             </div>
                           ))}
-                          {analysisResult.allEvents.length > 10 && (
+                          {analysisResult.allEvents.length > 100 && (
                             <div className="text-xs text-gray-500 text-center py-2">
                               ... and {analysisResult.allEvents.length - 10} more events
                             </div>

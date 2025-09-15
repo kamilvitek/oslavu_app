@@ -89,9 +89,9 @@ export function Features() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 text-center justify-items-center">
                 <div>
                   <div className="text-3xl font-bold text-primary">
-                    {isLoading ? "..." : (metrics?.totalDataSources || 0)}
+                    {isLoading ? "..." : (metrics?.activeAPIs || 0)}
                   </div>
-                  <div className="text-sm text-muted-foreground">Event sources monitored</div>
+                  <div className="text-sm text-muted-foreground">Active APIs monitored</div>
                 </div>
                 <div>
                   <div className="text-3xl font-bold text-primary">24/7</div>
