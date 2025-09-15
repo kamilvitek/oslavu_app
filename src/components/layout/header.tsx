@@ -17,9 +17,6 @@ export function Header() {
           <Link href="#features" className="text-muted-foreground hover:text-primary transition-colors">
             Features
           </Link>
-          <Link href="/test-usp-dynamic" className="text-muted-foreground hover:text-primary transition-colors">
-            Test USP
-          </Link>
           {/* <Link href="#pricing" className="text-muted-foreground hover:text-primary transition-colors">
             Pricing
           </Link> */}
