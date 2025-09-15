@@ -5,9 +5,11 @@ import { MetricCard } from "@/components/ui/metric-card";
 import Link from "next/link";
 import { Calendar, TrendingUp, Users, Shield, BarChart3, Target, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useUSPMetrics } from "@/lib/hooks/use-usp-data";
 
 export function Hero() {
   const [isVisible, setIsVisible] = useState(false);
+  const { metrics, isLoading } = useUSPMetrics();
 
   useEffect(() => {
     setIsVisible(true);
@@ -69,10 +71,10 @@ export function Hero() {
               
               <MetricCard
                 title="Data Sources"
-                value="2"
+                value={isLoading ? "..." : (metrics?.activeAPIs || 0).toString()}
                 icon={BarChart3}
                 colorScheme="info"
-                description="APIs covering events, meetups, and festivals"
+                description={`${metrics?.totalDataSources || 0} APIs covering events, meetups, and festivals`}
                 className="interactive-element"
               />
               

@@ -1,3 +1,5 @@
+"use client";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   Calendar, 
@@ -9,13 +11,19 @@ import {
   BarChart3,
   Users
 } from "lucide-react";
+import { useUSPMetrics } from "@/lib/hooks/use-usp-data";
+import { DataSourcesList } from "@/components/data-visualization/data-sources-list";
 
 export function Features() {
+  const { metrics, isLoading } = useUSPMetrics();
+  
   const features = [
     {
       icon: Calendar,
       title: "Multi-Source Data Ingestion",
-      description: "Automatically pulls events from Ticketmaster, PredictHQ, and local sources",
+      description: isLoading 
+        ? "Loading data sources..." 
+        : `Automatically pulls events from ${metrics?.activeAPIs || 0} APIs and ${metrics?.dataSources?.filter(s => s.type === 'local').length || 0} local sources`,
     },
     {
       icon: Shield,
@@ -30,7 +38,9 @@ export function Features() {
     {
       icon: Globe,
       title: "Global City Coverage",
-      description: "Start with major tech hubs and expand to cover events worldwide with local data sources.",
+      description: isLoading 
+        ? "Loading coverage data..." 
+        : `Covering ${metrics?.coverage?.cities || 0} cities across ${metrics?.coverage?.countries || 0} regions with comprehensive data sources.`,
     },
   ];
 
@@ -62,6 +72,11 @@ export function Features() {
           ))}
         </div>
 
+        {/* Data Sources Section */}
+        <div className="mt-16">
+          <DataSourcesList />
+        </div>
+
         <div className="mt-16 text-center">
           <Card className="w-full mx-auto">
             <CardHeader>
@@ -73,7 +88,9 @@ export function Features() {
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 text-center justify-items-center">
                 <div>
-                  <div className="text-3xl font-bold text-primary">4</div>
+                  <div className="text-3xl font-bold text-primary">
+                    {isLoading ? "..." : (metrics?.totalDataSources || 0)}
+                  </div>
                   <div className="text-sm text-muted-foreground">Event sources monitored</div>
                 </div>
                 <div>

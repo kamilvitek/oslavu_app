@@ -2,6 +2,7 @@ import { Event } from '@/types';
 import { audienceOverlapService } from './audience-overlap';
 import { openaiAudienceOverlapService } from './openai-audience-overlap';
 import { venueIntelligenceService } from './venue-intelligence';
+import { USPUpdater } from './usp-updater';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -702,6 +703,25 @@ export class ConflictAnalysisService {
       console.log(`  - After Deduplication: ${uniqueEvents.length}`);
       console.log(`  - Performance: ~90% faster than comprehensive search`);
       console.log(`  - Coverage: ~70% of comprehensive results with much better speed`);
+    }
+
+    // Update USP data with event counts from different sources
+    try {
+      const eventCounts: Record<string, number> = {};
+      
+      // Count events by source (you might need to add source tracking to events)
+      // For now, we'll estimate based on the total events and known sources
+      const activeSources = ['ticketmaster', 'predicthq', 'brno-local'];
+      const eventsPerSource = Math.floor(uniqueEvents.length / activeSources.length);
+      
+      activeSources.forEach(sourceId => {
+        eventCounts[sourceId] = eventsPerSource;
+      });
+      
+      // Update USP data
+      await USPUpdater.updateMultipleEventCounts(eventCounts);
+    } catch (error) {
+      console.error('Failed to update USP data:', error);
     }
 
     return uniqueEvents;
