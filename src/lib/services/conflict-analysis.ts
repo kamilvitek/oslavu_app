@@ -133,7 +133,7 @@ export class ConflictAnalysisService {
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
-      size: '100', // Reduced from 199 for faster responses
+      size: '50', // Reduced from 100 for much faster responses
       useComprehensiveFallback: params.useComprehensiveFallback === true ? 'true' : 'false' // Default to false for better performance
     });
 
@@ -176,7 +176,7 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       comprehensive: 'true', // Enable comprehensive search
-      size: '199' // Ticketmaster's maximum page size limit
+      size: '50' // Reduced for faster responses
       // No radius for Ticketmaster comprehensive search
     });
 
@@ -186,12 +186,12 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       comprehensive: 'true', // Enable comprehensive search
-      size: '199', // Ticketmaster's maximum page size limit
+      size: '50', // Reduced for faster responses
       radius: params.searchRadius || '50km'
     });
 
     // Create timeout controller for API requests
-    const timeoutMs = 30000; // 30 seconds timeout per API
+    const timeoutMs = 8000; // 8 seconds timeout per API (reduced from 30s for better performance)
     const createTimeoutFetch = (url: string) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -574,14 +574,14 @@ export class ConflictAnalysisService {
     let score = 0;
     console.log(`Calculating conflict score for ${competingEvents.length} competing events`);
 
-    // Limit to top 5 most significant events for performance (prioritize events with venues and images)
+    // Limit to top 3 most significant events for performance (prioritize events with venues and images)
     const eventsToProcess = competingEvents
       .sort((a, b) => {
         const scoreA = (a.venue ? 2 : 0) + (a.imageUrl ? 1 : 0) + (a.description && a.description.length > 50 ? 1 : 0);
         const scoreB = (b.venue ? 2 : 0) + (b.imageUrl ? 1 : 0) + (b.description && b.description.length > 50 ? 1 : 0);
         return scoreB - scoreA;
       })
-      .slice(0, 5);
+      .slice(0, 3);
 
     console.log(`Processing top ${eventsToProcess.length} most significant events for detailed analysis`);
 
@@ -616,8 +616,8 @@ export class ConflictAnalysisService {
         console.log(`  "${event.title}": has description +5`);
       }
 
-      // Advanced analysis: Audience overlap prediction (with timeout)
-      if (params.enableAdvancedAnalysis) {
+      // Advanced analysis: Audience overlap prediction (with timeout) - DISABLED FOR PERFORMANCE
+      if (false && params.enableAdvancedAnalysis) {
         try {
           // Create a mock event for the user's planned event
           const plannedEvent: Event = {
@@ -639,7 +639,7 @@ export class ConflictAnalysisService {
               ? openaiAudienceOverlapService.predictAudienceOverlap(plannedEvent, event)
               : audienceOverlapService.predictAudienceOverlap(plannedEvent, event),
             new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Audience overlap analysis timeout')), 5000)
+              setTimeout(() => reject(new Error('Audience overlap analysis timeout')), 2000)
             )
           ]) as any;
           

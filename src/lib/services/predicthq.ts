@@ -189,7 +189,7 @@ export class PredictHQService {
       allEvents.push(...events);
       totalAvailable = total;
       
-      if (events.length < limit || allEvents.length >= total || offset >= 4500) {
+      if (events.length < limit || allEvents.length >= total || offset >= 1500) {
         break;
       }
       
@@ -231,8 +231,8 @@ export class PredictHQService {
       allEvents.push(...events);
       totalAvailable = total; // Store the total for logging
       
-      // Check if we've fetched all available events or reached the safety limit
-      if (events.length < limit || allEvents.length >= total || offset >= 4500) { // 10 pages * 500 limit
+      // Check if we've fetched all available events or reached the safety limit (reduced for performance)
+      if (events.length < limit || allEvents.length >= total || offset >= 1500) { // 3 pages * 500 limit
         break;
       }
       
@@ -807,7 +807,7 @@ export class PredictHQService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
-    const targetEventCount = 25; // Reduced from 50 for faster responses
+    const targetEventCount = 15; // Reduced from 25 for much faster responses
     const strategyResults: Array<{ strategy: string; events: number; time: number }> = [];
     
     console.log(`🔮 PredictHQ: Starting parallel comprehensive search for ${city} (${startDate} to ${endDate})`);

@@ -456,7 +456,7 @@ export class TicketmasterService {
         
         totalAvailable = total;
         
-        if (events.length < pageSize || events.length >= total || page >= 9) {
+        if (events.length < pageSize || events.length >= total || page >= 3) {
           break;
         }
         
@@ -521,8 +521,8 @@ export class TicketmasterService {
         
         totalAvailable = total;
         
-        // Check if we've fetched all available events or reached the safety limit
-        if (events.length < pageSize || events.length >= total || page >= 9) {
+        // Check if we've fetched all available events or reached the safety limit (reduced for performance)
+        if (events.length < pageSize || events.length >= total || page >= 3) {
           break;
         }
         
@@ -1315,7 +1315,7 @@ export class TicketmasterService {
     endDate: string,
     category?: string
   ): Promise<Event[]> {
-    const targetEventCount = 25; // Reduced from 50 for faster responses
+    const targetEventCount = 15; // Reduced from 25 for much faster responses
     const strategyResults: Array<{ strategy: string; events: number; time: number }> = [];
     
     console.log(`🎟️ Ticketmaster: Starting parallel comprehensive search for ${city} (${startDate} to ${endDate})`);
