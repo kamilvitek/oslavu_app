@@ -74,7 +74,7 @@ export function Hero() {
                 value={isLoading ? "..." : (metrics?.activeAPIs || 0).toString()}
                 icon={BarChart3}
                 colorScheme="info"
-                description={`${metrics?.totalDataSources || 0} APIs covering events, meetups, and festivals`}
+                description={`${metrics?.activeAPIs || 0} APIs covering events, meetups, and festivals`}
                 className="interactive-element"
               />
               
