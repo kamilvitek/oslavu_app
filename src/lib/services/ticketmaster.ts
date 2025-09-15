@@ -239,8 +239,8 @@ export class TicketmasterService {
       if (sanitizedParams.source) searchParams.append('source', sanitizedParams.source);
       if (sanitizedParams.locale) searchParams.append('locale', sanitizedParams.locale);
       // Disable TBA and TBD events to prevent foreign events with incomplete location data
-      searchParams.append('includeTBA', 'false');
-      searchParams.append('includeTBD', 'false');
+      searchParams.append('includeTBA', 'no');
+      searchParams.append('includeTBD', 'no');
       if (sanitizedParams.includeTest !== undefined) searchParams.append('includeTest', sanitizedParams.includeTest.toString());
 
       const url = `${this.baseUrl}/events.json?${searchParams.toString()}`;
