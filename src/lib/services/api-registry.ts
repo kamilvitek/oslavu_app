@@ -49,7 +49,7 @@ class APIRegistryService {
     },
     {
       id: 'brno-local',
-      name: 'Brno Local Events',
+      name: 'Brno official events',
       type: 'local',
       status: 'active',
       description: 'Local event data for Brno, Czech Republic',
