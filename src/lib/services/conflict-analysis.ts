@@ -3,6 +3,29 @@ import { audienceOverlapService } from './audience-overlap';
 import { openaiAudienceOverlapService } from './openai-audience-overlap';
 import { venueIntelligenceService } from './venue-intelligence';
 
+// High-performance data structures for conflict detection
+interface EventIndex {
+  byDate: Map<string, Set<string>>; // date -> event IDs
+  byCategory: Map<string, Set<string>>; // category -> event IDs
+  byVenue: Map<string, Set<string>>; // venue -> event IDs
+  byCity: Map<string, Set<string>>; // city -> event IDs
+  events: Map<string, Event>; // event ID -> event data
+  spatialIndex: Map<string, Set<string>>; // spatial grid -> event IDs
+}
+
+interface ConflictSeverityConfig {
+  depth: 'shallow' | 'medium' | 'deep';
+  maxComparisons: number;
+  stringSimilarityThreshold: number;
+  spatialRadius: number; // in km
+}
+
+interface ConflictCache {
+  comparisons: Map<string, number>; // event pair -> conflict score
+  expiry: Map<string, number>; // cache key -> expiry timestamp
+  ttl: number; // time to live in ms
+}
+
 export interface ConflictAnalysisResult {
   recommendedDates: DateRecommendation[];
   highRiskDates: DateRecommendation[];
@@ -51,6 +74,288 @@ export class ConflictAnalysisService {
   private cacheExpiry = new Map<string, number>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  // High-performance conflict detection
+  private eventIndex: EventIndex | null = null;
+  private conflictCache: ConflictCache = {
+    comparisons: new Map(),
+    expiry: new Map(),
+    ttl: 10 * 60 * 1000 // 10 minutes
+  };
+
+  // Web Worker for CPU-intensive calculations
+  private worker: Worker | null = null;
+  private workerTasks = new Map<string, {
+    resolve: (value: any) => void;
+    reject: (error: any) => void;
+    startTime: number;
+  }>();
+
+  // Severity configurations for different analysis depths
+  private readonly severityConfigs: Record<string, ConflictSeverityConfig> = {
+    'low': {
+      depth: 'shallow',
+      maxComparisons: 50,
+      stringSimilarityThreshold: 0.7,
+      spatialRadius: 10
+    },
+    'medium': {
+      depth: 'medium',
+      maxComparisons: 200,
+      stringSimilarityThreshold: 0.8,
+      spatialRadius: 25
+    },
+    'high': {
+      depth: 'deep',
+      maxComparisons: 500,
+      stringSimilarityThreshold: 0.9,
+      spatialRadius: 50
+    }
+  };
+
+  /**
+   * Pre-process events into high-performance searchable data structures
+   */
+  private preprocessEvents(events: Event[]): EventIndex {
+    const startTime = Date.now();
+    console.log(`🚀 Preprocessing ${events.length} events into optimized data structures...`);
+
+    const index: EventIndex = {
+      byDate: new Map(),
+      byCategory: new Map(),
+      byVenue: new Map(),
+      byCity: new Map(),
+      events: new Map(),
+      spatialIndex: new Map()
+    };
+
+    for (const event of events) {
+      const eventId = event.id;
+      index.events.set(eventId, event);
+
+      // Index by date
+      const dateKey = event.date.split('T')[0]; // YYYY-MM-DD
+      if (!index.byDate.has(dateKey)) {
+        index.byDate.set(dateKey, new Set());
+      }
+      index.byDate.get(dateKey)!.add(eventId);
+
+      // Index by category
+      if (!index.byCategory.has(event.category)) {
+        index.byCategory.set(event.category, new Set());
+      }
+      index.byCategory.get(event.category)!.add(eventId);
+
+      // Index by venue (if available)
+      if (event.venue) {
+        const venueKey = event.venue.toLowerCase().trim();
+        if (!index.byVenue.has(venueKey)) {
+          index.byVenue.set(venueKey, new Set());
+        }
+        index.byVenue.get(venueKey)!.add(eventId);
+      }
+
+      // Index by city
+      const cityKey = event.city.toLowerCase().trim();
+      if (!index.byCity.has(cityKey)) {
+        index.byCity.set(cityKey, new Set());
+      }
+      index.byCity.get(cityKey)!.add(eventId);
+
+      // Spatial indexing (simplified grid-based approach)
+      if (event.venue) {
+        const spatialKey = this.generateSpatialKey(event.city, event.venue);
+        if (!index.spatialIndex.has(spatialKey)) {
+          index.spatialIndex.set(spatialKey, new Set());
+        }
+        index.spatialIndex.get(spatialKey)!.add(eventId);
+      }
+    }
+
+    const processingTime = Date.now() - startTime;
+    console.log(`✅ Event preprocessing completed in ${processingTime}ms`);
+    console.log(`📊 Index statistics:`);
+    console.log(`  - Dates: ${index.byDate.size}`);
+    console.log(`  - Categories: ${index.byCategory.size}`);
+    console.log(`  - Venues: ${index.byVenue.size}`);
+    console.log(`  - Cities: ${index.byCity.size}`);
+    console.log(`  - Spatial cells: ${index.spatialIndex.size}`);
+
+    return index;
+  }
+
+  /**
+   * Generate spatial key for grid-based spatial indexing
+   */
+  private generateSpatialKey(city: string, venue: string): string {
+    // Simple hash-based spatial key (in production, use proper geohashing)
+    const cityHash = this.simpleHash(city.toLowerCase());
+    const venueHash = this.simpleHash(venue.toLowerCase());
+    return `${cityHash}-${venueHash}`;
+  }
+
+  /**
+   * Simple hash function for spatial indexing
+   */
+  private simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  /**
+   * Get cached conflict score or calculate and cache it
+   */
+  private getCachedConflictScore(eventId1: string, eventId2: string, config: ConflictSeverityConfig): number | null {
+    const cacheKey = `${eventId1}-${eventId2}-${config.depth}`;
+    const now = Date.now();
+    
+    // Check if cache entry exists and is not expired
+    if (this.conflictCache.comparisons.has(cacheKey) && 
+        this.conflictCache.expiry.has(cacheKey) &&
+        this.conflictCache.expiry.get(cacheKey)! > now) {
+      return this.conflictCache.comparisons.get(cacheKey)!;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Cache conflict score with expiry
+   */
+  private setCachedConflictScore(eventId1: string, eventId2: string, config: ConflictSeverityConfig, score: number): void {
+    const cacheKey = `${eventId1}-${eventId2}-${config.depth}`;
+    const expiry = Date.now() + this.conflictCache.ttl;
+    
+    this.conflictCache.comparisons.set(cacheKey, score);
+    this.conflictCache.expiry.set(cacheKey, expiry);
+  }
+
+  /**
+   * Clean expired cache entries
+   */
+  private cleanExpiredCache(): void {
+    const now = Date.now();
+    for (const [key, expiry] of this.conflictCache.expiry.entries()) {
+      if (expiry <= now) {
+        this.conflictCache.comparisons.delete(key);
+        this.conflictCache.expiry.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Initialize Web Worker for CPU-intensive calculations
+   */
+  private initializeWorker(): void {
+    if (typeof Worker !== 'undefined' && !this.worker) {
+      try {
+        // Create worker from the worker file
+        this.worker = new Worker(new URL('../workers/conflict-analysis-worker.ts', import.meta.url));
+        
+        // Handle worker messages
+        this.worker.onmessage = (e) => {
+          const { taskId, result, error } = e.data;
+          const task = this.workerTasks.get(taskId);
+          
+          if (task) {
+            this.workerTasks.delete(taskId);
+            const processingTime = Date.now() - task.startTime;
+            
+            if (error) {
+              console.error(`Worker task ${taskId} failed:`, error);
+              task.reject(new Error(error));
+            } else {
+              console.log(`✅ Worker task ${taskId} completed in ${processingTime}ms`);
+              task.resolve(result);
+            }
+          }
+        };
+        
+        // Handle worker errors
+        this.worker.onerror = (error) => {
+          console.error('Web Worker error:', error);
+          // Reject all pending tasks
+          for (const [taskId, task] of this.workerTasks.entries()) {
+            task.reject(error);
+          }
+          this.workerTasks.clear();
+        };
+        
+        console.log('🚀 Web Worker initialized for CPU-intensive calculations');
+      } catch (error) {
+        console.warn('Failed to initialize Web Worker, falling back to main thread:', error);
+        this.worker = null;
+      }
+    }
+  }
+
+  /**
+   * Terminate Web Worker
+   */
+  private terminateWorker(): void {
+    if (this.worker) {
+      // Reject all pending tasks
+      for (const [taskId, task] of this.workerTasks.entries()) {
+        task.reject(new Error('Worker terminated'));
+      }
+      this.workerTasks.clear();
+      
+      this.worker.terminate();
+      this.worker = null;
+      console.log('🛑 Web Worker terminated');
+    }
+  }
+
+  /**
+   * Execute CPU-intensive calculation in Web Worker or fallback to main thread
+   */
+  private async executeInWorker<T>(
+    taskType: string,
+    data: any,
+    fallbackFn: () => Promise<T>
+  ): Promise<T> {
+    // Initialize worker if not already done
+    if (!this.worker) {
+      this.initializeWorker();
+    }
+    
+    // If worker is not available, use fallback
+    if (!this.worker) {
+      console.log(`⚠️ Web Worker not available, using main thread for ${taskType}`);
+      return await fallbackFn();
+    }
+    
+    const taskId = `${taskType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    return new Promise<T>((resolve, reject) => {
+      // Store task info
+      this.workerTasks.set(taskId, {
+        resolve,
+        reject,
+        startTime: Date.now()
+      });
+      
+      // Send task to worker
+      this.worker!.postMessage({
+        type: taskType,
+        data,
+        taskId
+      });
+      
+      // Set timeout for worker tasks (30 seconds)
+      setTimeout(() => {
+        if (this.workerTasks.has(taskId)) {
+          this.workerTasks.delete(taskId);
+          reject(new Error(`Worker task ${taskId} timed out`));
+        }
+      }, 30000);
+    });
+  }
+
   /**
    * Analyze conflicts for event dates
    */
@@ -65,9 +370,18 @@ export class ConflictAnalysisService {
       const fetchTime = Date.now() - fetchStartTime;
       console.log(`Total events fetched: ${events.length} (took ${fetchTime}ms)`);
       
-      // Generate date recommendations
+      // Pre-process events into high-performance data structures
+      const preprocessStartTime = Date.now();
+      this.eventIndex = this.preprocessEvents(events);
+      const preprocessTime = Date.now() - preprocessStartTime;
+      console.log(`Event preprocessing completed in ${preprocessTime}ms`);
+      
+      // Clean expired cache entries
+      this.cleanExpiredCache();
+      
+      // Generate date recommendations using optimized algorithms
       const analysisStartTime = Date.now();
-      const dateRecommendations = await this.generateDateRecommendations(
+      const dateRecommendations = await this.generateDateRecommendationsOptimized(
         params,
         events
       );
@@ -394,7 +708,100 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Generate date recommendations based on events and parameters
+   * Generate date recommendations using optimized algorithms
+   */
+  private async generateDateRecommendationsOptimized(
+    params: ConflictAnalysisParams,
+    events: Event[]
+  ): Promise<DateRecommendation[]> {
+    const recommendations: DateRecommendation[] = [];
+    
+    // Generate potential dates around the preferred dates
+    const potentialDates = this.generatePotentialDates(params);
+    console.log(`Generated ${potentialDates.length} potential date ranges to analyze`);
+    
+    // Process dates in parallel for better performance
+    const datePromises = potentialDates.map(async (dateRange, index) => {
+      const dateStartTime = Date.now();
+      console.log(`Analyzing date range ${index + 1}/${potentialDates.length}: ${dateRange.startDate} to ${dateRange.endDate}`);
+      
+      // Use optimized conflict detection
+      const competingEvents = this.findCompetingEventsOptimized(
+        dateRange.startDate,
+        dateRange.endDate,
+        params
+      );
+
+      // Determine severity level based on number of competing events
+      const severityLevel = this.determineSeverityLevel(competingEvents.length);
+      const config = this.severityConfigs[severityLevel];
+
+      const conflictScore = await this.calculateConflictScoreOptimized(
+        competingEvents,
+        params.expectedAttendees,
+        params.category,
+        params,
+        config
+      );
+
+      const riskLevel = this.determineRiskLevel(conflictScore);
+      const reasons = this.generateReasons(competingEvents, conflictScore);
+
+      // Advanced analysis features
+      let audienceOverlap;
+      let venueIntelligence;
+
+      if (params.enableAdvancedAnalysis) {
+        // Calculate audience overlap analysis
+        audienceOverlap = await this.calculateAudienceOverlapAnalysis(
+          competingEvents,
+          params
+        );
+
+        // Calculate venue intelligence if venue is provided
+        if (params.venue) {
+          venueIntelligence = await this.calculateVenueIntelligenceAnalysis(
+            params.venue,
+            dateRange.startDate,
+            params.expectedAttendees
+          );
+        }
+      }
+
+      const dateTime = Date.now() - dateStartTime;
+      console.log(`✅ Date range ${index + 1} analyzed in ${dateTime}ms (Score: ${conflictScore}, Risk: ${riskLevel}, Events: ${competingEvents.length})`);
+
+      return {
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        conflictScore,
+        riskLevel,
+        competingEvents,
+        reasons,
+        audienceOverlap,
+        venueIntelligence
+      };
+    });
+
+    // Wait for all date analyses to complete
+    const results = await Promise.all(datePromises);
+    recommendations.push(...results);
+
+    // Sort by conflict score (ascending for recommendations, descending for high risk)
+    return recommendations.sort((a, b) => a.conflictScore - b.conflictScore);
+  }
+
+  /**
+   * Determine severity level based on number of competing events
+   */
+  private determineSeverityLevel(competingEventsCount: number): string {
+    if (competingEventsCount <= 5) return 'low';
+    if (competingEventsCount <= 15) return 'medium';
+    return 'high';
+  }
+
+  /**
+   * Generate date recommendations based on events and parameters (legacy method)
    */
   private async generateDateRecommendations(
     params: ConflictAnalysisParams,
@@ -530,7 +937,99 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Find events that compete with the proposed date range
+   * Find competing events using optimized data structures
+   */
+  private findCompetingEventsOptimized(
+    startDate: string,
+    endDate: string,
+    params: ConflictAnalysisParams
+  ): Event[] {
+    if (!this.eventIndex) {
+      console.warn('Event index not available, falling back to legacy method');
+      return [];
+    }
+
+    const startTime = Date.now();
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    console.log(`🔍 Finding competing events between ${startDate} and ${endDate} using optimized search`);
+    
+    const competingEventIds = new Set<string>();
+    
+    // Get all dates in the range
+    const datesInRange = this.getDatesInRange(startDate, endDate);
+    
+    // Find events by date using the index
+    for (const date of datesInRange) {
+      const eventsOnDate = this.eventIndex.byDate.get(date);
+      if (eventsOnDate) {
+        for (const eventId of eventsOnDate) {
+          competingEventIds.add(eventId);
+        }
+      }
+    }
+    
+    // Filter by category and city using the index
+    const categoryEvents = this.eventIndex.byCategory.get(params.category) || new Set();
+    const cityEvents = this.eventIndex.byCity.get(params.city.toLowerCase().trim()) || new Set();
+    
+    // Find intersection of date, category, and city
+    const filteredEventIds = new Set<string>();
+    for (const eventId of competingEventIds) {
+      const event = this.eventIndex.events.get(eventId);
+      if (!event) continue;
+      
+      // Check if event is in the same category or related categories
+      const sameCategory = event.category === params.category || 
+                          this.isRelatedCategory(event.category, params.category);
+      
+      // Check if it's a significant event (has venue, good attendance potential)
+      const isSignificant = event.venue && event.venue.length > 0;
+      
+      // More lenient matching - include events that are either same category OR significant
+      const isCompeting = sameCategory || isSignificant;
+      
+      if (isCompeting) {
+        filteredEventIds.add(eventId);
+        console.log(`Event "${event.title}" on ${event.date}: category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, isCompeting=${isCompeting}`);
+      }
+    }
+    
+    // Convert event IDs back to Event objects
+    const competingEvents: Event[] = [];
+    for (const eventId of filteredEventIds) {
+      const event = this.eventIndex.events.get(eventId);
+      if (event) {
+        competingEvents.push(event);
+      }
+    }
+    
+    const searchTime = Date.now() - startTime;
+    console.log(`✅ Found ${competingEvents.length} competing events in ${searchTime}ms using optimized search`);
+    
+    return competingEvents;
+  }
+
+  /**
+   * Get all dates in a range (inclusive)
+   */
+  private getDatesInRange(startDate: string, endDate: string): string[] {
+    const dates: string[] = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    const current = new Date(start);
+    while (current <= end) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return dates;
+  }
+
+  /**
+   * Find events that compete with the proposed date range (legacy method)
    */
   private findCompetingEvents(
     startDate: string,
@@ -572,7 +1071,198 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Calculate conflict score based on competing events
+   * Calculate conflict score using optimized algorithms, caching, and Web Workers
+   */
+  private async calculateConflictScoreOptimized(
+    competingEvents: Event[],
+    expectedAttendees: number,
+    category: string,
+    params: ConflictAnalysisParams,
+    config: ConflictSeverityConfig
+  ): Promise<number> {
+    if (competingEvents.length === 0) {
+      console.log('No competing events, score = 0');
+      return 0;
+    }
+
+    const startTime = Date.now();
+    console.log(`🚀 Calculating optimized conflict score for ${competingEvents.length} competing events (${config.depth} depth)`);
+
+    // Use Web Worker for CPU-intensive calculations if available
+    if (competingEvents.length > 10) {
+      try {
+        const workerResult = await this.executeInWorker<{score: number, processingTime: number, eventsProcessed: number}>(
+          'calculateConflictScore',
+          {
+            competingEvents,
+            expectedAttendees,
+            category,
+            config
+          },
+          async () => {
+            const score = await this.calculateConflictScoreFallback(competingEvents, expectedAttendees, category, config);
+            return { score, processingTime: 0, eventsProcessed: competingEvents.length };
+          }
+        );
+
+        const totalTime = Date.now() - startTime;
+        console.log(`✅ Web Worker conflict score calculation completed in ${totalTime}ms: ${workerResult.score}`);
+        return workerResult.score;
+      } catch (error) {
+        console.warn('Web Worker failed, falling back to main thread:', error);
+      }
+    }
+
+    // Fallback to main thread calculation
+    return await this.calculateConflictScoreFallback(competingEvents, expectedAttendees, category, config);
+  }
+
+  /**
+   * Fallback conflict score calculation on main thread
+   */
+  private async calculateConflictScoreFallback(
+    competingEvents: Event[],
+    expectedAttendees: number,
+    category: string,
+    config: ConflictSeverityConfig
+  ): Promise<number> {
+    const startTime = Date.now();
+    let score = 0;
+    console.log(`🔄 Using main thread for conflict score calculation`);
+
+    // Sort events by significance for prioritized processing
+    const sortedEvents = competingEvents
+      .map(event => ({
+        event,
+        significance: this.calculateEventSignificance(event)
+      }))
+      .sort((a, b) => b.significance - a.significance)
+      .slice(0, config.maxComparisons); // Limit based on severity config
+
+    console.log(`Processing top ${sortedEvents.length} most significant events for detailed analysis`);
+
+    // Process events with caching
+    for (const { event } of sortedEvents) {
+      let eventScore = 0;
+      
+      // Check cache first
+      const cachedScore = this.getCachedConflictScore('planned', event.id, config);
+      
+      if (cachedScore !== null) {
+        eventScore = cachedScore;
+        console.log(`  "${event.title}": cached score = ${eventScore}`);
+      } else {
+        // Calculate score using optimized algorithm
+        eventScore = this.calculateEventConflictScore(event, category, config);
+        
+        // Cache the result
+        this.setCachedConflictScore('planned', event.id, config, eventScore);
+        console.log(`  "${event.title}": calculated score = ${eventScore}`);
+      }
+      
+      score += eventScore;
+    }
+
+    // Add base score for remaining events (not processed in detail for performance)
+    const remainingEvents = competingEvents.length - sortedEvents.length;
+    if (remainingEvents > 0) {
+      const remainingScore = remainingEvents * 10; // Lower base score for unprocessed events
+      score += remainingScore;
+      console.log(`Added base score for ${remainingEvents} remaining events: +${remainingScore}`);
+    }
+
+    console.log(`Base score before attendee adjustment: ${score}`);
+
+    // Adjust based on expected attendees (larger events are more affected by conflicts)
+    if (expectedAttendees > 1000) {
+      score *= 1.2;
+      console.log(`Large event (${expectedAttendees} attendees): score *= 1.2 = ${score}`);
+    } else if (expectedAttendees > 500) {
+      score *= 1.1;
+      console.log(`Medium event (${expectedAttendees} attendees): score *= 1.1 = ${score}`);
+    }
+
+    // Cap the score at 100
+    const finalScore = Math.min(score, 100);
+    const calculationTime = Date.now() - startTime;
+    console.log(`✅ Main thread conflict score calculation completed in ${calculationTime}ms: ${finalScore}`);
+    return finalScore;
+  }
+
+  /**
+   * Calculate event significance score for prioritization
+   */
+  private calculateEventSignificance(event: Event): number {
+    let significance = 0;
+    
+    // Base significance
+    significance += 10;
+    
+    // Higher significance for events with venues
+    if (event.venue) {
+      significance += 20;
+    }
+    
+    // Higher significance for events with images
+    if (event.imageUrl) {
+      significance += 15;
+    }
+    
+    // Higher significance for events with descriptions
+    if (event.description && event.description.length > 50) {
+      significance += 10;
+    }
+    
+    // Higher significance for events with expected attendees
+    if (event.expectedAttendees && event.expectedAttendees > 100) {
+      significance += Math.min(event.expectedAttendees / 10, 25);
+    }
+    
+    return significance;
+  }
+
+  /**
+   * Calculate conflict score for a single event using optimized algorithm
+   */
+  private calculateEventConflictScore(event: Event, category: string, config: ConflictSeverityConfig): number {
+    let eventScore = 0;
+    
+    // Base score for any competing event
+    eventScore += 20;
+    
+    // Higher score for same category
+    if (event.category === category) {
+      eventScore += 30;
+    }
+    
+    // Higher score for events with venues (more significant)
+    if (event.venue) {
+      eventScore += 15;
+    }
+    
+    // Higher score for events with images (more professional/promoted)
+    if (event.imageUrl) {
+      eventScore += 10;
+    }
+    
+    // Higher score for events with descriptions (more detailed/promoted)
+    if (event.description && event.description.length > 50) {
+      eventScore += 5;
+    }
+    
+    // Adjust based on analysis depth
+    if (config.depth === 'deep') {
+      // More detailed analysis for deep mode
+      if (event.expectedAttendees && event.expectedAttendees > 500) {
+        eventScore += 10;
+      }
+    }
+    
+    return eventScore;
+  }
+
+  /**
+   * Calculate conflict score based on competing events (legacy method)
    */
   private async calculateConflictScore(
     competingEvents: Event[],
@@ -1013,9 +1703,73 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Calculate string similarity using Levenshtein distance
+   * Calculate string similarity using optimized algorithms with configurable thresholds
    */
-  private calculateStringSimilarity(str1: string, str2: string): number {
+  private calculateStringSimilarity(str1: string, str2: string, threshold: number = 0.8): number {
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+
+    if (longer.length === 0) {
+      return 1.0;
+    }
+
+    // Early termination if strings are too different in length
+    const lengthRatio = shorter.length / longer.length;
+    if (lengthRatio < threshold) {
+      return 0;
+    }
+
+    // Use optimized Levenshtein distance with early termination
+    const distance = this.levenshteinDistanceOptimized(longer, shorter, threshold);
+    const similarity = (longer.length - distance) / longer.length;
+    
+    return similarity >= threshold ? similarity : 0;
+  }
+
+  /**
+   * Optimized Levenshtein distance with early termination
+   */
+  private levenshteinDistanceOptimized(str1: string, str2: string, threshold: number): number {
+    const maxDistance = Math.floor(str1.length * (1 - threshold));
+    
+    // Use only two rows for memory efficiency
+    let prevRow = Array(str2.length + 1).fill(0);
+    let currRow = Array(str2.length + 1).fill(0);
+    
+    // Initialize first row
+    for (let i = 0; i <= str2.length; i++) {
+      prevRow[i] = i;
+    }
+    
+    for (let i = 1; i <= str1.length; i++) {
+      currRow[0] = i;
+      
+      for (let j = 1; j <= str2.length; j++) {
+        const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        currRow[j] = Math.min(
+          currRow[j - 1] + 1,     // deletion
+          prevRow[j] + 1,         // insertion
+          prevRow[j - 1] + cost   // substitution
+        );
+      }
+      
+      // Early termination if minimum possible distance exceeds threshold
+      const minDistance = Math.min(...currRow);
+      if (minDistance > maxDistance) {
+        return maxDistance + 1;
+      }
+      
+      // Swap rows
+      [prevRow, currRow] = [currRow, prevRow];
+    }
+    
+    return prevRow[str2.length];
+  }
+
+  /**
+   * Calculate string similarity using Levenshtein distance (legacy method)
+   */
+  private calculateStringSimilarityLegacy(str1: string, str2: string): number {
     const longer = str1.length > str2.length ? str1 : str2;
     const shorter = str1.length > str2.length ? str2 : str1;
 
@@ -1245,6 +1999,27 @@ export class ConflictAnalysisService {
       return [];
     }
   }
+
+  /**
+   * Cleanup resources (terminate worker, clear caches)
+   */
+  cleanup(): void {
+    console.log('🧹 Cleaning up conflict analysis service resources...');
+    this.terminateWorker();
+    this.conflictCache.comparisons.clear();
+    this.conflictCache.expiry.clear();
+    this.requestCache.clear();
+    this.cacheExpiry.clear();
+    this.eventIndex = null;
+    console.log('✅ Conflict analysis service cleanup completed');
+  }
 }
 
 export const conflictAnalysisService = new ConflictAnalysisService();
+
+// Cleanup worker on page unload
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    conflictAnalysisService.cleanup();
+  });
+}
