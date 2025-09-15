@@ -198,14 +198,14 @@ export class ConflictAnalysisService {
     // Create timeout controller for API requests with reduced timeouts
     const timeoutMs = useComprehensiveSearch ? 7500 : 4000; // Reduced by 50%: 7.5s for comprehensive search, 4s for fast search
     const createTimeoutFetch = (url: string, apiName: string) => {
-      // Get API-specific timeout (50% reduction)
+      // Get API-specific timeout (more reasonable values for external APIs)
       let specificTimeout = timeoutMs;
       if (apiName === 'ticketmaster') {
-        specificTimeout = 4000; // Reduced from 8000ms
+        specificTimeout = 8000; // Restored to reasonable timeout for external API
       } else if (apiName === 'predicthq') {
-        specificTimeout = 5000; // Reduced from 10000ms
+        specificTimeout = 10000; // Restored to reasonable timeout for external API
       } else if (apiName === 'brno') {
-        specificTimeout = 3000; // Reduced from 6000ms
+        specificTimeout = 6000; // Restored to reasonable timeout for external API
       }
 
       const controller = new AbortController();
@@ -227,16 +227,20 @@ export class ConflictAnalysisService {
       
       // Clean expired entries
       if (this.cacheExpiry.has(cacheKey) && this.cacheExpiry.get(cacheKey)! < now) {
+        console.log(`🧹 Cleaning expired cache entry for ${apiName}`);
         this.requestCache.delete(cacheKey);
         this.cacheExpiry.delete(cacheKey);
       }
       
       // Return cached request or create new one
       if (this.requestCache.has(cacheKey)) {
-        console.log(`🔄 Using cached request for ${apiName}`);
+        const expiryTime = this.cacheExpiry.get(cacheKey);
+        const remainingTime = expiryTime ? Math.round((expiryTime - now) / 1000) : 0;
+        console.log(`🔄 Using cached request for ${apiName} (expires in ${remainingTime}s)`);
         return this.requestCache.get(cacheKey)!;
       }
       
+      console.log(`🆕 Creating new request for ${apiName}`);
       const request = createTimeoutFetch(url, apiName);
       this.requestCache.set(cacheKey, request);
       this.cacheExpiry.set(cacheKey, now + this.CACHE_TTL);
@@ -250,21 +254,30 @@ export class ConflictAnalysisService {
     const startTime = Date.now();
     
     // Create API request promises with deduplication
+    const ticketmasterUrl = `${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveTicketmasterParams.toString() : ticketmasterQueryParams.toString()}`;
+    const predicthqUrl = `${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensivePredicthqParams.toString() : predicthqQueryParams.toString()}`;
+    const brnoUrl = `${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
+      startDate: params.dateRangeStart,
+      endDate: params.dateRangeEnd
+    }).toString()}`;
+
+    console.log('🔗 API URLs being called:');
+    console.log(`  Ticketmaster: ${ticketmasterUrl}`);
+    console.log(`  PredictHQ: ${predicthqUrl}`);
+    console.log(`  Brno: ${brnoUrl}`);
+
     const apiRequests = [
       {
         name: 'ticketmaster',
-        promise: getCachedRequest(`${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveTicketmasterParams.toString() : ticketmasterQueryParams.toString()}`, 'ticketmaster')
+        promise: createTimeoutFetch(ticketmasterUrl, 'ticketmaster') // Temporarily disable caching for debugging
       },
       {
         name: 'predicthq', 
-        promise: getCachedRequest(`${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensivePredicthqParams.toString() : predicthqQueryParams.toString()}`, 'predicthq')
+        promise: createTimeoutFetch(predicthqUrl, 'predicthq') // Temporarily disable caching for debugging
       },
       {
         name: 'brno',
-        promise: getCachedRequest(`${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
-          startDate: params.dateRangeStart,
-          endDate: params.dateRangeEnd
-        }).toString()}`, 'brno')
+        promise: createTimeoutFetch(brnoUrl, 'brno') // Temporarily disable caching for debugging
       }
     ];
 
@@ -272,12 +285,18 @@ export class ConflictAnalysisService {
     const allEvents: Event[] = [];
     const responses: Array<{name: string, status: 'fulfilled' | 'rejected', value?: any, reason?: any}> = [];
     let completedCount = 0;
-    const EARLY_TERMINATION_THRESHOLD = 15;
+    const EARLY_TERMINATION_THRESHOLD = 25; // Increased threshold to be less aggressive
     
     // Process requests as they complete
     const processResponse = async (apiRequest: typeof apiRequests[0], index: number) => {
+      const requestStartTime = Date.now();
+      console.log(`🚀 Starting request for ${apiRequest.name}...`);
+      
       try {
         const response = await apiRequest.promise;
+        const requestTime = Date.now() - requestStartTime;
+        console.log(`📡 ${apiRequest.name}: Response received in ${requestTime}ms, status: ${response.status}`);
+        
         responses[index] = { name: apiRequest.name, status: 'fulfilled', value: response };
         
         // Process the response immediately
@@ -286,47 +305,49 @@ export class ConflictAnalysisService {
           allEvents.push(...events);
           console.log(`✅ ${apiRequest.name}: Added ${events.length} events (total: ${allEvents.length})`);
           
-          // Early termination check
+          // Early termination check (but only if we have a reasonable amount)
           if (allEvents.length >= EARLY_TERMINATION_THRESHOLD) {
-            console.log(`🎯 Early termination: ${allEvents.length} events found, stopping additional requests`);
+            console.log(`🎯 Early termination: ${allEvents.length} events found, threshold: ${EARLY_TERMINATION_THRESHOLD}`);
             return true; // Signal early termination
           }
+        } else {
+          console.warn(`❌ ${apiRequest.name}: HTTP error ${response.status}`);
         }
       } catch (error) {
+        const requestTime = Date.now() - requestStartTime;
         responses[index] = { name: apiRequest.name, status: 'rejected', reason: error };
-        console.warn(`⚠️ ${apiRequest.name}: Request failed:`, error);
+        
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.warn(`⏰ ${apiRequest.name}: Request timed out after ${requestTime}ms`);
+        } else {
+          console.warn(`⚠️ ${apiRequest.name}: Request failed after ${requestTime}ms:`, error);
+        }
       }
       
       completedCount++;
       return false;
     };
 
-    // Race all requests but allow early termination
+    // Process all requests in parallel with early termination support
     const racePromises = apiRequests.map((req, idx) => processResponse(req, idx));
     
-    // Wait for either all to complete or early termination
+    // Wait for all requests to complete or early termination
     let earlyTerminated = false;
-    for (const promise of racePromises) {
-      const shouldTerminate = await promise;
-      if (shouldTerminate) {
-        earlyTerminated = true;
-        break;
-      }
-    }
-    
-    // If we didn't early terminate, wait for remaining requests (with shorter timeout)
-    if (!earlyTerminated && completedCount < apiRequests.length) {
-      const remainingTime = Math.max(1000, timeoutMs - (Date.now() - startTime));
-      console.log(`⏱️ Waiting ${remainingTime}ms for remaining ${apiRequests.length - completedCount} requests...`);
+    try {
+      // Use Promise.allSettled to wait for all promises to complete
+      // but check for early termination periodically
+      const results = await Promise.allSettled(racePromises);
       
-      try {
-        await Promise.race([
-          Promise.all(racePromises),
-          new Promise(resolve => setTimeout(resolve, remainingTime))
-        ]);
-      } catch (error) {
-        console.warn('Some requests timed out, continuing with available events');
+      // Check if any promise signaled early termination
+      earlyTerminated = results.some(result => 
+        result.status === 'fulfilled' && result.value === true
+      );
+      
+      if (earlyTerminated) {
+        console.log(`🎯 Early termination triggered by one of the APIs`);
       }
+    } catch (error) {
+      console.warn('Error in parallel request processing:', error);
     }
 
     // Create legacy response format for compatibility

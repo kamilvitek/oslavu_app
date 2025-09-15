@@ -15,13 +15,13 @@ export default function TestConflictAnalysisPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [testParams, setTestParams] = useState({
-    city: "Prague",
+    city: "New York",
     category: "Technology",
     expectedAttendees: 500,
-    startDate: "2024-03-15",
-    endDate: "2024-03-17",
-    dateRangeStart: "2024-03-01",
-    dateRangeEnd: "2024-03-31"
+    startDate: "2025-10-15",
+    endDate: "2025-10-17",
+    dateRangeStart: "2025-10-01",
+    dateRangeEnd: "2025-10-31"
   });
 
   const runTest = async () => {
