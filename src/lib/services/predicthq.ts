@@ -317,12 +317,9 @@ export class PredictHQService {
       if (extractedCity) {
         actualEventCity = extractedCity;
         console.log(`🇨🇿 PredictHQ: Extracted city "${extractedCity}" from Czech event title "${phqEvent.title}"`);
-      } else if (requestedCity && this.isCzechCity(requestedCity)) {
-        // For events like concerts that don't have city in title but are from city-specific search,
-        // assume they're local if the search was for a Czech city
-        actualEventCity = requestedCity;
-        console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" without extractable city, assuming local to "${requestedCity}"`);
       } else {
+        // Don't assume - if we can't extract city, mark as unknown to be filtered out
+        // This prevents foreign events from being incorrectly labeled as local
         // If we can't extract city and no valid requested city, mark as unknown Czech event
         actualEventCity = 'Czech Republic';
         console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" has no city info and couldn't extract from title`);
