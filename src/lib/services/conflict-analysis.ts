@@ -751,13 +751,17 @@ export class ConflictAnalysisService {
       console.error('Failed to update USP data:', error);
     }
 
-    // For UI display, show category-filtered events
+    // For UI display, show all location-filtered events (not just category-filtered)
+    // This allows users to see all potential competing events in their city
+    console.log(`📂 UI display events (all location-filtered): ${uniqueEvents.length}`);
+    
+    // Also create category-filtered events for debugging
     const categoryFilteredEvents = this.filterEventsByCategory(uniqueEvents, params.category);
-    console.log(`📂 UI display events after category filtering: ${categoryFilteredEvents.length}`);
+    console.log(`📂 Category-filtered events: ${categoryFilteredEvents.length}`);
     
     return { 
       filteredEvents: uniqueEvents, // Use all location-filtered events for conflict analysis
-      allEvents: categoryFilteredEvents // Show category-filtered events in UI
+      allEvents: uniqueEvents // Show ALL location-filtered events in UI, not just category-filtered
     };
   }
 
