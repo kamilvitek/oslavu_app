@@ -1,6 +1,7 @@
 // src/lib/services/ticketmaster.ts
 import { Event } from '@/types';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
+import { sanitizeApiParameters, logSanitizationResults } from '@/lib/utils/input-sanitization';
 
 interface TicketmasterEvent {
   id: string;
@@ -193,12 +194,18 @@ export class TicketmasterService {
       return { events: [], total: 0 };
     }
     
-    // Validate and sanitize parameters
-    const validation = this.validateApiParameters(params);
-    if (!validation.isValid) {
-      console.warn('🎟️ Ticketmaster: Parameter validation warnings:', validation.errors);
+    // Validate and sanitize parameters using comprehensive input sanitization
+    const sanitizationResult = sanitizeApiParameters(params);
+    logSanitizationResults(params, sanitizationResult, 'Ticketmaster API Parameters');
+    
+    if (!sanitizationResult.isValid) {
+      console.warn('🎟️ Ticketmaster: Parameter sanitization errors:', sanitizationResult.errors);
     }
-    const sanitizedParams = validation.sanitizedParams;
+    if (sanitizationResult.warnings.length > 0) {
+      console.warn('🎟️ Ticketmaster: Parameter sanitization warnings:', sanitizationResult.warnings);
+    }
+    
+    const sanitizedParams = sanitizationResult.sanitizedParams;
     
     try {
       const searchParams = new URLSearchParams({

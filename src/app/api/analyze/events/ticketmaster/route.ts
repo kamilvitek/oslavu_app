@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ticketmasterService } from '@/lib/services/ticketmaster';
 import { Event } from '@/types';
+import { sanitizeApiParameters, logSanitizationResults } from '@/lib/utils/input-sanitization';
 
 // Helper function to create responses with proper headers
 function createResponse(data: any, options: { status?: number } = {}) {
@@ -38,85 +39,48 @@ export async function GET(request: NextRequest) {
     
     const { searchParams } = new URL(request.url);
     
+    // Extract raw parameters
+    const rawParams = Object.fromEntries(searchParams);
+    
     // Log request parameters
     console.log('📥 Ticketmaster Route Request:', {
       method: request.method,
       url: request.url,
-      searchParams: Object.fromEntries(searchParams),
+      searchParams: rawParams,
       timestamp: new Date().toISOString()
     });
     
-    const city = searchParams.get('city');
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
-    const category = searchParams.get('category');
-    const keyword = searchParams.get('keyword');
-    const radius = searchParams.get('radius');
-    const useComprehensiveFallback = searchParams.get('useComprehensiveFallback') === 'true';
-    const page = parseInt(searchParams.get('page') || '0');
-    const rawSize = parseInt(searchParams.get('size') || '199'); // Ticketmaster's maximum page size is 199
-    const size = Math.min(rawSize, 199); // Ticketmaster's maximum page size is 199
-
-    // Validate radius parameter and clean format
-    let cleanRadius = radius;
-    if (radius) {
-      const radiusValue = parseInt(radius.replace(/[^\d]/g, ''));
-      if (isNaN(radiusValue) || radiusValue < 0 || radiusValue > 19999) {
-        return createResponse(
-          { 
-            error: 'Invalid radius parameter',
-            details: 'Radius must be a number between 0 and 19,999',
-            received: radius,
-            parsed: radiusValue
-          },
-          { status: 400 }
-        );
-      }
-      cleanRadius = radiusValue.toString(); // Convert to clean number string
-    }
-
-    // Validate other parameters
-    const validationErrors: string[] = [];
+    // Sanitize all input parameters
+    const sanitizationResult = sanitizeApiParameters(rawParams);
+    logSanitizationResults(rawParams, sanitizationResult, 'Ticketmaster Route Parameters');
     
-    // Validate size parameter
-    if (rawSize < 1 || rawSize > 199) {
-      validationErrors.push(`Size must be between 1 and 199, got ${rawSize}`);
-    }
-    
-    // Validate page parameter
-    if (page < 0) {
-      validationErrors.push(`Page must be non-negative, got ${page}`);
-    }
-    
-    // Validate date format if provided
-    if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
-      validationErrors.push(`Invalid startDate format: ${startDate}. Expected YYYY-MM-DD format.`);
-    }
-    
-    if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-      validationErrors.push(`Invalid endDate format: ${endDate}. Expected YYYY-MM-DD format.`);
-    }
-    
-    // Return validation errors if any
-    if (validationErrors.length > 0) {
+    if (!sanitizationResult.isValid) {
       return createResponse(
         {
           error: 'Parameter validation failed',
-          details: validationErrors,
-          received: {
-            city,
-            startDate,
-            endDate,
-            category,
-            keyword,
-            radius,
-            page,
-            size: rawSize
-          }
+          details: sanitizationResult.errors,
+          warnings: sanitizationResult.warnings,
+          received: rawParams
         },
         { status: 400 }
       );
     }
+    
+    const sanitizedParams = sanitizationResult.sanitizedParams;
+    
+    // Extract sanitized parameters
+    const city = sanitizedParams.city;
+    const startDate = sanitizedParams.startDate;
+    const endDate = sanitizedParams.endDate;
+    const category = sanitizedParams.category;
+    const keyword = sanitizedParams.keyword;
+    const radius = sanitizedParams.radius;
+    const useComprehensiveFallback = searchParams.get('useComprehensiveFallback') === 'true';
+    const page = sanitizedParams.page || 0;
+    const size = Math.min(sanitizedParams.size || 199, 199); // Ticketmaster's maximum page size is 199
+
+    // Use sanitized radius (already validated and converted)
+    const cleanRadius = radius;
 
     console.log('🎟️ Ticketmaster API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
 

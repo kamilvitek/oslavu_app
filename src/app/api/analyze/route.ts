@@ -2,22 +2,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { conflictAnalysisService } from '@/lib/services/conflict-analysis';
 import { AnalysisRequest } from '@/types';
+import { sanitizeApiParameters, logSanitizationResults } from '@/lib/utils/input-sanitization';
 
 export async function POST(request: NextRequest) {
   try {
     const body: AnalysisRequest = await request.json();
     
+    // Sanitize input parameters
+    const sanitizationResult = sanitizeApiParameters(body);
+    logSanitizationResults(body, sanitizationResult, 'Analysis Request Parameters');
+    
+    if (!sanitizationResult.isValid) {
+      return NextResponse.json(
+        {
+          error: 'Parameter validation failed',
+          details: sanitizationResult.errors,
+          warnings: sanitizationResult.warnings
+        },
+        { status: 400 }
+      );
+    }
+    
+    const sanitizedBody = sanitizationResult.sanitizedParams;
+    
     // Validate required fields
-    if (!body.city || !body.category || !body.expectedAttendees || !body.dateRange) {
+    if (!sanitizedBody.city || !sanitizedBody.category || !sanitizedBody.expectedAttendees || !sanitizedBody.dateRange) {
       return NextResponse.json(
         { error: 'Missing required fields: city, category, expectedAttendees, dateRange' },
         { status: 400 }
       );
     }
 
-    // Validate date range
-    const analysisStartDate = new Date(body.dateRange.start);
-    const analysisEndDate = new Date(body.dateRange.end);
+    // Validate date range using sanitized data
+    const analysisStartDate = new Date(sanitizedBody.dateRange.start);
+    const analysisEndDate = new Date(sanitizedBody.dateRange.end);
     
     if (analysisStartDate >= analysisEndDate) {
       return NextResponse.json(
@@ -39,26 +57,26 @@ export async function POST(request: NextRequest) {
 
     // Perform conflict analysis
     console.log('Starting conflict analysis for:', {
-      city: body.city,
-      category: body.category,
-      dateRange: body.dateRange,
+      city: sanitizedBody.city,
+      category: sanitizedBody.category,
+      dateRange: sanitizedBody.dateRange,
     });
 
-    // Map incoming request to service params
-    const preferredStart = body.preferredDates?.[0] || body.dateRange.start;
-    const preferredEnd = body.preferredDates?.[1] || preferredStart;
+    // Map incoming request to service params using sanitized data
+    const preferredStart = sanitizedBody.preferredDates?.[0] || sanitizedBody.dateRange.start;
+    const preferredEnd = sanitizedBody.preferredDates?.[1] || preferredStart;
 
     const analysis = await conflictAnalysisService.analyzeConflicts({
-      city: body.city,
-      category: body.category,
-      subcategory: body.subcategory,
-      expectedAttendees: body.expectedAttendees,
+      city: sanitizedBody.city,
+      category: sanitizedBody.category,
+      subcategory: sanitizedBody.subcategory,
+      expectedAttendees: sanitizedBody.expectedAttendees,
       startDate: preferredStart,
       endDate: preferredEnd,
-      dateRangeStart: body.dateRange.start,
-      dateRangeEnd: body.dateRange.end,
-      venue: body.venue,
-      enableAdvancedAnalysis: body.enableAdvancedAnalysis,
+      dateRangeStart: sanitizedBody.dateRange.start,
+      dateRangeEnd: sanitizedBody.dateRange.end,
+      venue: sanitizedBody.venue,
+      enableAdvancedAnalysis: sanitizedBody.enableAdvancedAnalysis,
       useComprehensiveFallback: false, // DISABLED for performance - was causing 5min delays
     });
     
