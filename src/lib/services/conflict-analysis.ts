@@ -698,9 +698,17 @@ export class ConflictAnalysisService {
     const foreignEvents = allEvents.filter(e => {
       const eventCity = e.city?.toLowerCase().trim() || '';
       const targetCity = params.city.toLowerCase().trim();
-      return eventCity !== targetCity && eventCity !== 'brno';
+      
+      // Check for known foreign patterns
+      const isForeign = eventCity !== targetCity && 
+                       eventCity !== 'brno' && 
+                       eventCity !== 'prague' &&
+                       (eventCity.includes('-') && !eventCity.startsWith(targetCity)) || // Foreign patterns like "US-CA"
+                       ['westfield', 'kragujevac', 'adelaide', 'halifax', 'baltimore', 'atlanta', 'exeter', 'concord', 'kerikeri'].includes(eventCity);
+      
+      return isForeign;
     });
-    console.log(`🚨 Found ${foreignEvents.length} foreign events before location filtering:`, foreignEvents.slice(0, 3).map(e => ({ title: e.title, city: e.city })));
+    console.log(`🚨 Found ${foreignEvents.length} foreign events before location filtering:`, foreignEvents.slice(0, 5).map(e => ({ title: e.title, city: e.city })));
     
     const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
     console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
@@ -939,7 +947,9 @@ export class ConflictAnalysisService {
     const dates: Array<{startDate: string, endDate: string}> = [];
     const preferredStart = new Date(params.startDate);
     const preferredEnd = new Date(params.endDate);
-    const eventDuration = Math.ceil((preferredEnd.getTime() - preferredStart.getTime()) / (1000 * 60 * 60 * 24));
+    const eventDuration = Math.max(1, Math.ceil((preferredEnd.getTime() - preferredStart.getTime()) / (1000 * 60 * 60 * 24)));
+    
+    console.log(`📅 Date calculation: preferred ${params.startDate} to ${params.endDate}, duration: ${eventDuration} days`);
 
     // First, generate dates ±7 days around preferred dates for more comprehensive analysis
     for (let i = -7; i <= 7; i++) {

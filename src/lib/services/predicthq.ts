@@ -293,42 +293,57 @@ export class PredictHQService {
     const endDate = phqEvent.end ? new Date(phqEvent.end) : undefined;
     
     // Extract city from various possible sources
-    let city = requestedCity || 'Unknown'; // Use requested city as primary fallback
     let actualEventCity = 'Unknown';
     
+    // First priority: location.city
     if (location?.city) {
       actualEventCity = location.city;
-    } else if (location?.address) {
-      // Try to extract city from address
+    } 
+    // Second priority: place.city  
+    else if (phqEvent.place?.city) {
+      actualEventCity = phqEvent.place.city;
+    }
+    // Third priority: extract from address
+    else if (location?.address) {
       const addressParts = location.address.split(',');
       if (addressParts.length > 1) {
         actualEventCity = addressParts[addressParts.length - 2]?.trim() || 'Unknown';
       }
     }
+    // Fourth priority: check if this is a Czech Republic event without city info
+    else if (phqEvent.country === 'CZ' && requestedCity) {
+      // For Czech events without specific city, use requested city if it's a Czech city
+      const czechCities = ['prague', 'brno', 'ostrava', 'plzen', 'liberec', 'olomouc'];
+      if (czechCities.includes(requestedCity.toLowerCase())) {
+        actualEventCity = requestedCity;
+        console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" without city info, assuming "${requestedCity}"`);
+      } else {
+        actualEventCity = 'Czech Republic';
+      }
+    }
+    // Fifth priority: mark foreign events
+    else if (phqEvent.country && phqEvent.country !== 'CZ') {
+      actualEventCity = `${phqEvent.country}${phqEvent.state ? '-' + phqEvent.state : ''}`;
+    }
     
-    // CRITICAL FIX: Only use the actual event city if it matches the requested city
-    // This prevents foreign events from appearing in local searches
+    // CRITICAL: Always use the actual event city, never default to requested city
+    // This ensures foreign events are properly identified and filtered out
+    let city = actualEventCity;
+    
+    // Only if we truly have no location info, use requested city as fallback
+    if (actualEventCity === 'Unknown' && requestedCity) {
+      city = requestedCity;
+      console.log(`⚠️ PredictHQ: No location info for "${phqEvent.title}", using requested city "${requestedCity}" as fallback`);
+    }
+    
+    // Log foreign events for debugging
     if (requestedCity && actualEventCity !== 'Unknown') {
       const normalizedRequested = requestedCity.toLowerCase().trim();
       const normalizedActual = actualEventCity.toLowerCase().trim();
       
-      // Check if the actual event city matches the requested city (exact match or known aliases)
-      const cityMatches = this.doesCityMatch(normalizedRequested, normalizedActual);
-      
-      if (cityMatches) {
-        city = actualEventCity; // Use actual city if it matches
-      } else {
-        // Event is from a different city - this should be filtered out later
-        city = actualEventCity; // Keep actual city for filtering purposes
-        console.log(`🚫 PredictHQ: Event "${phqEvent.title}" is from "${actualEventCity}" but user searched for "${requestedCity}" - will be filtered out`);
+      if (!this.doesCityMatch(normalizedRequested, normalizedActual)) {
+        console.log(`🌍 PredictHQ: Foreign event detected - "${phqEvent.title}" is from "${actualEventCity}" but user searched for "${requestedCity}"`);
       }
-    } else if (actualEventCity !== 'Unknown') {
-      city = actualEventCity;
-    }
-    
-    // Since PredictHQ returns location-specific events, use the requested city if no other city is found
-    if (city === 'Unknown' && requestedCity) {
-      city = requestedCity;
     }
     
     // Map category - if we did a broader search, use the requested category when appropriate
