@@ -692,8 +692,12 @@ export class ConflictAnalysisService {
     const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
     console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
 
+    // Filter events by category to show only relevant events in "Found Events"
+    const categoryFilteredEvents = this.filterEventsByCategory(locationFilteredEvents, params.category);
+    console.log(`📂 Total events after category filtering: ${categoryFilteredEvents.length}`);
+
     // Remove duplicates based on title, date, and venue
-    const uniqueEvents = this.removeDuplicateEvents(locationFilteredEvents);
+    const uniqueEvents = this.removeDuplicateEvents(categoryFilteredEvents);
     console.log(`🔄 Total unique events after deduplication: ${uniqueEvents.length}`);
 
     // Log search strategy summary
@@ -1596,7 +1600,16 @@ export class ConflictAnalysisService {
       'darmstadt', 'paderborn', 'regensburg', 'ingolstadt', 'würzburg', 'fürth', 'wolfsburg', 'offenbach',
       'ulm', 'heilbronn', 'pforzheim', 'göttingen', 'bottrop', 'trier', 'recklinghausen', 'reutlingen',
       'bremerhaven', 'koblenz', 'bergisch gladbach', 'jena', 'remscheid', 'erlangen', 'moers', 'siegen',
-      'hildesheim', 'salzgitter'
+      'hildesheim', 'salzgitter',
+      // Add more foreign cities that might appear in searches
+      'kragujevac', 'westfield', 'belgrade', 'zagreb', 'ljubljana', 'bratislava', 'bucharest', 'sofia',
+      'tirana', 'skopje', 'podgorica', 'sarajevo', 'banja luka', 'novi sad', 'nis', 'subotica', 'kraljevo',
+      'cacak', 'zrenjanin', 'pancevo', 'novi pazar', 'kikinda', 'smederevo', 'leskovac', 'uzice', 'cacak',
+      'sabac', 'pozarevac', 'kragujevac', 'krusevac', 'vranje', 'valjevo', 'sombor', 'zajecar', 'priboj',
+      'prokuplje', 'vrsac', 'backa palanka', 'sremska mitrovica', 'indjija', 'ruma', 'stara pazova',
+      'kula', 'odzaci', 'bajmok', 'backa topola', 'kanjiza', 'senta', 'ada', 'mokrin', 'kikinda',
+      'novi knezevac', 'coka', 'srbobran', 'becej', 'titel', 'zabalj', 'temerin', 'sirig', 'backi petrovac',
+      'kula', 'odzaci', 'bajmok', 'backa topola', 'kanjiza', 'senta', 'ada', 'mokrin', 'kikinda'
     ];
 
     // Check if target city is a Czech city
@@ -1609,7 +1622,30 @@ export class ConflictAnalysisService {
       const eventCity = event.city?.toLowerCase().trim() || '';
       const eventVenue = event.venue?.toLowerCase().trim() || '';
       
-      // If searching for a Czech city, filter out foreign cities
+      // STRICT FILTERING: If searching for a specific city, only allow events from that city or its aliases
+      // This prevents foreign events from appearing in local searches
+      
+      // First, check if event city matches the target city or its aliases
+      let isMatchingCity = targetAliases.some(alias => 
+        eventCity === alias || 
+        eventCity.includes(alias) || 
+        alias.includes(eventCity)
+      );
+      
+      // If no city match, check if the event has a venue in the target city
+      if (!isMatchingCity && event.venue) {
+        const isMatchingVenue = targetAliases.some(alias => 
+          eventVenue.includes(alias) || 
+          alias.includes(eventVenue)
+        );
+        
+        if (isMatchingVenue) {
+          console.log(`✅ Event "${event.title}" matched by venue "${event.venue}" for city "${targetCity}"`);
+          return true;
+        }
+      }
+      
+      // If searching for a Czech city, also filter out known foreign cities
       if (isCzechCity) {
         // Check if event city is a known foreign city
         const isForeignCity = foreignCities.some(foreignCity => 
@@ -1634,32 +1670,37 @@ export class ConflictAnalysisService {
         }
       }
       
-      // Check if event city matches any of the target city aliases
-      let isMatchingCity = targetAliases.some(alias => 
-        eventCity === alias || 
-        eventCity.includes(alias) || 
-        alias.includes(eventCity)
-      );
-      
-      // If no city match, check if the event has a venue in the target city
-      if (!isMatchingCity && event.venue) {
-        const isMatchingVenue = targetAliases.some(alias => 
-          eventVenue.includes(alias) || 
-          alias.includes(eventVenue)
-        );
-        
-        if (isMatchingVenue) {
-          console.log(`✅ Event "${event.title}" matched by venue "${event.venue}" for city "${targetCity}"`);
-          return true;
-        }
-      }
-      
       // Log filtered out events for debugging
       if (!isMatchingCity) {
-        console.log(`🚫 Filtered out event "${event.title}" from "${event.city}" (target: "${targetCity}")`);
+        console.log(`🚫 Filtered out event "${event.title}" from "${event.city}" (target: "${targetCity}") - city mismatch`);
       }
       
       return isMatchingCity;
+    });
+  }
+
+  /**
+   * Filter events by category to show only relevant events in "Found Events"
+   */
+  private filterEventsByCategory(events: Event[], targetCategory?: string): Event[] {
+    if (!targetCategory) {
+      return events; // No category filter, return all events
+    }
+
+    const normalizedTargetCategory = targetCategory.toLowerCase().trim();
+    
+    return events.filter(event => {
+      const eventCategory = event.category?.toLowerCase().trim() || '';
+      
+      // Check if event category matches the target category or is related
+      const isMatchingCategory = eventCategory === normalizedTargetCategory || 
+                                this.isRelatedCategory(eventCategory, normalizedTargetCategory);
+      
+      if (!isMatchingCategory) {
+        console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - category mismatch`);
+      }
+      
+      return isMatchingCategory;
     });
   }
 

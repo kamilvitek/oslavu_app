@@ -294,14 +294,36 @@ export class PredictHQService {
     
     // Extract city from various possible sources
     let city = requestedCity || 'Unknown'; // Use requested city as primary fallback
+    let actualEventCity = 'Unknown';
+    
     if (location?.city) {
-      city = location.city;
+      actualEventCity = location.city;
     } else if (location?.address) {
       // Try to extract city from address
       const addressParts = location.address.split(',');
       if (addressParts.length > 1) {
-        city = addressParts[addressParts.length - 2]?.trim() || city;
+        actualEventCity = addressParts[addressParts.length - 2]?.trim() || 'Unknown';
       }
+    }
+    
+    // CRITICAL FIX: Only use the actual event city if it matches the requested city
+    // This prevents foreign events from appearing in local searches
+    if (requestedCity && actualEventCity !== 'Unknown') {
+      const normalizedRequested = requestedCity.toLowerCase().trim();
+      const normalizedActual = actualEventCity.toLowerCase().trim();
+      
+      // Check if the actual event city matches the requested city (exact match or known aliases)
+      const cityMatches = this.doesCityMatch(normalizedRequested, normalizedActual);
+      
+      if (cityMatches) {
+        city = actualEventCity; // Use actual city if it matches
+      } else {
+        // Event is from a different city - this should be filtered out later
+        city = actualEventCity; // Keep actual city for filtering purposes
+        console.log(`🚫 PredictHQ: Event "${phqEvent.title}" is from "${actualEventCity}" but user searched for "${requestedCity}" - will be filtered out`);
+      }
+    } else if (actualEventCity !== 'Unknown') {
+      city = actualEventCity;
     }
     
     // Since PredictHQ returns location-specific events, use the requested city if no other city is found
@@ -445,6 +467,61 @@ export class PredictHQService {
     };
 
     return categoryMap[phqCategory] || 'Other';
+  }
+
+  /**
+   * Check if two cities match (exact match or known aliases)
+   */
+  private doesCityMatch(requestedCity: string, actualCity: string): boolean {
+    // Exact match
+    if (requestedCity === actualCity) {
+      return true;
+    }
+    
+    // Known city aliases
+    const cityAliases: Record<string, string[]> = {
+      'brno': ['brno', 'brünn'],
+      'prague': ['prague', 'praha', 'prag'],
+      'london': ['london', 'londres'],
+      'berlin': ['berlin', 'berlín'],
+      'paris': ['paris', 'parís'],
+      'vienna': ['vienna', 'wien', 'vienne'],
+      'warsaw': ['warsaw', 'warszawa'],
+      'budapest': ['budapest'],
+      'zurich': ['zurich', 'zürich'],
+      'munich': ['munich', 'münchen'],
+      'stockholm': ['stockholm'],
+      'copenhagen': ['copenhagen', 'københavn'],
+      'helsinki': ['helsinki', 'helsingfors'],
+      'oslo': ['oslo'],
+      'madrid': ['madrid'],
+      'barcelona': ['barcelona'],
+      'rome': ['rome', 'roma'],
+      'milan': ['milan', 'milano'],
+      'athens': ['athens', 'athina'],
+      'lisbon': ['lisbon', 'lisboa'],
+      'dublin': ['dublin'],
+      'amsterdam': ['amsterdam'],
+      'edinburgh': ['edinburgh'],
+      'glasgow': ['glasgow'],
+      'manchester': ['manchester'],
+      'birmingham': ['birmingham'],
+      'liverpool': ['liverpool'],
+      'leeds': ['leeds'],
+      'bristol': ['bristol'],
+      'hamburg': ['hamburg'],
+      'cologne': ['cologne', 'köln'],
+      'frankfurt': ['frankfurt'],
+      'stuttgart': ['stuttgart'],
+      'düsseldorf': ['düsseldorf'],
+      'dortmund': ['dortmund'],
+      'leipzig': ['leipzig'],
+      'dresden': ['dresden']
+    };
+    
+    // Check if actual city is an alias of requested city
+    const aliases = cityAliases[requestedCity] || [];
+    return aliases.includes(actualCity);
   }
 
   /**
