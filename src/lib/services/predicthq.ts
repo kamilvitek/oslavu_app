@@ -133,7 +133,7 @@ export class PredictHQService {
 
       const data: PredictHQResponse = await response.json();
       
-      const events = data.results?.map(event => this.transformEvent(event, params.city)) || [];
+      const events = data.results?.map(event => this.transformEvent(event, params.city, params.category)) || [];
       const total = data.count;
 
       return { events, total };
@@ -287,7 +287,7 @@ export class PredictHQService {
   /**
    * Transform PredictHQ event to our Event interface
    */
-  private transformEvent = (phqEvent: PredictHQEvent, requestedCity?: string): Event => {
+  private transformEvent = (phqEvent: PredictHQEvent, requestedCity?: string, requestedCategory?: string): Event => {
     const location = phqEvent.location || phqEvent.place;
     const startDate = new Date(phqEvent.start);
     const endDate = phqEvent.end ? new Date(phqEvent.end) : undefined;
@@ -331,6 +331,21 @@ export class PredictHQService {
       city = requestedCity;
     }
     
+    // Map category - if we did a broader search, use the requested category when appropriate
+    let mappedCategory = this.mapPredictHQCategory(phqEvent.category, phqEvent.title, phqEvent.description);
+    
+    // If we did a broader search and the mapped category doesn't match the requested category,
+    // but the content suggests it should match, use the requested category
+    if (requestedCategory && mappedCategory !== requestedCategory) {
+      const content = `${phqEvent.title || ''} ${phqEvent.description || ''}`.toLowerCase();
+      
+      // Check if the content matches the requested category
+      if (this.doesContentMatchCategory(content, requestedCategory)) {
+        console.log(`🔮 PredictHQ: Overriding category from "${mappedCategory}" to "${requestedCategory}" for "${phqEvent.title}" based on content`);
+        mappedCategory = requestedCategory;
+      }
+    }
+
     return {
       id: `phq_${phqEvent.id}`,
       title: phqEvent.title,
@@ -339,7 +354,7 @@ export class PredictHQService {
       endDate: endDate?.toISOString().split('T')[0],
       city: city,
       venue: location?.name || phqEvent.place?.name,
-      category: this.mapPredictHQCategory(phqEvent.category, phqEvent.title, phqEvent.description),
+      category: mappedCategory,
       subcategory: phqEvent.subcategory,
       expectedAttendees: phqEvent.phq_attendance,
       source: 'predicthq',
@@ -357,13 +372,13 @@ export class PredictHQService {
    */
   private mapCategoryToPredictHQ(category: string): string | undefined {
     const categoryMap: Record<string, string | undefined> = {
-      // Business and professional events - use conferences for most business events
-      'Technology': 'conferences', // Tech conferences and events
-      'Business': 'conferences', // Business conferences and meetings
-      'Marketing': 'conferences', // Marketing conferences and events
-      'Finance': 'conferences', // Financial conferences and events
-      'Professional Development': 'conferences', // Professional development events
-      'Networking': 'conferences', // Networking events and meetups
+      // Business and professional events - use broader search for better results
+      'Technology': undefined, // Use broader search for tech events
+      'Business': undefined, // Use broader search for business events
+      'Marketing': undefined, // Use broader search for marketing events
+      'Finance': undefined, // Use broader search for finance events
+      'Professional Development': undefined, // Use broader search
+      'Networking': undefined, // Use broader search
       
       // Conferences and trade shows
       'Conferences': 'conferences', // Direct mapping
@@ -371,7 +386,7 @@ export class PredictHQService {
       'Expos': 'expos', // Direct mapping
       
       // Healthcare and education
-      'Healthcare': 'conferences', // Healthcare conferences and events
+      'Healthcare': undefined, // Use broader search for healthcare events
       'Education': 'academic', // Educational events and academic conferences
       'Academic': 'academic', // Direct mapping
       
@@ -438,13 +453,14 @@ export class PredictHQService {
     }
     
     // Fall back to category-based mapping
+    // CRITICAL FIX: Ensure bidirectional consistency with input mapping
     const categoryMap: Record<string, string> = {
-      'conferences': 'Business',
+      'conferences': 'Business', // Keep as Business for general conferences
       'concerts': 'Entertainment',
       'sports': 'Sports',
       'festivals': 'Arts & Culture',
       'community': 'Other',
-      'expos': 'Business',
+      'expos': 'Business', // Keep as Business for general expos
       'performing-arts': 'Arts & Culture',
       'nightlife': 'Entertainment',
       'politics': 'Other',
@@ -467,6 +483,26 @@ export class PredictHQService {
     };
 
     return categoryMap[phqCategory] || 'Other';
+  }
+
+  /**
+   * Check if content matches a specific category
+   */
+  private doesContentMatchCategory(content: string, category: string): boolean {
+    const categoryKeywords: Record<string, string[]> = {
+      'Technology': ['tech', 'digital', 'software', 'ai', 'data', 'coding', 'programming', 'cyber', 'cloud', 'startup', 'innovation'],
+      'Marketing': ['marketing', 'advertising', 'brand', 'social media', 'seo', 'digital marketing', 'promotion', 'campaign'],
+      'Business': ['business', 'conference', 'meeting', 'corporate', 'enterprise', 'strategy', 'management'],
+      'Finance': ['finance', 'banking', 'investment', 'trading', 'fintech', 'crypto', 'financial'],
+      'Healthcare': ['medical', 'health', 'clinical', 'doctor', 'nurse', 'patient', 'hospital', 'pharma', 'drug'],
+      'Entertainment': ['concert', 'music', 'show', 'performance', 'entertainment', 'festival', 'party'],
+      'Sports': ['sport', 'game', 'match', 'tournament', 'league', 'athletic', 'fitness'],
+      'Arts & Culture': ['art', 'culture', 'museum', 'gallery', 'exhibition', 'theater', 'theatre', 'dance'],
+      'Education': ['education', 'learning', 'training', 'course', 'workshop', 'seminar', 'academic', 'school']
+    };
+    
+    const keywords = categoryKeywords[category] || [];
+    return keywords.some(keyword => content.includes(keyword));
   }
 
   /**
