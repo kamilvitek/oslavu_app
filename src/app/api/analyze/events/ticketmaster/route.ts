@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ticketmasterService } from '@/lib/services/ticketmaster';
 import { Event } from '@/types';
 import { sanitizeApiParameters, logSanitizationResults } from '@/lib/utils/input-sanitization';
+import { getCityCountryCode } from '@/lib/utils/city-country-mapping';
 
 // Helper function to create responses with proper headers
 function createResponse(data: any, options: { status?: number } = {}) {
@@ -160,7 +161,7 @@ export async function GET(request: NextRequest) {
           // Use getEvents with full parameters instead of limited searchEvents
           const result = await ticketmasterService.getEvents({
             city: searchCity || undefined,
-            countryCode: undefined,
+            countryCode: searchCity ? getCityCountryCode(searchCity) : undefined,
             radius: radius?.replace(/[^\d]/g, '') || undefined,
             startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
             endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,
@@ -194,7 +195,7 @@ export async function GET(request: NextRequest) {
         // Use direct getEvents method for better reliability, with comprehensive fallback if needed
         const result = await ticketmasterService.getEvents({
           city: searchCity,
-          countryCode: undefined,
+          countryCode: getCityCountryCode(searchCity), // Use proper country code mapping
           radius: searchRadius || undefined,
           postalCode: undefined,
           // marketId removed - using geographic parameters instead
@@ -224,7 +225,7 @@ export async function GET(request: NextRequest) {
         
         const result = await ticketmasterService.getEvents({
           city: searchCity || undefined,
-          countryCode: undefined,
+          countryCode: searchCity ? getCityCountryCode(searchCity) : undefined,
           // marketId removed - using geographic parameters instead
           startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
           endDateTime: endDate ? `${endDate}T23:59:59Z` : undefined,

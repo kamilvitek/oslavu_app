@@ -266,6 +266,54 @@ export function sanitizeDateString(input: unknown): SanitizationResult<string> {
 }
 
 /**
+ * Sanitize and validate ISO datetime strings (YYYY-MM-DDTHH:mm:ssZ)
+ */
+export function sanitizeISODateTimeString(input: unknown): SanitizationResult<string> {
+  const result = sanitizeString(input, {
+    maxLength: 25,
+    minLength: 19,
+    allowEmpty: false,
+    trimWhitespace: true,
+    removeHtml: true,
+    normalizeUnicode: false
+  });
+
+  if (!result.isValid) {
+    return result;
+  }
+
+  // Validate ISO datetime format (YYYY-MM-DDTHH:mm:ssZ)
+  const isoDateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
+  if (!isoDateTimePattern.test(result.sanitizedValue)) {
+    result.errors.push('DateTime must be in ISO format (YYYY-MM-DDTHH:mm:ssZ)');
+    result.isValid = false;
+    return result;
+  }
+
+  // Validate that it's a real date
+  const date = new Date(result.sanitizedValue);
+  if (isNaN(date.getTime())) {
+    result.errors.push('Invalid datetime');
+    result.isValid = false;
+    return result;
+  }
+
+  // Check if date is reasonable (not too far in past/future)
+  const now = new Date();
+  const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+  const twoYearsFromNow = new Date(now.getFullYear() + 2, now.getMonth(), now.getDate());
+
+  if (date < oneYearAgo) {
+    result.warnings.push('DateTime is more than one year in the past');
+  }
+  if (date > twoYearsFromNow) {
+    result.warnings.push('DateTime is more than two years in the future');
+  }
+
+  return result;
+}
+
+/**
  * Sanitize and validate email addresses
  */
 export function sanitizeEmail(input: unknown): SanitizationResult<string> {
@@ -542,34 +590,52 @@ export function sanitizeApiParameters(params: Record<string, unknown>): {
           break;
 
         case 'radius':
-          const radiusResult = sanitizeRadius(value);
-          if (!radiusResult.isValid) errors.push(...radiusResult.errors);
-          if (radiusResult.warnings.length > 0) warnings.push(...radiusResult.warnings);
-          sanitizedParams[key] = radiusResult.sanitizedValue;
+          if (value && value !== '' && value !== null && value !== undefined) {
+            const radiusResult = sanitizeRadius(value);
+            if (!radiusResult.isValid) errors.push(...radiusResult.errors);
+            if (radiusResult.warnings.length > 0) warnings.push(...radiusResult.warnings);
+            sanitizedParams[key] = radiusResult.sanitizedValue;
+          } else {
+            sanitizedParams[key] = undefined; // Allow empty radius
+          }
           break;
 
         case 'countrycode':
-          const countryResult = sanitizeCountryCode(value);
-          if (!countryResult.isValid) errors.push(...countryResult.errors);
-          if (countryResult.warnings.length > 0) warnings.push(...countryResult.warnings);
-          sanitizedParams[key] = countryResult.sanitizedValue;
+          if (value && value !== '' && value !== null && value !== undefined) {
+            const countryResult = sanitizeCountryCode(value);
+            if (!countryResult.isValid) errors.push(...countryResult.errors);
+            if (countryResult.warnings.length > 0) warnings.push(...countryResult.warnings);
+            sanitizedParams[key] = countryResult.sanitizedValue;
+          } else {
+            sanitizedParams[key] = undefined; // Allow empty country code
+          }
           break;
 
         case 'postalcode':
-          const postalResult = sanitizePostalCode(value);
-          if (!postalResult.isValid) errors.push(...postalResult.errors);
-          if (postalResult.warnings.length > 0) warnings.push(...postalResult.warnings);
-          sanitizedParams[key] = postalResult.sanitizedValue;
+          if (value && value !== '' && value !== null && value !== undefined) {
+            const postalResult = sanitizePostalCode(value);
+            if (!postalResult.isValid) errors.push(...postalResult.errors);
+            if (postalResult.warnings.length > 0) warnings.push(...postalResult.warnings);
+            sanitizedParams[key] = postalResult.sanitizedValue;
+          } else {
+            sanitizedParams[key] = undefined; // Allow empty postal code
+          }
           break;
 
         case 'startdate':
         case 'enddate':
-        case 'startdatetime':
-        case 'enddatetime':
           const dateResult = sanitizeDateString(value);
           if (!dateResult.isValid) errors.push(...dateResult.errors);
           if (dateResult.warnings.length > 0) warnings.push(...dateResult.warnings);
           sanitizedParams[key] = dateResult.sanitizedValue;
+          break;
+
+        case 'startdatetime':
+        case 'enddatetime':
+          const dateTimeResult = sanitizeISODateTimeString(value);
+          if (!dateTimeResult.isValid) errors.push(...dateTimeResult.errors);
+          if (dateTimeResult.warnings.length > 0) warnings.push(...dateTimeResult.warnings);
+          sanitizedParams[key] = dateTimeResult.sanitizedValue;
           break;
 
         case 'size':
@@ -586,6 +652,15 @@ export function sanitizeApiParameters(params: Record<string, unknown>): {
           if (!urlResult.isValid) errors.push(...urlResult.errors);
           if (urlResult.warnings.length > 0) warnings.push(...urlResult.warnings);
           sanitizedParams[key] = urlResult.sanitizedValue;
+          break;
+
+        case 'daterange':
+          // Handle dateRange object specially
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            sanitizedParams[key] = value; // Keep the object as-is for dateRange
+          } else {
+            errors.push(`Invalid dateRange format - expected object with start and end properties`);
+          }
           break;
 
         default:
