@@ -1473,9 +1473,9 @@ export class ConflictAnalysisService {
    */
   private determineRiskLevel(conflictScore: number): 'Low' | 'Medium' | 'High' {
     let riskLevel: 'Low' | 'Medium' | 'High';
-    if (conflictScore <= 30) {
+    if (conflictScore <= 25) {
       riskLevel = 'Low';
-    } else if (conflictScore <= 60) {
+    } else if (conflictScore <= 50) {
       riskLevel = 'Medium';
     } else {
       riskLevel = 'High';
@@ -1535,16 +1535,17 @@ export class ConflictAnalysisService {
    */
   private isRelatedCategory(category1: string, category2: string): boolean {
     const relatedCategories: Record<string, string[]> = {
-      // Only very closely related categories should compete
-      'Technology': ['Technology'], // Only compete with other tech events
-      'Business': ['Business', 'Finance', 'Marketing'], // Business-related only
-      'Entertainment': ['Arts & Culture', 'Entertainment'],
-      'Arts & Culture': ['Entertainment', 'Arts & Culture'],
-      'Sports': ['Sports'], // Sports only compete with sports
-      'Healthcare': ['Healthcare'], // Healthcare only competes with healthcare
-      'Education': ['Education'], // Education only competes with education
-      'Finance': ['Business', 'Finance'],
-      'Marketing': ['Business', 'Marketing'],
+      // More inclusive category competition for better conflict detection
+      'Technology': ['Technology', 'Business', 'Education'], // Tech events compete with business and educational events
+      'Business': ['Business', 'Finance', 'Marketing', 'Technology'], // Business-related categories
+      'Entertainment': ['Arts & Culture', 'Entertainment', 'Music'], // Entertainment categories
+      'Arts & Culture': ['Entertainment', 'Arts & Culture', 'Music'], // Cultural events
+      'Sports': ['Sports'], // Sports only compete with sports (keeps original logic)
+      'Healthcare': ['Healthcare', 'Education'], // Healthcare can compete with educational events
+      'Education': ['Education', 'Technology', 'Healthcare'], // Educational events compete more broadly
+      'Finance': ['Business', 'Finance', 'Technology'], // Finance competes with business and tech
+      'Marketing': ['Business', 'Marketing', 'Technology'], // Marketing competes with business and tech
+      'Music': ['Entertainment', 'Arts & Culture', 'Music'], // Music events
     };
 
     return relatedCategories[category1]?.includes(category2) || 
@@ -1557,6 +1558,9 @@ export class ConflictAnalysisService {
   private filterEventsByLocation(events: Event[], targetCity: string): Event[] {
     const normalizedTargetCity = targetCity.toLowerCase().trim();
     console.log(`🔍 Location filtering: Target city = "${normalizedTargetCity}"`);
+    
+    // Define TBA/TBD venue patterns that should be allowed for local searches
+    const tbaPatterns = ['to be announced', 'tba', 'tbd', 'to be determined', 'venue tba', 'location tba', 'location to be announced'];
     
     // Define Czech Republic cities and their aliases
     const czechCities: Record<string, string[]> = {
@@ -1647,6 +1651,20 @@ export class ConflictAnalysisService {
     return events.filter(event => {
       const eventCity = event.city?.toLowerCase().trim() || '';
       const eventVenue = event.venue?.toLowerCase().trim() || '';
+      
+      // Check if this is a TBA/TBD event
+      const isTBAEvent = tbaPatterns.some(pattern => 
+        eventVenue.includes(pattern) || 
+        eventCity.includes(pattern) ||
+        event.title?.toLowerCase().includes(pattern)
+      );
+      
+      // For TBA events, be more lenient with location filtering
+      // Assume TBA events from the search are likely local if they came from city-specific searches
+      if (isTBAEvent) {
+        console.log(`📍 Found TBA event "${event.title}" - allowing for local search in "${targetCity}"`);
+        return true; // Allow TBA events to pass through location filtering
+      }
       
       // STRICT FILTERING: If searching for a specific city, only allow events from that city or its aliases
       // This prevents foreign events from appearing in local searches

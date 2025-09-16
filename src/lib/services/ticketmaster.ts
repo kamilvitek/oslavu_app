@@ -246,9 +246,17 @@ export class TicketmasterService {
       // Add additional filters (using sanitized values)
       if (sanitizedParams.source) searchParams.append('source', sanitizedParams.source);
       if (sanitizedParams.locale) searchParams.append('locale', sanitizedParams.locale);
-      // Disable TBA and TBD events to prevent foreign events with incomplete location data
-      searchParams.append('includeTBA', 'no');
-      searchParams.append('includeTBD', 'no');
+      // Handle TBA and TBD events based on category
+      // For business/professional categories, include TBA events as they often have venues announced later
+      // For entertainment categories, exclude TBA to prevent foreign events
+      const businessCategories = ['Technology', 'Business', 'Marketing', 'Finance', 'Healthcare', 'Education', 'Academic', 'Professional Development', 'Networking', 'Conferences', 'Trade Shows', 'Workshops', 'Seminars'];
+      const shouldIncludeTBA = businessCategories.includes(sanitizedParams.classificationName || '');
+      
+      searchParams.append('includeTBA', shouldIncludeTBA ? 'yes' : 'no');
+      searchParams.append('includeTBD', shouldIncludeTBA ? 'yes' : 'no');
+      
+      console.log(`🎫 Ticketmaster: ${shouldIncludeTBA ? 'Including' : 'Excluding'} TBA/TBD events for category "${sanitizedParams.classificationName}"`);
+    
       if (sanitizedParams.includeTest !== undefined) searchParams.append('includeTest', sanitizedParams.includeTest.toString());
 
       const url = `${this.baseUrl}/events.json?${searchParams.toString()}`;
