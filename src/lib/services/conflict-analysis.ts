@@ -372,6 +372,9 @@ export class ConflictAnalysisService {
       const fetchTime = Date.now() - fetchStartTime;
       console.log(`Total events fetched: ${events.length} (took ${fetchTime}ms)`);
       
+      // Store the original unfiltered events for UI display
+      const originalAllEvents = [...events];
+      
       // Pre-process events into high-performance data structures
       const preprocessStartTime = Date.now();
       this.eventIndex = this.preprocessEvents(events);
@@ -426,7 +429,7 @@ export class ConflictAnalysisService {
       return {
         recommendedDates,
         highRiskDates,
-        allEvents: events,
+        allEvents: originalAllEvents, // Return original unfiltered events for UI display
         analysisDate: new Date().toISOString()
       };
     } catch (error) {
@@ -684,10 +687,20 @@ export class ConflictAnalysisService {
     // Note: Event processing was moved to the optimized parallel execution above
 
 
+    // Store original unfiltered events for UI display
+    const originalAllEvents = [...allEvents];
+    
     // Filter events by location to remove distant cities
     console.log(`📍 Events before location filtering: ${allEvents.length}`);
     console.log(`📍 Sample event cities:`, allEvents.slice(0, 5).map(e => ({ title: e.title, city: e.city, venue: e.venue })));
     
+    // Debug: Check for foreign events before filtering
+    const foreignEvents = allEvents.filter(e => {
+      const eventCity = e.city?.toLowerCase().trim() || '';
+      const targetCity = params.city.toLowerCase().trim();
+      return eventCity !== targetCity && eventCity !== 'brno';
+    });
+    console.log(`🚨 Found ${foreignEvents.length} foreign events before location filtering:`, foreignEvents.slice(0, 3).map(e => ({ title: e.title, city: e.city })));
     
     const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
     console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
@@ -1531,6 +1544,7 @@ export class ConflictAnalysisService {
    */
   private filterEventsByLocation(events: Event[], targetCity: string): Event[] {
     const normalizedTargetCity = targetCity.toLowerCase().trim();
+    console.log(`🔍 Location filtering: Target city = "${normalizedTargetCity}"`);
     
     // Define Czech Republic cities and their aliases
     const czechCities: Record<string, string[]> = {
@@ -1631,6 +1645,11 @@ export class ConflictAnalysisService {
         eventCity.includes(alias) || 
         alias.includes(eventCity)
       );
+      
+      // Debug: Log foreign events
+      if (!isMatchingCity && (eventCity === 'kragujevac' || eventCity === 'westfield')) {
+        console.log(`🚨 Location filter: Foreign event "${event.title}" from "${eventCity}" (target: "${normalizedTargetCity}")`);
+      }
       
       // If no city match, check if the event has a venue in the target city
       if (!isMatchingCity && event.venue) {
