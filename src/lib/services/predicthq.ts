@@ -311,14 +311,21 @@ export class PredictHQService {
       }
     }
     // Fourth priority: check if this is a Czech Republic event without city info
-    else if (phqEvent.country === 'CZ' && requestedCity) {
-      // For Czech events without specific city, use requested city if it's a Czech city
-      const czechCities = ['prague', 'brno', 'ostrava', 'plzen', 'liberec', 'olomouc'];
-      if (czechCities.includes(requestedCity.toLowerCase())) {
+    else if (phqEvent.country === 'CZ') {
+      // Try to extract city from event title for Czech events
+      const extractedCity = this.extractCityFromTitle(phqEvent.title);
+      if (extractedCity) {
+        actualEventCity = extractedCity;
+        console.log(`🇨🇿 PredictHQ: Extracted city "${extractedCity}" from Czech event title "${phqEvent.title}"`);
+      } else if (requestedCity && this.isCzechCity(requestedCity)) {
+        // For events like concerts that don't have city in title but are from city-specific search,
+        // assume they're local if the search was for a Czech city
         actualEventCity = requestedCity;
-        console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" without city info, assuming "${requestedCity}"`);
+        console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" without extractable city, assuming local to "${requestedCity}"`);
       } else {
+        // If we can't extract city and no valid requested city, mark as unknown Czech event
         actualEventCity = 'Czech Republic';
+        console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" has no city info and couldn't extract from title`);
       }
     }
     // Fifth priority: mark foreign events
@@ -380,6 +387,108 @@ export class PredictHQService {
       updatedAt: phqEvent.updated || new Date().toISOString(),
     };
   };
+
+  /**
+   * Extract city name from event title for Czech events
+   * Many Czech events include city names in their titles
+   */
+  private extractCityFromTitle(title: string): string | null {
+    const czechCities = [
+      // Major cities
+      'Praha', 'Prague', 'Brno', 'Ostrava', 'Plzen', 'Pilsen', 'Liberec', 'Olomouc',
+      'České Budějovice', 'Budweis', 'Hradec Králové', 'Pardubice', 'Zlín', 'Havířov',
+      'Kladno', 'Most', 'Karlovy Vary', 'Karlsbad', 'Frýdek-Místek', 'Opava', 'Děčín',
+      
+      // Sports teams and locations that indicate cities
+      'Sparta Praha', 'Slavia Praha', 'Viktoria Plzeň', 'Baník Ostrava', 'Sigma Olomouc',
+      'Zbrojovka Brno', 'Kometa Brno', 'Basket Brno', 'Slavia Třebíč', 'Třebíč',
+      'Dukla Jihlava', 'Jihlava', 'Dynamo Pardubice', 'Energie Karlovy Vary',
+      'Bili Tygri Liberec', 'Rytiri Kladno', 'Nymburk', 'Písek', 'Kolín',
+      'Litoměřice', 'Vsetín', 'Chomutov', 'Sokolov', 'Tábor', 'Poruba',
+      'Ústí nad Labem', 'Trutnov', 'Mladá Boleslav', 'Příbram', 'Chrudim',
+      'Kosmonosy', 'Neratovice', 'Byškovice', 'Jablonec', 'Jindřichův Hradec',
+      'Nový Jičín', 'Lokomotiva Plzeň'
+    ];
+
+    // Create a mapping of team/location names to cities
+    const cityMapping: Record<string, string> = {
+      'Sparta Praha': 'Prague',
+      'Slavia Praha': 'Prague', 
+      'USK Praha': 'Prague',
+      'Viktoria Plzeň': 'Plzen',
+      'Lokomotiva Plzeň': 'Plzen',
+      'Baník Ostrava': 'Ostrava',
+      'NH Ostrava': 'Ostrava',
+      'Basket Ostrava': 'Ostrava',
+      'Sigma Olomouc': 'Olomouc',
+      'Olomoucko': 'Olomouc',
+      'Zbrojovka Brno': 'Brno',
+      'Kometa Brno': 'Brno',
+      'Basket Brno': 'Brno',
+      'Slavia Třebíč': 'Třebíč',
+      'Dukla Jihlava': 'Jihlava',
+      'Dynamo Pardubice': 'Pardubice',
+      'BK Pardubice': 'Pardubice',
+      'Energie Karlovy Vary': 'Karlovy Vary',
+      'Bili Tygri Liberec': 'Liberec',
+      'Lynx Liberec': 'Liberec',
+      'Rytiri Kladno': 'Kladno',
+      'Nymburk': 'Nymburk',
+      'Písek Sršni': 'Písek',
+      'Písek': 'Písek',
+      'Kolín': 'Kolín',
+      'Stadion Litoměřice': 'Litoměřice',
+      'Slavoj Litoměřice': 'Litoměřice',
+      'Vsetín': 'Vsetín',
+      'Piráti Chomutov': 'Chomutov',
+      'Baník Sokolov': 'Sokolov',
+      'Tábor': 'Tábor',
+      'Poruba': 'Ostrava', // Poruba is part of Ostrava
+      'Ústí nad Labem': 'Ústí nad Labem',
+      'Loko Trutnov': 'Trutnov',
+      'BK Mlada Boleslav': 'Mladá Boleslav',
+      'Chrudim': 'Chrudim',
+      'Kosmonosy': 'Mladá Boleslav', // Kosmonosy is near Mladá Boleslav
+      'Jablonec': 'Jablonec nad Nisou',
+      'Neratovice': 'Mělník', // Neratovice is near Mělník
+      'Jindřichův Hradec': 'Jindřichův Hradec',
+      'Nový Jičín': 'Nový Jičín',
+      'Frýdek Místek': 'Frýdek-Místek',
+      'Opava': 'Opava',
+      'Hradec Králové': 'Hradec Králové',
+      'Děčín': 'Děčín',
+      'Zlín': 'Zlín',
+      'Přerov': 'Přerov'
+    };
+
+    // Check for direct city mapping first
+    for (const [teamName, cityName] of Object.entries(cityMapping)) {
+      if (title.includes(teamName)) {
+        return cityName;
+      }
+    }
+
+    // Check for direct city names
+    for (const city of czechCities) {
+      if (title.includes(city)) {
+        // Map some city name variations
+        if (city === 'Praha') return 'Prague';
+        if (city === 'Plzen') return 'Plzen';
+        if (city === 'Pilsen') return 'Plzen';
+        return city;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if a city name is a Czech city
+   */
+  private isCzechCity(city: string): boolean {
+    const czechCities = ['prague', 'praha', 'brno', 'ostrava', 'plzen', 'pilsen', 'liberec', 'olomouc', 'české budějovice', 'budweis', 'hradec králové', 'pardubice', 'zlín', 'havířov', 'kladno', 'most', 'karlovy vary', 'karlsbad', 'frýdek-místek', 'opava', 'děčín'];
+    return czechCities.includes(city.toLowerCase().trim());
+  }
 
   /**
    * Map our categories to PredictHQ category names
