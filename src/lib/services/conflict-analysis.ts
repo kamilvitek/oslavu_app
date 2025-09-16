@@ -1690,6 +1690,23 @@ export class ConflictAnalysisService {
         alias.includes(eventCity)
       );
       
+      // SPECIAL CASE: Handle events where Ticketmaster returns "Czech Republic" as city name
+      // If we're searching for a Czech city and the event city is "Czech Republic", 
+      // check if the venue or title contains the target city name
+      if (!isMatchingCity && isCzechCity && eventCity === 'czech republic') {
+        const hasTargetCityInVenue = event.venue && targetAliases.some(alias => 
+          event.venue!.toLowerCase().includes(alias.toLowerCase())
+        );
+        const hasTargetCityInTitle = targetAliases.some(alias => 
+          event.title.toLowerCase().includes(alias.toLowerCase())
+        );
+        
+        if (hasTargetCityInVenue || hasTargetCityInTitle) {
+          console.log(`✅ Event "${event.title}" from "Czech Republic" matched by ${hasTargetCityInVenue ? 'venue' : 'title'} for city "${targetCity}"`);
+          return true;
+        }
+      }
+      
       // Debug: Log foreign events
       if (!isMatchingCity && (eventCity === 'kragujevac' || eventCity === 'westfield')) {
         console.log(`🚨 Location filter: Foreign event "${event.title}" from "${eventCity}" (target: "${normalizedTargetCity}")`);

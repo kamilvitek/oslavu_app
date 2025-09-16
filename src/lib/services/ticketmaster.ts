@@ -327,7 +327,7 @@ export class TicketmasterService {
       
       for (const rawEvent of rawEvents) {
         try {
-          const transformedEvent = this.transformEvent(rawEvent);
+          const transformedEvent = this.transformEvent(rawEvent, sanitizedParams.city);
           events.push(transformedEvent);
         } catch (error) {
           transformErrors++;
@@ -584,7 +584,7 @@ export class TicketmasterService {
   /**
    * Transform Ticketmaster event to our Event interface with proper validation
    */
-  private transformEvent = (tmEvent: TicketmasterEvent): Event => {
+  private transformEvent = (tmEvent: TicketmasterEvent, requestedCity?: string): Event => {
     // Validate required fields
     if (!tmEvent || !tmEvent.id || !tmEvent.name || !tmEvent.dates?.start?.localDate) {
       throw new Error(`Invalid Ticketmaster event data: missing required fields (id: ${tmEvent?.id}, name: ${tmEvent?.name}, date: ${tmEvent?.dates?.start?.localDate})`);
@@ -594,6 +594,7 @@ export class TicketmasterService {
     const venue = tmEvent._embedded?.venues?.[0];
     const venueCity = venue?.city?.name;
     const venueName = venue?.name;
+    const venueCountry = venue?.country?.name;
     
     // Safe classification extraction
     const classification = tmEvent.classifications?.[0];
@@ -615,13 +616,38 @@ export class TicketmasterService {
       console.warn(`🎟️ Ticketmaster: Invalid date format for event ${tmEvent.id}: ${eventDate}`);
     }
 
+    // IMPROVED CITY EXTRACTION: Handle cases where Ticketmaster returns country name instead of city name
+    let extractedCity = venueCity || 'Unknown';
+    
+    // If venue city is a country name, try to extract the actual city
+    if (venueCity && this.isCountryName(venueCity)) {
+      // Try to extract city from venue name or event title
+      const cityFromVenue = this.extractCityFromVenueName(venueName);
+      const cityFromTitle = this.extractCityFromEventTitle(tmEvent.name);
+      
+      if (cityFromVenue) {
+        extractedCity = cityFromVenue;
+        console.log(`🎟️ Ticketmaster: Extracted city "${cityFromVenue}" from venue name for event "${tmEvent.name}"`);
+      } else if (cityFromTitle) {
+        extractedCity = cityFromTitle;
+        console.log(`🎟️ Ticketmaster: Extracted city "${cityFromTitle}" from event title for event "${tmEvent.name}"`);
+      } else if (requestedCity && venueCountry === 'Czech Republic') {
+        // If we're searching for a Czech city and the event is in Czech Republic, use the requested city
+        extractedCity = requestedCity;
+        console.log(`🎟️ Ticketmaster: Using requested city "${requestedCity}" for Czech event "${tmEvent.name}" (venue city was "${venueCity}")`);
+      } else {
+        // Keep the country name but log it for debugging
+        console.log(`🎟️ Ticketmaster: Could not extract city for event "${tmEvent.name}" - venue city: "${venueCity}", venue: "${venueName}"`);
+      }
+    }
+
     return {
       id: `tm_${tmEvent.id}`,
       title: tmEvent.name,
       description: description,
       date: eventDate,
       endDate: tmEvent.dates.end?.localDate,
-      city: venueCity || 'Unknown',
+      city: extractedCity,
       venue: venueName,
       category: this.mapTicketmasterCategory(segment || 'Other'),
       subcategory: genre || subGenre,
@@ -633,6 +659,78 @@ export class TicketmasterService {
       updatedAt: new Date().toISOString(),
     };
   };
+
+  /**
+   * Check if a string is a country name
+   */
+  private isCountryName(cityName: string): boolean {
+    const countryNames = [
+      'Czech Republic', 'Czechia', 'Germany', 'France', 'United Kingdom', 'UK',
+      'United States', 'USA', 'US', 'Austria', 'Poland', 'Hungary', 'Switzerland',
+      'Netherlands', 'Belgium', 'Italy', 'Spain', 'Sweden', 'Denmark', 'Norway',
+      'Finland', 'Portugal', 'Ireland', 'Slovakia', 'Slovenia', 'Croatia'
+    ];
+    
+    return countryNames.some(country => 
+      cityName.toLowerCase().includes(country.toLowerCase())
+    );
+  }
+
+  /**
+   * Extract city name from venue name
+   */
+  private extractCityFromVenueName(venueName?: string): string | null {
+    if (!venueName) return null;
+    
+    const venueLower = venueName.toLowerCase();
+    
+    // Common venue patterns that contain city names
+    const cityPatterns = [
+      { pattern: /prague|praha/i, city: 'Prague' },
+      { pattern: /brno/i, city: 'Brno' },
+      { pattern: /ostrava/i, city: 'Ostrava' },
+      { pattern: /olomouc/i, city: 'Olomouc' },
+      { pattern: /plzen|pilsen/i, city: 'Plzen' },
+      { pattern: /liberec/i, city: 'Liberec' },
+      { pattern: /ceske budejovice|budweis/i, city: 'Ceske Budejovice' },
+      { pattern: /hradec kralove/i, city: 'Hradec Kralove' },
+      { pattern: /pardubice/i, city: 'Pardubice' },
+      { pattern: /zlin|gottwaldov/i, city: 'Zlin' },
+      { pattern: /karlovy vary|karlsbad/i, city: 'Karlovy Vary' },
+    ];
+    
+    for (const { pattern, city } of cityPatterns) {
+      if (pattern.test(venueLower)) {
+        return city;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract city name from event title
+   */
+  private extractCityFromEventTitle(eventTitle: string): string | null {
+    const titleLower = eventTitle.toLowerCase();
+    
+    // Common patterns in event titles that contain city names
+    const cityPatterns = [
+      { pattern: /in prague|at prague|prague/i, city: 'Prague' },
+      { pattern: /in brno|at brno|brno/i, city: 'Brno' },
+      { pattern: /in ostrava|at ostrava|ostrava/i, city: 'Ostrava' },
+      { pattern: /in olomouc|at olomouc|olomouc/i, city: 'Olomouc' },
+      { pattern: /in plzen|at plzen|plzen|pilsen/i, city: 'Plzen' },
+    ];
+    
+    for (const { pattern, city } of cityPatterns) {
+      if (pattern.test(titleLower)) {
+        return city;
+      }
+    }
+    
+    return null;
+  }
 
   /**
    * Map our categories to official Ticketmaster classification names
