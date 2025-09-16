@@ -613,7 +613,7 @@ export class ConflictAnalysisService {
     const allEvents: Event[] = [];
     const responses: Array<{name: string, status: 'fulfilled' | 'rejected', value?: any, reason?: any}> = [];
     let completedCount = 0;
-    const EARLY_TERMINATION_THRESHOLD = 25; // Increased threshold to be less aggressive
+    const EARLY_TERMINATION_THRESHOLD = 999999; // Effectively disable early termination
     
     // Process requests as they complete
     const processResponse = async (apiRequest: typeof apiRequests[0], index: number) => {

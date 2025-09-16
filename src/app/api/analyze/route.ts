@@ -9,8 +9,8 @@ export async function POST(request: NextRequest) {
     const body: AnalysisRequest = await request.json();
     
     // Sanitize input parameters
-    const sanitizationResult = sanitizeApiParameters(body);
-    logSanitizationResults(body, sanitizationResult, 'Analysis Request Parameters');
+    const sanitizationResult = sanitizeApiParameters(body as unknown as Record<string, unknown>);
+    logSanitizationResults(body as unknown as Record<string, unknown>, sanitizationResult, 'Analysis Request Parameters');
     
     if (!sanitizationResult.isValid) {
       return NextResponse.json(
