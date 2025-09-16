@@ -4,6 +4,7 @@
 import { ticketmasterService } from './ticketmaster';
 import { predicthqService } from './predicthq';
 import { conflictAnalysisService } from './conflict-analysis';
+import { getCityCountryCode } from '@/lib/utils/city-country-mapping';
 
 /**
  * Example: Basic radius search for events
@@ -144,7 +145,7 @@ export async function exampleMarketBasedSearch() {
   // Market ID functionality disabled - using geographic parameters instead
   const events = await ticketmasterService.getEvents({
     city: city,
-    countryCode: 'DE',
+    countryCode: getCityCountryCode(city), // Dynamic instead of hardcoded 'DE'
     startDateTime: `${startDate}T00:00:00Z`,
     endDateTime: `${endDate}T23:59:59Z`,
     classificationName: 'Arts & Theatre',
@@ -169,7 +170,7 @@ export async function examplePostalCodeSearch() {
   // This will use the postal code for Prague (11000)
   const events = await ticketmasterService.getEvents({
     postalCode: '11000',
-    countryCode: 'CZ',
+    countryCode: getCityCountryCode(city), // Dynamic instead of hardcoded 'CZ'
     startDateTime: `${startDate}T00:00:00Z`,
     endDateTime: `${endDate}T23:59:59Z`,
     classificationName: 'Arts & Theatre',

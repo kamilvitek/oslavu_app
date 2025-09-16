@@ -3,6 +3,7 @@ import { audienceOverlapService } from './audience-overlap';
 import { openaiAudienceOverlapService } from './openai-audience-overlap';
 import { venueIntelligenceService } from './venue-intelligence';
 import { USPUpdater } from './usp-updater';
+import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -446,6 +447,15 @@ export class ConflictAnalysisService {
     
     if (!params.dateRangeStart || !params.dateRangeEnd) {
       throw new Error('Analysis date range is required');
+    }
+
+    // Add geographic validation
+    const countryCode = getCityCountryCode(params.city);
+    if (!validateCityCountryPair(params.city, countryCode)) {
+      console.warn(`Geographic mismatch: ${params.city} does not belong to ${countryCode}`);
+      // Use the correct country code from our mapping
+      const correctCountryCode = getCityCountryCode(params.city);
+      console.log(`Using correct country code: ${correctCountryCode} for city: ${params.city}`);
     }
 
     const queryParams = new URLSearchParams({

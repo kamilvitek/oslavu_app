@@ -1,5 +1,6 @@
 // src/lib/services/ticketmaster.ts
 import { Event } from '@/types';
+import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 
 interface TicketmasterEvent {
   id: string;
@@ -411,7 +412,7 @@ export class TicketmasterService {
     
     const allEvents: Event[] = [];
     const seenEventIds = new Set<string>();
-    const countryCode = this.getCityCountryCode(city);
+    const countryCode = getCityCountryCode(city);
     const postalCode = this.getCityPostalCode(city);
     const cityVariations = this.mapCityForTicketmaster(city);
     
@@ -483,7 +484,7 @@ export class TicketmasterService {
   ): Promise<Event[]> {
     const allEvents: Event[] = [];
     const seenEventIds = new Set<string>();
-    const countryCode = this.getCityCountryCode(city);
+    const countryCode = getCityCountryCode(city);
     const cityVariations = this.mapCityForTicketmaster(city);
     
     console.log(`🎟️ Ticketmaster: Searching ${city} using variations: ${cityVariations.join(', ')}`);
@@ -554,7 +555,7 @@ export class TicketmasterService {
     const { events } = await this.getEvents({
       keyword,
       city,
-      countryCode: options?.countryCode || (city ? this.getCityCountryCode(city) : undefined),
+      countryCode: options?.countryCode || (city ? getCityCountryCode(city) : undefined),
       radius: options?.radius,
       classificationName: options?.classificationName,
       startDateTime: startDate ? `${startDate}T00:00:00Z` : undefined,
@@ -849,62 +850,6 @@ export class TicketmasterService {
     return cityVariations[city] || [city];
   }
 
-  /**
-   * Get country code for major cities
-   */
-  private getCityCountryCode(city: string): string {
-    const cityCountryMap: Record<string, string> = {
-      'Prague': 'CZ',
-      'Brno': 'CZ',
-      'Ostrava': 'CZ',
-      'Olomouc': 'CZ',
-      'London': 'GB',
-      'Berlin': 'DE',
-      'Paris': 'FR',
-      'Amsterdam': 'NL',
-      'Vienna': 'AT',
-      'Warsaw': 'PL',
-      'Budapest': 'HU',
-      'Zurich': 'CH',
-      'Munich': 'DE',
-      'Stockholm': 'SE',
-      'Copenhagen': 'DK',
-      'Helsinki': 'FI',
-      'Oslo': 'NO',
-      'Madrid': 'ES',
-      'Barcelona': 'ES',
-      'Rome': 'IT',
-      'Milan': 'IT',
-      'Athens': 'GR',
-      'Lisbon': 'PT',
-      'Dublin': 'IE',
-      'Edinburgh': 'GB',
-      'Glasgow': 'GB',
-      'Manchester': 'GB',
-      'Birmingham': 'GB',
-      'Liverpool': 'GB',
-      'Leeds': 'GB',
-      'Sheffield': 'GB',
-      'Bristol': 'GB',
-      'Newcastle': 'GB',
-      'Nottingham': 'GB',
-      'Leicester': 'GB',
-      'Hamburg': 'DE',
-      'Cologne': 'DE',
-      'Frankfurt': 'DE',
-      'Stuttgart': 'DE',
-      'Düsseldorf': 'DE',
-      'Dortmund': 'DE',
-      'Essen': 'DE',
-      'Leipzig': 'DE',
-      'Bremen': 'DE',
-      'Dresden': 'DE',
-      'Hannover': 'DE',
-      'Nuremberg': 'DE',
-    };
-
-    return cityCountryMap[city] || 'US';
-  }
 
   /**
    * Get postal code for major cities (for more precise location targeting)
@@ -1068,7 +1013,7 @@ export class TicketmasterService {
     effectiveness: number;
     categoryUsed: string | undefined;
   }> {
-    const countryCode = this.getCityCountryCode(city);
+    const countryCode = getCityCountryCode(city);
     const mappedCategory = this.mapCategoryToTicketmaster(category);
     
     // Get events with category filter
@@ -1272,7 +1217,7 @@ export class TicketmasterService {
         // Search any available events in the city (no date restriction)
         const { events: anyEvents } = await this.getEvents({
           city,
-          countryCode: this.getCityCountryCode(city),
+          countryCode: getCityCountryCode(city),
           classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
           size: 10,
           page: 0,
