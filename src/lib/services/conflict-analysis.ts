@@ -368,16 +368,16 @@ export class ConflictAnalysisService {
       
       // Fetch events from multiple APIs
       const fetchStartTime = Date.now();
-      const events = await this.fetchEventsFromAPI(params);
+      const { filteredEvents, allEvents } = await this.fetchEventsFromAPI(params);
       const fetchTime = Date.now() - fetchStartTime;
-      console.log(`Total events fetched: ${events.length} (took ${fetchTime}ms)`);
+      console.log(`Total filtered events: ${filteredEvents.length}, Total unfiltered events: ${allEvents.length} (took ${fetchTime}ms)`);
       
       // Store the original unfiltered events for UI display
-      const originalAllEvents = [...events];
+      const originalAllEvents = [...allEvents];
       
       // Pre-process events into high-performance data structures
       const preprocessStartTime = Date.now();
-      this.eventIndex = this.preprocessEvents(events);
+      this.eventIndex = this.preprocessEvents(filteredEvents);
       const preprocessTime = Date.now() - preprocessStartTime;
       console.log(`Event preprocessing completed in ${preprocessTime}ms`);
       
@@ -388,7 +388,7 @@ export class ConflictAnalysisService {
       const analysisStartTime = Date.now();
       const dateRecommendations = await this.generateDateRecommendationsOptimized(
         params,
-        events
+        filteredEvents
       );
       const analysisTime = Date.now() - analysisStartTime;
       console.log(`Generated ${dateRecommendations.length} date recommendations (took ${analysisTime}ms)`);
@@ -442,7 +442,7 @@ export class ConflictAnalysisService {
   /**
    * Fetch events from multiple APIs (Ticketmaster, PredictHQ, and Brno)
    */
-  private async fetchEventsFromAPI(params: ConflictAnalysisParams): Promise<Event[]> {
+  private async fetchEventsFromAPI(params: ConflictAnalysisParams): Promise<{ filteredEvents: Event[], allEvents: Event[] }> {
     // Validate required parameters
     if (!params.city) {
       throw new Error('City is required');
@@ -705,12 +705,12 @@ export class ConflictAnalysisService {
     const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
     console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
 
-    // Filter events by category to show only relevant events in "Found Events"
-    const categoryFilteredEvents = this.filterEventsByCategory(locationFilteredEvents, params.category);
-    console.log(`📂 Total events after category filtering: ${categoryFilteredEvents.length}`);
+    // For conflict analysis, don't filter by category too aggressively
+    // We want to consider all events that might compete for audience attention
+    console.log(`📂 Skipping strict category filtering for conflict analysis - using all location-filtered events`);
 
     // Remove duplicates based on title, date, and venue
-    const uniqueEvents = this.removeDuplicateEvents(categoryFilteredEvents);
+    const uniqueEvents = this.removeDuplicateEvents(locationFilteredEvents);
     console.log(`🔄 Total unique events after deduplication: ${uniqueEvents.length}`);
 
     // Log search strategy summary
@@ -751,7 +751,14 @@ export class ConflictAnalysisService {
       console.error('Failed to update USP data:', error);
     }
 
-    return uniqueEvents;
+    // For UI display, show category-filtered events
+    const categoryFilteredEvents = this.filterEventsByCategory(uniqueEvents, params.category);
+    console.log(`📂 UI display events after category filtering: ${categoryFilteredEvents.length}`);
+    
+    return { 
+      filteredEvents: uniqueEvents, // Use all location-filtered events for conflict analysis
+      allEvents: categoryFilteredEvents // Show category-filtered events in UI
+    };
   }
 
   /**
@@ -1017,11 +1024,8 @@ export class ConflictAnalysisService {
       }
     }
     
-    // Filter by category and city using the index
-    const categoryEvents = this.eventIndex.byCategory.get(params.category) || new Set();
-    const cityEvents = this.eventIndex.byCity.get(params.city.toLowerCase().trim()) || new Set();
-    
-    // Find intersection of date, category, and city
+    // For conflict analysis, be more lenient - consider all events in the city during the date range
+    // as potential competitors, not just same category
     const filteredEventIds = new Set<string>();
     for (const eventId of competingEventIds) {
       const event = this.eventIndex.events.get(eventId);
@@ -1034,12 +1038,20 @@ export class ConflictAnalysisService {
       // Check if it's a significant event (has venue, good attendance potential)
       const isSignificant = event.venue && event.venue.length > 0;
       
-      // More lenient matching - include events that are either same category OR significant
-      const isCompeting = sameCategory || isSignificant;
+      // Check if it has substantial expected attendance
+      const hasAttendance = event.expectedAttendees && event.expectedAttendees > 50;
+      
+      // More lenient matching - include events that are:
+      // 1. Same/related category, OR
+      // 2. Significant (has venue), OR  
+      // 3. Has substantial attendance
+      const isCompeting = sameCategory || isSignificant || hasAttendance;
       
       if (isCompeting) {
         filteredEventIds.add(eventId);
-        console.log(`Event "${event.title}" on ${event.date}: category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, isCompeting=${isCompeting}`);
+        console.log(`✅ Competing event "${event.title}" on ${event.date}: category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, hasAttendance=${hasAttendance}, isCompeting=${isCompeting}`);
+      } else {
+        console.log(`❌ Filtered out "${event.title}" on ${event.date}: category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, hasAttendance=${hasAttendance}`);
       }
     }
     
