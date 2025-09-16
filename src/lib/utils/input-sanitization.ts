@@ -641,7 +641,7 @@ export function sanitizeApiParameters(params: Record<string, unknown>): {
         case 'size':
         case 'page':
         case 'expectedattendees':
-          const numberResult = sanitizeNumber(value, { min: 0, max: 10000, allowFloat: false });
+          const numberResult = sanitizeNumber(value, { min: 0, max: 999999999, allowFloat: false });
           if (!numberResult.isValid) errors.push(...numberResult.errors);
           if (numberResult.warnings.length > 0) warnings.push(...numberResult.warnings);
           sanitizedParams[key] = numberResult.sanitizedValue;
