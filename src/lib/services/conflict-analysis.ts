@@ -759,17 +759,15 @@ export class ConflictAnalysisService {
       console.error('Failed to update USP data:', error);
     }
 
-    // For UI display, show all location-filtered events (not just category-filtered)
-    // This allows users to see all potential competing events in their city
-    console.log(`📂 UI display events (all location-filtered): ${uniqueEvents.length}`);
-    
-    // Also create category-filtered events for debugging
+    // For UI display, show category-filtered events to show only relevant events
+    // This ensures users see events that are actually relevant to their event type
     const categoryFilteredEvents = this.filterEventsByCategory(uniqueEvents, params.category);
-    console.log(`📂 Category-filtered events: ${categoryFilteredEvents.length}`);
+    console.log(`📂 UI display events (category-filtered): ${categoryFilteredEvents.length}`);
+    console.log(`📂 All location-filtered events: ${uniqueEvents.length}`);
     
     return { 
       filteredEvents: uniqueEvents, // Use all location-filtered events for conflict analysis
-      allEvents: uniqueEvents // Show ALL location-filtered events in UI, not just category-filtered
+      allEvents: categoryFilteredEvents // Show only category-relevant events in UI
     };
   }
 
@@ -1545,21 +1543,43 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Check if two categories are related (more restrictive to reduce false positives)
+   * Check if two categories are related (restrictive to show only truly relevant events)
    */
   private isRelatedCategory(category1: string, category2: string): boolean {
     const relatedCategories: Record<string, string[]> = {
-      // More inclusive category competition for better conflict detection
-      'Technology': ['Technology', 'Business', 'Education'], // Tech events compete with business and educational events
-      'Business': ['Business', 'Finance', 'Marketing', 'Technology'], // Business-related categories
-      'Entertainment': ['Arts & Culture', 'Entertainment', 'Music'], // Entertainment categories
-      'Arts & Culture': ['Entertainment', 'Arts & Culture', 'Music'], // Cultural events
-      'Sports': ['Sports'], // Sports only compete with sports (keeps original logic)
-      'Healthcare': ['Healthcare', 'Education'], // Healthcare can compete with educational events
-      'Education': ['Education', 'Technology', 'Healthcare'], // Educational events compete more broadly
-      'Finance': ['Business', 'Finance', 'Technology'], // Finance competes with business and tech
-      'Marketing': ['Business', 'Marketing', 'Technology'], // Marketing competes with business and tech
-      'Music': ['Entertainment', 'Arts & Culture', 'Music'], // Music events
+      // Business and professional categories - only truly related ones
+      'Technology': ['Technology', 'Business'], // Tech events compete with business events
+      'Business': ['Business', 'Marketing', 'Technology'], // Business-related categories
+      'Marketing': ['Marketing', 'Business'], // Marketing only competes with business and marketing
+      'Finance': ['Finance', 'Business'], // Finance competes with business
+      'Professional Development': ['Professional Development', 'Business', 'Education'],
+      'Networking': ['Networking', 'Business', 'Professional Development'],
+      
+      // Entertainment and cultural categories
+      'Entertainment': ['Entertainment', 'Music', 'Arts & Culture'], // Entertainment categories
+      'Arts & Culture': ['Arts & Culture', 'Entertainment', 'Music'], // Cultural events
+      'Music': ['Music', 'Entertainment', 'Arts & Culture'], // Music events
+      'Comedy': ['Comedy', 'Entertainment', 'Arts & Culture'],
+      'Theater': ['Theater', 'Arts & Culture', 'Entertainment'],
+      
+      // Sports - only competes with sports
+      'Sports': ['Sports'],
+      
+      // Healthcare and education - more restrictive
+      'Healthcare': ['Healthcare'], // Healthcare only competes with healthcare
+      'Education': ['Education', 'Academic'], // Educational events
+      'Academic': ['Academic', 'Education'],
+      
+      // Conferences and trade shows
+      'Conferences': ['Conferences', 'Business', 'Technology'],
+      'Trade Shows': ['Trade Shows', 'Business', 'Expos'],
+      'Expos': ['Expos', 'Trade Shows'],
+      
+      // Film and media
+      'Film': ['Film', 'Entertainment'],
+      
+      // Fallback
+      'Other': ['Other'],
     };
 
     return relatedCategories[category1]?.includes(category2) || 
