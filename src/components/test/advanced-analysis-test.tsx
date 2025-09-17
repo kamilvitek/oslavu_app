@@ -38,30 +38,67 @@ export function AdvancedAnalysisTestComponent() {
   const [testParams, setTestParams] = useState({
     city: "Prague",
     category: "Technology",
-    subcategory: "AI/ML",
     expectedAttendees: "500",
     startDate: "2024-06-15",
-    endDate: "2024-06-17",
-    dateRangeStart: "2024-06-01",
-    dateRangeEnd: "2024-06-30",
-    venue: "Prague Conference Center"
+    endDate: "2024-06-17"
   });
+
+  // Calculate automatic analysis range based on preferred dates, attendees, and category
+  const calculateAnalysisRange = (startDate: string, endDate: string, attendees: number, category: string) => {
+    const preferredStart = new Date(startDate);
+    const preferredEnd = new Date(endDate);
+    const eventDuration = Math.ceil((preferredEnd.getTime() - preferredStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    
+    // Calculate analysis range based on event characteristics
+    let analysisRangeDays: number;
+    
+    // Base range on event size and category
+    if (attendees < 100) {
+      analysisRangeDays = 14; // Small events: 2 weeks
+    } else if (attendees < 500) {
+      analysisRangeDays = 21; // Medium events: 3 weeks
+    } else {
+      analysisRangeDays = 30; // Large events: 1 month
+    }
+    
+    // Adjust for category - some categories have more events
+    if (category === 'Technology' || category === 'Business') {
+      analysisRangeDays += 7; // Add extra week for high-activity categories
+    }
+    
+    // Set analysis range centered around preferred dates
+    const analysisStart = new Date(preferredStart);
+    analysisStart.setDate(analysisStart.getDate() - Math.floor(analysisRangeDays / 2));
+    
+    const analysisEnd = new Date(preferredEnd);
+    analysisEnd.setDate(analysisEnd.getDate() + Math.ceil(analysisRangeDays / 2));
+    
+    return {
+      dateRangeStart: analysisStart.toISOString().split('T')[0],
+      dateRangeEnd: analysisEnd.toISOString().split('T')[0],
+    };
+  };
 
   const runAdvancedConflictAnalysis = async () => {
     setLoading(true);
     const startTime = Date.now();
     
     try {
+      const analysisRange = calculateAnalysisRange(
+        testParams.startDate,
+        testParams.endDate,
+        parseInt(testParams.expectedAttendees),
+        testParams.category
+      );
+      
       const params: ConflictAnalysisParams = {
         city: testParams.city,
         category: testParams.category,
-        subcategory: testParams.subcategory,
         expectedAttendees: parseInt(testParams.expectedAttendees),
         startDate: testParams.startDate,
         endDate: testParams.endDate,
-        dateRangeStart: testParams.dateRangeStart,
-        dateRangeEnd: testParams.dateRangeEnd,
-        venue: testParams.venue,
+        dateRangeStart: analysisRange.dateRangeStart,
+        dateRangeEnd: analysisRange.dateRangeEnd,
         enableAdvancedAnalysis: true
       };
 
@@ -252,15 +289,6 @@ export function AdvancedAnalysisTestComponent() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="subcategory">Subcategory</Label>
-              <Input
-                id="subcategory"
-                value={testParams.subcategory}
-                onChange={(e) => setTestParams(prev => ({ ...prev, subcategory: e.target.value }))}
-                placeholder="e.g., AI/ML, Marketing"
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="expectedAttendees">Expected Attendees</Label>
               <Input
                 id="expectedAttendees"
@@ -270,21 +298,21 @@ export function AdvancedAnalysisTestComponent() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="venue">Venue</Label>
-              <Input
-                id="venue"
-                value={testParams.venue}
-                onChange={(e) => setTestParams(prev => ({ ...prev, venue: e.target.value }))}
-                placeholder="e.g., Prague Conference Center"
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="startDate">Start Date</Label>
               <Input
                 id="startDate"
                 type="date"
                 value={testParams.startDate}
                 onChange={(e) => setTestParams(prev => ({ ...prev, startDate: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="endDate">End Date</Label>
+              <Input
+                id="endDate"
+                type="date"
+                value={testParams.endDate}
+                onChange={(e) => setTestParams(prev => ({ ...prev, endDate: e.target.value }))}
               />
             </div>
           </div>

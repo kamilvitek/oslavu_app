@@ -51,9 +51,7 @@ export class AIAudienceOverlapService {
     const features = {
       // Basic features
       category: event.category,
-      subcategory: event.subcategory,
       city: event.city,
-      venue: event.venue,
       expectedAttendees: event.expectedAttendees,
       
       // AI-extracted features

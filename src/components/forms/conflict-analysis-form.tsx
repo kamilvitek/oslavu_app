@@ -7,20 +7,15 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar, MapPin, Users, Tag, Building, Brain } from "lucide-react";
+import { MapPin, Users, Tag, Brain, Calendar } from "lucide-react";
 import { EVENT_CATEGORIES } from "@/types";
-import { VenueInput } from "@/components/ui/venue-input";
 
 const analysisSchema = z.object({
   city: z.string().min(2, "City is required"),
   category: z.string().min(1, "Category is required"),
-  subcategory: z.string().optional(),
   expectedAttendees: z.number().min(1, "Expected attendees is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
-  dateRangeStart: z.string().min(1, "Date range start is required"),
-  dateRangeEnd: z.string().min(1, "Date range end is required"),
-  venue: z.string().optional(),
   enableAdvancedAnalysis: z.boolean().optional(),
 });
 
@@ -47,23 +42,73 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
   });
 
   const enableAdvancedAnalysis = watch('enableAdvancedAnalysis');
-  const city = watch('city');
-  const venue = watch('venue');
+
+  // Calculate automatic analysis range based on preferred dates, attendees, and category
+  const calculateAnalysisRange = (startDate: string, endDate: string, attendees: number, category: string) => {
+    const preferredStart = new Date(startDate);
+    const preferredEnd = new Date(endDate);
+    const eventDuration = Math.ceil((preferredEnd.getTime() - preferredStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    
+    // Calculate analysis range based on event characteristics
+    let analysisRangeDays: number;
+    
+    // Base range on event size and category
+    if (attendees < 100) {
+      analysisRangeDays = 14; // Small events: 2 weeks
+    } else if (attendees < 500) {
+      analysisRangeDays = 21; // Medium events: 3 weeks
+    } else {
+      analysisRangeDays = 30; // Large events: 1 month
+    }
+    
+    // Adjust for category - some categories have more events
+    if (category === 'Technology' || category === 'Business') {
+      analysisRangeDays += 7; // Add extra week for high-activity categories
+    }
+    
+    // Set analysis range centered around preferred dates
+    const analysisStart = new Date(preferredStart);
+    analysisStart.setDate(analysisStart.getDate() - Math.floor(analysisRangeDays / 2));
+    
+    const analysisEnd = new Date(preferredEnd);
+    analysisEnd.setDate(analysisEnd.getDate() + Math.ceil(analysisRangeDays / 2));
+    
+    return {
+      dateRangeStart: analysisStart.toISOString().split('T')[0],
+      dateRangeEnd: analysisEnd.toISOString().split('T')[0],
+    };
+  };
 
   const onSubmit = async (data: AnalysisForm) => {
     setLoading(true);
     try {
       console.log("Analysis request:", data);
       
+      // Calculate automatic analysis range
+      const analysisRange = calculateAnalysisRange(
+        data.startDate, 
+        data.endDate, 
+        data.expectedAttendees, 
+        data.category
+      );
+      
+      // Create enhanced data with automatic analysis range
+      const enhancedData = {
+        ...data,
+        ...analysisRange,
+      };
+      
+      console.log("Enhanced analysis request with automatic analysis range:", enhancedData);
+      
       // Call the analysis complete callback if provided
       if (onAnalysisComplete) {
-        await onAnalysisComplete(data);
+        await onAnalysisComplete(enhancedData);
       } else {
         // Fallback: Call Ticketmaster API directly
         const queryParams = new URLSearchParams({
           city: data.city,
-          startDate: data.dateRangeStart,
-          endDate: data.dateRangeEnd,
+          startDate: analysisRange.dateRangeStart,
+          endDate: analysisRange.dateRangeEnd,
           category: data.category,
           size: '50'
         });
@@ -77,7 +122,7 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
         const result = await response.json();
         console.log("Ticketmaster API response:", result);
         
-        alert(`Found ${result.count} events in ${data.city} between ${data.dateRangeStart} and ${data.dateRangeEnd}. Check console for details.`);
+        alert(`Found ${result.count} events in ${data.city} between ${analysisRange.dateRangeStart} and ${analysisRange.dateRangeEnd}. Check console for details.`);
       }
       
     } catch (error) {
@@ -127,21 +172,6 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="subcategory">Subcategory (optional)</Label>
-        <Input
-          id="subcategory"
-          placeholder="e.g., AI/ML, Frontend, DevOps"
-          {...register("subcategory")}
-        />
-      </div>
-
-      <VenueInput
-        value={venue || ''}
-        onChange={(value) => setValue('venue', value)}
-        city={city || ''}
-        placeholder="e.g., Prague Conference Center, Hotel InterContinental"
-      />
 
       <div className="space-y-2">
         <Label htmlFor="expectedAttendees" className="flex items-center space-x-2">
@@ -159,65 +189,41 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="startDate">Preferred Start Date</Label>
-          <Input
-            id="startDate"
-            type="date"
-            {...register("startDate")}
-          />
-          {errors.startDate && (
-            <p className="text-sm text-red-600">{errors.startDate.message}</p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="endDate">Preferred End Date</Label>
-          <Input
-            id="endDate"
-            type="date"
-            {...register("endDate")}
-          />
-          {errors.endDate && (
-            <p className="text-sm text-red-600">{errors.endDate.message}</p>
-          )}
-        </div>
-      </div>
-
       <div className="space-y-2">
         <Label className="flex items-center space-x-2">
           <Calendar className="h-4 w-4" />
-          <span>Analysis Date Range</span>
+          <span>Preferred Event Dates</span>
         </Label>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="dateRangeStart" className="text-sm text-muted-foreground">
-              Range Start
+            <Label htmlFor="startDate" className="text-sm text-muted-foreground">
+              Start Date
             </Label>
             <Input
-              id="dateRangeStart"
+              id="startDate"
               type="date"
-              {...register("dateRangeStart")}
+              {...register("startDate")}
             />
-            {errors.dateRangeStart && (
-              <p className="text-sm text-red-600">{errors.dateRangeStart.message}</p>
+            {errors.startDate && (
+              <p className="text-sm text-red-600">{errors.startDate.message}</p>
             )}
           </div>
           <div>
-            <Label htmlFor="dateRangeEnd" className="text-sm text-muted-foreground">
-              Range End
+            <Label htmlFor="endDate" className="text-sm text-muted-foreground">
+              End Date
             </Label>
             <Input
-              id="dateRangeEnd"
+              id="endDate"
               type="date"
-              {...register("dateRangeEnd")}
+              {...register("endDate")}
             />
-            {errors.dateRangeEnd && (
-              <p className="text-sm text-red-600">{errors.dateRangeEnd.message}</p>
+            {errors.endDate && (
+              <p className="text-sm text-red-600">{errors.endDate.message}</p>
             )}
           </div>
         </div>
       </div>
+
 
       <div className="space-y-2">
         <div className="flex items-center space-x-2">
@@ -233,7 +239,7 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
           </Label>
         </div>
         <p className="text-sm text-gray-600">
-          Includes AI-powered audience overlap prediction and venue intelligence analysis
+          Includes AI-powered audience overlap prediction and advanced conflict analysis
         </p>
       </div>
 

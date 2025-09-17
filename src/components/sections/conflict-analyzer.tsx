@@ -95,14 +95,12 @@ export function ConflictAnalyzer() {
         body: JSON.stringify({
           city: formData.city,
           category: formData.category,
-          subcategory: formData.subcategory,
           expectedAttendees: formData.expectedAttendees,
           dateRange: {
             start: formData.dateRangeStart,
             end: formData.dateRangeEnd
           },
           preferredDates: [formData.startDate, formData.endDate],
-          venue: formData.venue,
           enableAdvancedAnalysis: formData.enableAdvancedAnalysis
         })
       });

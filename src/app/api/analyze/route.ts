@@ -69,13 +69,11 @@ export async function POST(request: NextRequest) {
     const analysis = await conflictAnalysisService.analyzeConflicts({
       city: sanitizedBody.city,
       category: sanitizedBody.category,
-      subcategory: sanitizedBody.subcategory,
       expectedAttendees: sanitizedBody.expectedAttendees,
       startDate: preferredStart,
       endDate: preferredEnd,
       dateRangeStart: sanitizedBody.dateRange.start,
       dateRangeEnd: sanitizedBody.dateRange.end,
-      venue: sanitizedBody.venue,
       enableAdvancedAnalysis: sanitizedBody.enableAdvancedAnalysis,
       useComprehensiveFallback: false, // DISABLED for performance - was causing 5min delays
     });

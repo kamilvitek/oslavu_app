@@ -1,7 +1,6 @@
 import { Event } from '@/types';
 import { audienceOverlapService } from './audience-overlap';
 import { openaiAudienceOverlapService } from './openai-audience-overlap';
-import { venueIntelligenceService } from './venue-intelligence';
 import { USPUpdater } from './usp-updater';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 
@@ -47,25 +46,17 @@ export interface DateRecommendation {
     highOverlapEvents: Event[];
     overlapReasoning: string[];
   };
-  venueIntelligence?: {
-    venueConflictScore: number;
-    capacityUtilization: number;
-    pricingImpact: number;
-    recommendations: string[];
-  };
 }
 
 export interface ConflictAnalysisParams {
   city: string;
   category: string;
-  subcategory?: string;
   expectedAttendees: number;
   startDate: string; // preferred start date
   endDate: string; // preferred end date
-  dateRangeStart: string; // analysis range start
-  dateRangeEnd: string; // analysis range end
-  venue?: string; // optional venue name for venue intelligence
-  enableAdvancedAnalysis?: boolean; // enable audience overlap and venue intelligence
+  dateRangeStart: string; // analysis range start (auto-calculated)
+  dateRangeEnd: string; // analysis range end (auto-calculated)
+  enableAdvancedAnalysis?: boolean; // enable audience overlap analysis
   searchRadius?: string; // search radius for geographic coverage (e.g., "50km", "25miles")
   useComprehensiveFallback?: boolean; // use comprehensive fallback strategies
 }
@@ -813,7 +804,6 @@ export class ConflictAnalysisService {
 
       // Advanced analysis features
       let audienceOverlap;
-      let venueIntelligence;
 
       if (params.enableAdvancedAnalysis) {
         // Calculate audience overlap analysis
@@ -822,14 +812,6 @@ export class ConflictAnalysisService {
           params
         );
 
-        // Calculate venue intelligence if venue is provided
-        if (params.venue) {
-          venueIntelligence = await this.calculateVenueIntelligenceAnalysis(
-            params.venue,
-            dateRange.startDate,
-            params.expectedAttendees
-          );
-        }
       }
 
       const dateTime = Date.now() - dateStartTime;
@@ -842,8 +824,7 @@ export class ConflictAnalysisService {
         riskLevel,
         competingEvents,
         reasons,
-        audienceOverlap,
-        venueIntelligence
+        audienceOverlap
       };
     });
 
@@ -900,7 +881,6 @@ export class ConflictAnalysisService {
 
       // Advanced analysis features
       let audienceOverlap;
-      let venueIntelligence;
 
       if (params.enableAdvancedAnalysis) {
         // Calculate audience overlap analysis
@@ -909,14 +889,6 @@ export class ConflictAnalysisService {
           params
         );
 
-        // Calculate venue intelligence if venue is provided
-        if (params.venue) {
-          venueIntelligence = await this.calculateVenueIntelligenceAnalysis(
-            params.venue,
-            dateRange.startDate,
-            params.expectedAttendees
-          );
-        }
       }
 
       recommendations.push({
@@ -926,8 +898,7 @@ export class ConflictAnalysisService {
         riskLevel,
         competingEvents,
         reasons,
-        audienceOverlap,
-        venueIntelligence
+        audienceOverlap
       });
 
       const dateTime = Date.now() - dateStartTime;
@@ -2034,45 +2005,6 @@ export class ConflictAnalysisService {
     };
   }
 
-  /**
-   * Calculate venue intelligence analysis
-   */
-  private async calculateVenueIntelligenceAnalysis(
-    venueName: string,
-    date: string,
-    expectedAttendees: number
-  ): Promise<{
-    venueConflictScore: number;
-    capacityUtilization: number;
-    pricingImpact: number;
-    recommendations: string[];
-  }> {
-    try {
-      const venueAnalysis = await venueIntelligenceService.analyzeVenueConflict(
-        venueName,
-        date,
-        expectedAttendees
-      );
-
-      return {
-        venueConflictScore: venueAnalysis.conflictScore,
-        capacityUtilization: venueAnalysis.factors.capacityUtilization,
-        pricingImpact: venueAnalysis.factors.pricingImpact,
-        recommendations: [
-          venueAnalysis.recommendations.pricingStrategy,
-          venueAnalysis.recommendations.marketingAdvice
-        ]
-      };
-    } catch (error) {
-      console.error('Error calculating venue intelligence:', error);
-      return {
-        venueConflictScore: 0.5,
-        capacityUtilization: 0.5,
-        pricingImpact: 0.5,
-        recommendations: ['Unable to analyze venue intelligence']
-      };
-    }
-  }
 
   /**
    * Extract events from API response (moved from inline processing for optimization)

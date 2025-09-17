@@ -48,14 +48,12 @@ export interface ConflictingEvent {
 export interface AnalysisRequest {
   city: string;
   category: string;
-  subcategory?: string;
   preferredDates: string[];
   expectedAttendees: number;
   dateRange: {
     start: string;
     end: string;
   };
-  venue?: string;
   enableAdvancedAnalysis?: boolean;
 }
 
