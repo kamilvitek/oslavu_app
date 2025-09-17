@@ -490,12 +490,15 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd
     }).toString()}`);
 
-    // Use consistent search parameters for all APIs
+    // Use consistent search parameters for all APIs with expanded category mapping
+    const expandedCategories = this.getExpandedCategories(params.category);
+    
     const standardTicketmasterParams = new URLSearchParams({
       city: params.city,
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
+      expandedCategories: expandedCategories.join(','),
       size: '25'
     });
 
@@ -504,6 +507,7 @@ export class ConflictAnalysisService {
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
+      expandedCategories: expandedCategories.join(','),
       size: '25',
       radius: params.searchRadius || '50km'
     });
@@ -1475,6 +1479,32 @@ export class ConflictAnalysisService {
   }
 
   /**
+   * Get expanded categories for better event discovery
+   */
+  private getExpandedCategories(primaryCategory: string): string[] {
+    const categoryExpansions: Record<string, string[]> = {
+      'Marketing': ['Marketing', 'Business', 'Professional Development', 'Networking', 'Conferences', 'Trade Shows'],
+      'Entertainment': ['Entertainment', 'Music', 'Arts & Culture', 'Comedy', 'Theater', 'Film'],
+      'Music': ['Music', 'Entertainment', 'Arts & Culture'],
+      'Sports': ['Sports'],
+      'Business': ['Business', 'Marketing', 'Professional Development', 'Networking', 'Conferences', 'Trade Shows'],
+      'Technology': ['Technology', 'Business', 'Professional Development', 'Conferences'],
+      'Arts & Culture': ['Arts & Culture', 'Entertainment', 'Music', 'Theater', 'Film'],
+      'Education': ['Education', 'Academic', 'Professional Development'],
+      'Healthcare': ['Healthcare'],
+      'Finance': ['Finance', 'Business'],
+      'Networking': ['Networking', 'Business', 'Professional Development'],
+      'Conferences': ['Conferences', 'Business', 'Technology', 'Professional Development'],
+      'Trade Shows': ['Trade Shows', 'Business', 'Expos'],
+      'Comedy': ['Comedy', 'Entertainment', 'Arts & Culture'],
+      'Theater': ['Theater', 'Arts & Culture', 'Entertainment'],
+      'Film': ['Film', 'Entertainment', 'Arts & Culture']
+    };
+
+    return categoryExpansions[primaryCategory] || [primaryCategory];
+  }
+
+  /**
    * Check if two categories are related (restrictive to show only truly relevant events)
    */
   private isRelatedCategory(category1: string, category2: string): boolean {
@@ -1720,16 +1750,17 @@ export class ConflictAnalysisService {
     }
 
     const normalizedTargetCategory = targetCategory.toLowerCase().trim();
+    const expandedCategories = this.getExpandedCategories(targetCategory).map(cat => cat.toLowerCase().trim());
     
     return events.filter(event => {
       const eventCategory = event.category?.toLowerCase().trim() || '';
       
-      // For UI display, use strict category matching to show only relevant events
-      // This ensures users see events that match their selected category
-      const isMatchingCategory = eventCategory === normalizedTargetCategory;
+      // For UI display, use expanded category matching to show related events
+      // This ensures users see events that are relevant to their selected category
+      const isMatchingCategory = expandedCategories.includes(eventCategory);
       
       if (!isMatchingCategory) {
-        console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - strict category mismatch`);
+        console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - category not in expanded list`);
       }
       
       return isMatchingCategory;

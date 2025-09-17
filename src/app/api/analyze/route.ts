@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     // Map incoming request to service params using sanitized data
     const preferredStart = sanitizedBody.preferredDates?.[0] || sanitizedBody.dateRange.start;
-    const preferredEnd = sanitizedBody.preferredDates?.[1] || preferredStart;
+    const preferredEnd = sanitizedBody.preferredDates?.[1] || sanitizedBody.dateRange.start;
 
     const analysis = await conflictAnalysisService.analyzeConflicts({
       city: sanitizedBody.city,

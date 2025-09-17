@@ -18,6 +18,22 @@ function createResponse(data: any, options: { status?: number } = {}) {
   });
 }
 
+// Helper function to remove duplicate events
+function removeDuplicateEvents(events: Event[]): Event[] {
+  const uniqueEvents: Event[] = [];
+  const seenEvents = new Set<string>();
+
+  for (const event of events) {
+    const eventKey = `${event.title}-${event.date}-${event.venue || ''}`;
+    if (!seenEvents.has(eventKey)) {
+      seenEvents.add(eventKey);
+      uniqueEvents.push(event);
+    }
+  }
+
+  return uniqueEvents;
+}
+
 // Define the interface for transformed parameters
 interface TicketmasterTransformation {
   city?: string;
@@ -43,11 +59,15 @@ export async function GET(request: NextRequest) {
     // Extract raw parameters
     const rawParams = Object.fromEntries(searchParams);
     
+    // Handle expanded categories
+    const expandedCategories = rawParams.expandedCategories ? rawParams.expandedCategories.split(',') : [rawParams.category];
+    
     // Log request parameters
     console.log('📥 Ticketmaster Route Request:', {
       method: request.method,
       url: request.url,
       searchParams: rawParams,
+      expandedCategories,
       timestamp: new Date().toISOString()
     });
     
@@ -176,38 +196,48 @@ export async function GET(request: NextRequest) {
           events = [];
         }
       } else if (city && startDate && endDate) {
-        // Get events for city and date range - use direct getEvents method for better reliability (AI transformer disabled, using original params)
+        // Get events for city and date range - use expanded category search
         const searchCity = city;
         const searchRadius = cleanRadius;
         
-        // Use the Ticketmaster service's category mapping (don't duplicate logic)
-        const searchCategory = category;
-        
-        console.log('🎟️ Using direct getEvents method for city search:', {
+        console.log('🎟️ Using expanded category search for city search:', {
           city: searchCity,
           startDate,
           endDate,
-          category: searchCategory,
+          primaryCategory: category,
+          expandedCategories,
           radius: searchRadius,
           useComprehensiveFallback
         });
         
-        // Use direct getEvents method for better reliability, with comprehensive fallback if needed
-        const result = await ticketmasterService.getEvents({
-          city: searchCity,
-          countryCode: getCityCountryCode(searchCity), // Use proper country code mapping
-          radius: searchRadius || undefined,
-          postalCode: undefined,
-          // marketId removed - using geographic parameters instead
-          startDateTime: `${startDate}T00:00:00Z`,
-          endDateTime: `${endDate}T23:59:59Z`,
-          classificationName: searchCategory || undefined, // Only pass if not undefined
-          size,
-          page,
-        });
-        events = result.events;
+        // Search for multiple categories to get better event coverage
+        const allEvents: Event[] = [];
         
-        // If no events found and useComprehensiveFallback is enabled, try comprehensive fallback
+        for (const searchCategory of expandedCategories) {
+          try {
+            const result = await ticketmasterService.getEvents({
+              city: searchCity,
+              countryCode: getCityCountryCode(searchCity),
+              radius: searchRadius,
+              startDateTime: `${startDate}T00:00:00Z`,
+              endDateTime: `${endDate}T23:59:59Z`,
+              classificationName: searchCategory,
+              page: 0,
+              size: Math.ceil((size || 25) / expandedCategories.length), // Distribute size across categories
+            });
+            
+            allEvents.push(...result.events);
+            console.log(`🎟️ Found ${result.events.length} events for category "${searchCategory}"`);
+          } catch (error) {
+            console.warn(`🎟️ Failed to search category "${searchCategory}":`, error);
+          }
+        }
+        
+        // Remove duplicates and limit results
+        const uniqueEvents = removeDuplicateEvents(allEvents);
+        events = uniqueEvents.slice(0, size || 25);
+        
+        console.log(`🎟️ Total unique events found: ${events.length} (from ${allEvents.length} total)`);
         if (events.length === 0 && useComprehensiveFallback) {
           console.log('🎟️ Ticketmaster: No events found with direct search, trying comprehensive fallback');
           events = await ticketmasterService.getEventsWithComprehensiveFallback(

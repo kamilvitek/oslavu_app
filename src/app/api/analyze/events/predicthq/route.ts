@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const category = searchParams.get('category');
+    const expandedCategories = searchParams.get('expandedCategories')?.split(',') || [category].filter(Boolean);
     const keyword = searchParams.get('keyword');
     const radius = searchParams.get('radius');
     const useComprehensiveFallback = searchParams.get('useComprehensiveFallback') === 'true';
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
       startDate, 
       endDate, 
       category, 
+      expandedCategories,
       keyword, 
       radius,
       useComprehensiveFallback,
