@@ -8,6 +8,7 @@ import {
   DemandForecast, 
   VenueConflictAnalysis 
 } from '@/types/venue';
+import { venueCityMappingService } from './venue-city-mapping';
 
 export class VenueIntelligenceService {
   private readonly baseUrl = '/api/venue';
@@ -330,6 +331,11 @@ export class VenueIntelligenceService {
   } {
     const name = venueName.toLowerCase();
     
+    // Try to get the correct city from venue name using venue-city mapping
+    const venueCity = venueCityMappingService.getCityForVenue(venueName);
+    const city = venueCity || 'Prague'; // Default to Prague if no mapping found
+    const locationData = this.getCityLocationData(city);
+    
     // Determine capacity based on venue type
     let capacity = 100;
     let amenities = ['wifi', 'parking'];
@@ -353,9 +359,9 @@ export class VenueIntelligenceService {
       capacity,
       amenities,
       location: {
-        address: `${venueName}, City Center`,
-        city: 'Prague', // Default city
-        coordinates: { lat: 50.0755, lng: 14.4378 },
+        address: `${venueName}, ${locationData.cityCenter}`,
+        city: city,
+        coordinates: locationData.coordinates,
         accessibility: ['wheelchair_accessible', 'public_transport']
       }
     };
@@ -604,11 +610,15 @@ export class VenueIntelligenceService {
     // Dynamic capacity based on venue name patterns
     const capacity = this.estimateVenueCapacity(venueName);
     
+    // Try to get the correct city from venue name using venue-city mapping
+    const venueCity = venueCityMappingService.getCityForVenue(venueName);
+    const actualCity = venueCity || city || 'Prague';
+    
     // Dynamic pricing based on city and venue type
-    const basePrice = this.estimateVenueBasePrice(venueName, city);
+    const basePrice = this.estimateVenueBasePrice(venueName, actualCity);
     
     // Get city-specific coordinates and details
-    const locationData = this.getCityLocationData(city || 'Prague');
+    const locationData = this.getCityLocationData(actualCity);
     
     return {
       venueId: `default_${venueName.replace(/\s+/g, '_').toLowerCase()}`,
@@ -629,7 +639,7 @@ export class VenueIntelligenceService {
         factors: {
           seasonality: this.getSeasonalityFactor(date),
           competitorActivity: 0.5,
-          economicFactors: this.getEconomicFactor(city),
+          economicFactors: this.getEconomicFactor(actualCity),
           socialTrends: 0.9
         },
         confidence: 0.5,

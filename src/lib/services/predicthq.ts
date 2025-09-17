@@ -1,6 +1,7 @@
 // src/lib/services/predicthq.ts
 import { Event } from '@/types';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
+import { venueCityMappingService } from './venue-city-mapping';
 
 interface PredictHQEvent {
   id: string;
@@ -295,23 +296,33 @@ export class PredictHQService {
     // Extract city from various possible sources
     let actualEventCity = 'Unknown';
     
-    // First priority: location.city
-    if (location?.city) {
+    // First priority: Try to extract city from venue name (most reliable)
+    const venueName = location?.name || phqEvent.place?.name;
+    if (venueName) {
+      const cityFromVenue = venueCityMappingService.getCityForVenue(venueName);
+      if (cityFromVenue) {
+        actualEventCity = cityFromVenue;
+        console.log(`🔮 PredictHQ: Extracted city "${cityFromVenue}" from venue name "${venueName}" for event "${phqEvent.title}"`);
+      }
+    }
+    
+    // Second priority: location.city (if venue mapping didn't work)
+    if (actualEventCity === 'Unknown' && location?.city) {
       actualEventCity = location.city;
     } 
-    // Second priority: place.city  
-    else if (phqEvent.place?.city) {
+    // Third priority: place.city  
+    else if (actualEventCity === 'Unknown' && phqEvent.place?.city) {
       actualEventCity = phqEvent.place.city;
     }
-    // Third priority: extract from address
-    else if (location?.address) {
+    // Fourth priority: extract from address
+    else if (actualEventCity === 'Unknown' && location?.address) {
       const addressParts = location.address.split(',');
       if (addressParts.length > 1) {
         actualEventCity = addressParts[addressParts.length - 2]?.trim() || 'Unknown';
       }
     }
-    // Fourth priority: check if this is a Czech Republic event without city info
-    else if (phqEvent.country === 'CZ') {
+    // Fifth priority: check if this is a Czech Republic event without city info
+    else if (actualEventCity === 'Unknown' && phqEvent.country === 'CZ') {
       // Try to extract city from event title for Czech events
       const extractedCity = this.extractCityFromTitle(phqEvent.title);
       if (extractedCity) {
@@ -325,8 +336,8 @@ export class PredictHQService {
         console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" has no city info and couldn't extract from title`);
       }
     }
-    // Fifth priority: mark foreign events
-    else if (phqEvent.country && phqEvent.country !== 'CZ') {
+    // Sixth priority: mark foreign events
+    else if (actualEventCity === 'Unknown' && phqEvent.country && phqEvent.country !== 'CZ') {
       actualEventCity = `${phqEvent.country}${phqEvent.state ? '-' + phqEvent.state : ''}`;
     }
     

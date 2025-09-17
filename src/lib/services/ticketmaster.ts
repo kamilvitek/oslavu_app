@@ -2,6 +2,7 @@
 import { Event } from '@/types';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 import { sanitizeApiParameters, logSanitizationResults } from '@/lib/utils/input-sanitization';
+import { venueCityMappingService } from './venue-city-mapping';
 
 interface TicketmasterEvent {
   id: string;
@@ -616,19 +617,21 @@ export class TicketmasterService {
       console.warn(`🎟️ Ticketmaster: Invalid date format for event ${tmEvent.id}: ${eventDate}`);
     }
 
-    // IMPROVED CITY EXTRACTION: Handle cases where Ticketmaster returns country name instead of city name
+    // ENHANCED CITY EXTRACTION: Handle cases where Ticketmaster returns country name instead of city name
     let extractedCity = venueCity || 'Unknown';
     
-    // If venue city is a country name, try to extract the actual city
-    if (venueCity && this.isCountryName(venueCity)) {
-      // Try to extract city from venue name or event title
-      const cityFromVenue = this.extractCityFromVenueName(venueName);
+    // Always try to extract city from venue name first (most reliable)
+    const cityFromVenue = this.extractCityFromVenueName(venueName);
+    if (cityFromVenue) {
+      extractedCity = cityFromVenue;
+      console.log(`🎟️ Ticketmaster: Extracted city "${cityFromVenue}" from venue name for event "${tmEvent.name}"`);
+    }
+    // If venue city is a country name, try additional extraction methods
+    else if (venueCity && this.isCountryName(venueCity)) {
+      // Try to extract city from event title
       const cityFromTitle = this.extractCityFromEventTitle(tmEvent.name);
       
-      if (cityFromVenue) {
-        extractedCity = cityFromVenue;
-        console.log(`🎟️ Ticketmaster: Extracted city "${cityFromVenue}" from venue name for event "${tmEvent.name}"`);
-      } else if (cityFromTitle) {
+      if (cityFromTitle) {
         extractedCity = cityFromTitle;
         console.log(`🎟️ Ticketmaster: Extracted city "${cityFromTitle}" from event title for event "${tmEvent.name}"`);
       } else if (requestedCity && venueCountry === 'Czech Republic') {
@@ -677,11 +680,18 @@ export class TicketmasterService {
   }
 
   /**
-   * Extract city name from venue name
+   * Extract city name from venue name using comprehensive venue-city mapping
    */
   private extractCityFromVenueName(venueName?: string): string | null {
     if (!venueName) return null;
     
+    // First try the comprehensive venue-city mapping service
+    const mappedCity = venueCityMappingService.getCityForVenue(venueName);
+    if (mappedCity) {
+      return mappedCity;
+    }
+    
+    // Fallback to pattern-based extraction for venues not in the mapping
     const venueLower = venueName.toLowerCase();
     
     // Common venue patterns that contain city names
