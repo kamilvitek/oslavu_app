@@ -490,32 +490,26 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd
     }).toString()}`);
 
-    // Use comprehensive search if enabled - ENABLED for better event discovery
-    const useComprehensiveSearch = params.enableAdvancedAnalysis || false; // Enable comprehensive search when advanced analysis is requested
-    
-    // Create comprehensive search query params
-    const comprehensiveTicketmasterParams = new URLSearchParams({
+    // Use consistent search parameters for all APIs
+    const standardTicketmasterParams = new URLSearchParams({
       city: params.city,
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
-      comprehensive: 'true', // Enable comprehensive search
-      size: '25' // Reduced for faster responses
-      // No radius for Ticketmaster comprehensive search
+      size: '25'
     });
 
-    const comprehensivePredicthqParams = new URLSearchParams({
+    const standardPredicthqParams = new URLSearchParams({
       city: params.city,
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
-      comprehensive: 'true', // Enable comprehensive search
-      size: '25', // Reduced for faster responses
+      size: '25',
       radius: params.searchRadius || '50km'
     });
 
-    // Create timeout controller for API requests with reduced timeouts
-    const timeoutMs = useComprehensiveSearch ? 7500 : 4000; // Reduced by 50%: 7.5s for comprehensive search, 4s for fast search
+    // Create timeout controller for API requests
+    const timeoutMs = 6000; // Consistent 6 second timeout for all requests
     const createTimeoutFetch = (url: string, apiName: string) => {
       // Get API-specific timeout (more reasonable values for external APIs)
       let specificTimeout = timeoutMs;
@@ -567,14 +561,13 @@ export class ConflictAnalysisService {
       return request;
     };
 
-    // Optimized parallel execution with early termination
-    const searchMode = useComprehensiveSearch ? 'COMPREHENSIVE MODE' : 'FAST MODE';
-    console.log(`🚀 Starting optimized parallel API requests with early termination (${searchMode})...`);
+    // Optimized parallel execution
+    console.log(`🚀 Starting optimized parallel API requests...`);
     const startTime = Date.now();
     
-    // Create API request promises with deduplication
-    const ticketmasterUrl = `${baseUrl}/api/analyze/events/ticketmaster?${useComprehensiveSearch ? comprehensiveTicketmasterParams.toString() : ticketmasterQueryParams.toString()}`;
-    const predicthqUrl = `${baseUrl}/api/analyze/events/predicthq?${useComprehensiveSearch ? comprehensivePredicthqParams.toString() : predicthqQueryParams.toString()}`;
+    // Create API request promises with consistent parameters
+    const ticketmasterUrl = `${baseUrl}/api/analyze/events/ticketmaster?${standardTicketmasterParams.toString()}`;
+    const predicthqUrl = `${baseUrl}/api/analyze/events/predicthq?${standardPredicthqParams.toString()}`;
     const brnoUrl = `${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd
@@ -600,11 +593,10 @@ export class ConflictAnalysisService {
       }
     ];
 
-    // Optimized parallel execution with early termination
+    // Optimized parallel execution
     const allEvents: Event[] = [];
     const responses: Array<{name: string, status: 'fulfilled' | 'rejected', value?: any, reason?: any}> = [];
     let completedCount = 0;
-    const EARLY_TERMINATION_THRESHOLD = 999999; // Effectively disable early termination
     
     // Process requests as they complete
     const processResponse = async (apiRequest: typeof apiRequests[0], index: number) => {
@@ -620,15 +612,9 @@ export class ConflictAnalysisService {
         
         // Process the response immediately
         if (response.ok) {
-          const events = await this.extractEventsFromResponse(response, apiRequest.name, useComprehensiveSearch);
+          const events = await this.extractEventsFromResponse(response, apiRequest.name);
           allEvents.push(...events);
           console.log(`✅ ${apiRequest.name}: Added ${events.length} events (total: ${allEvents.length})`);
-          
-          // Early termination check (but only if we have a reasonable amount)
-          if (allEvents.length >= EARLY_TERMINATION_THRESHOLD) {
-            console.log(`🎯 Early termination: ${allEvents.length} events found, threshold: ${EARLY_TERMINATION_THRESHOLD}`);
-            return true; // Signal early termination
-          }
         } else {
           console.warn(`❌ ${apiRequest.name}: HTTP error ${response.status}`);
         }
@@ -647,24 +633,12 @@ export class ConflictAnalysisService {
       return false;
     };
 
-    // Process all requests in parallel with early termination support
+    // Process all requests in parallel
     const racePromises = apiRequests.map((req, idx) => processResponse(req, idx));
     
-    // Wait for all requests to complete or early termination
-    let earlyTerminated = false;
+    // Wait for all requests to complete
     try {
-      // Use Promise.allSettled to wait for all promises to complete
-      // but check for early termination periodically
-      const results = await Promise.allSettled(racePromises);
-      
-      // Check if any promise signaled early termination
-      earlyTerminated = results.some(result => 
-        result.status === 'fulfilled' && result.value === true
-      );
-      
-      if (earlyTerminated) {
-        console.log(`🎯 Early termination triggered by one of the APIs`);
-      }
+      await Promise.allSettled(racePromises);
     } catch (error) {
       console.warn('Error in parallel request processing:', error);
     }
@@ -673,9 +647,7 @@ export class ConflictAnalysisService {
     const [ticketmasterResponse, predicthqResponse, brnoResponse] = responses;
 
     const totalFetchTime = Date.now() - startTime;
-    console.log(`🚀 API requests completed in ${totalFetchTime}ms (${earlyTerminated ? 'early terminated' : 'all completed'})`);
-
-    // Note: Event processing was moved to the optimized parallel execution above
+    console.log(`🚀 API requests completed in ${totalFetchTime}ms`);
 
 
     // Store original unfiltered events for UI display
@@ -704,32 +676,23 @@ export class ConflictAnalysisService {
     const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
     console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
 
-    // For conflict analysis, don't filter by category too aggressively
-    // We want to consider all events that might compete for audience attention
-    console.log(`📂 Skipping strict category filtering for conflict analysis - using all location-filtered events`);
+    // For conflict analysis, use all location-filtered events to consider all potential competitors
+    // But for UI display, we'll show only category-relevant events
+    console.log(`📂 Using all location-filtered events for conflict analysis, category filtering applied for UI display`);
 
     // Remove duplicates based on title, date, and venue
     const uniqueEvents = this.removeDuplicateEvents(locationFilteredEvents);
     console.log(`🔄 Total unique events after deduplication: ${uniqueEvents.length}`);
 
     // Log search strategy summary
-    if (useComprehensiveSearch) {
-      console.log(`🎯 COMPREHENSIVE SEARCH SUMMARY:`);
-      console.log(`  - Search Type: Multi-strategy comprehensive search`);
-      console.log(`  - Total Events Found: ${allEvents.length}`);
-      console.log(`  - After Location Filtering: ${locationFilteredEvents.length}`);
-      console.log(`  - After Deduplication: ${uniqueEvents.length}`);
-      console.log(`  - Deduplication Rate: ${((allEvents.length - uniqueEvents.length) / allEvents.length * 100).toFixed(1)}%`);
-      console.log(`  - Search Strategies Used: Multiple strategies per API`);
-    } else {
-      console.log(`🚀 FAST MODE SEARCH SUMMARY:`);
-      console.log(`  - Search Type: Optimized single-strategy search (PERFORMANCE MODE)`);
-      console.log(`  - Total Events Found: ${allEvents.length}`);
-      console.log(`  - After Location Filtering: ${locationFilteredEvents.length}`);
-      console.log(`  - After Deduplication: ${uniqueEvents.length}`);
-      console.log(`  - Performance: ~90% faster than comprehensive search`);
-      console.log(`  - Coverage: ~70% of comprehensive results with much better speed`);
-    }
+    console.log(`🎯 SEARCH SUMMARY:`);
+    console.log(`  - Search Type: Consistent geographic and category filtering`);
+    console.log(`  - Total Events Found: ${allEvents.length}`);
+    console.log(`  - After Location Filtering: ${locationFilteredEvents.length}`);
+    console.log(`  - After Deduplication: ${uniqueEvents.length}`);
+    console.log(`  - Deduplication Rate: ${((allEvents.length - uniqueEvents.length) / allEvents.length * 100).toFixed(1)}%`);
+    console.log(`  - Geographic Filtering: Strict city-based filtering enabled`);
+    console.log(`  - Category Filtering: Applied at API level and post-processing`);
 
     // Update USP data with event counts from different sources
     try {
@@ -1761,12 +1724,12 @@ export class ConflictAnalysisService {
     return events.filter(event => {
       const eventCategory = event.category?.toLowerCase().trim() || '';
       
-      // Check if event category matches the target category or is related
-      const isMatchingCategory = eventCategory === normalizedTargetCategory || 
-                                this.isRelatedCategory(eventCategory, normalizedTargetCategory);
+      // For UI display, use strict category matching to show only relevant events
+      // This ensures users see events that match their selected category
+      const isMatchingCategory = eventCategory === normalizedTargetCategory;
       
       if (!isMatchingCategory) {
-        console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - category mismatch`);
+        console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - strict category mismatch`);
       }
       
       return isMatchingCategory;
@@ -2006,7 +1969,7 @@ export class ConflictAnalysisService {
   /**
    * Extract events from API response (moved from inline processing for optimization)
    */
-  private async extractEventsFromResponse(response: Response, apiName: string, useComprehensiveSearch: boolean): Promise<Event[]> {
+  private async extractEventsFromResponse(response: Response, apiName: string): Promise<Event[]> {
     if (!response.ok) {
       console.warn(`${apiName}: API returned error status ${response.status}`);
       return [];
@@ -2043,7 +2006,7 @@ export class ConflictAnalysisService {
         } else if (result.data) {
           events = Array.isArray(result.data) ? result.data : [];
         }
-        console.log(`🎟️ Ticketmaster: Extracted ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
+        console.log(`🎟️ Ticketmaster: Extracted ${events.length} events`);
       } else if (apiName === 'predicthq') {
         console.log('🔮 PredictHQ API response structure:', {
           success: result.success,
@@ -2062,7 +2025,7 @@ export class ConflictAnalysisService {
         } else if (result.data) {
           events = Array.isArray(result.data) ? result.data : [];
         }
-        console.log(`🔮 PredictHQ: Extracted ${events.length} events ${useComprehensiveSearch ? '(comprehensive search)' : '(standard search)'}`);
+        console.log(`🔮 PredictHQ: Extracted ${events.length} events`);
       } else if (apiName === 'brno') {
         console.log('🏛️ Brno API response structure:', result);
         if (result.data?.events) {
