@@ -393,25 +393,7 @@ export function ConflictAnalyzer() {
                                 </div>
                               )}
                               
-                              {recommendation.venueIntelligence && (
-                                <div className="mt-2 p-2 bg-green-50 rounded border-l-4 border-green-400">
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <Building className="h-3 w-3 text-green-600" />
-                                    <span className="text-xs font-medium text-green-800">
-                                      Venue Analysis: {(recommendation.venueIntelligence.venueConflictScore * 100).toFixed(1)}% conflict
-                                    </span>
-                                  </div>
-                                  <div className="text-xs text-green-700">
-                                    Capacity: {(recommendation.venueIntelligence.capacityUtilization * 100).toFixed(1)}% | 
-                                    Pricing Impact: {(recommendation.venueIntelligence.pricingImpact * 100).toFixed(1)}%
-                                  </div>
-                                  {recommendation.venueIntelligence.recommendations.length > 0 && (
-                                    <div className="text-xs text-green-600 mt-1">
-                                      💡 {recommendation.venueIntelligence.recommendations[0]}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                              {/* Venue intelligence feature temporarily disabled - property not available on DateRecommendation interface */}
                             </div>
                           ))
                         ) : (
@@ -470,25 +452,7 @@ export function ConflictAnalyzer() {
                                 </div>
                               )}
                               
-                              {recommendation.venueIntelligence && (
-                                <div className="mt-2 p-2 bg-orange-50 rounded border-l-4 border-orange-400">
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <Building className="h-3 w-3 text-orange-600" />
-                                    <span className="text-xs font-medium text-orange-800">
-                                      Venue Issues: {(recommendation.venueIntelligence.venueConflictScore * 100).toFixed(1)}% conflict
-                                    </span>
-                                  </div>
-                                  <div className="text-xs text-orange-700">
-                                    Capacity: {(recommendation.venueIntelligence.capacityUtilization * 100).toFixed(1)}% | 
-                                    Pricing Impact: {(recommendation.venueIntelligence.pricingImpact * 100).toFixed(1)}%
-                                  </div>
-                                  {recommendation.venueIntelligence.recommendations.length > 0 && (
-                                    <div className="text-xs text-orange-600 mt-1">
-                                      💡 {recommendation.venueIntelligence.recommendations[0]}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                              {/* Venue intelligence feature temporarily disabled - property not available on DateRecommendation interface */}
                             </div>
                           ))
                         ) : (
