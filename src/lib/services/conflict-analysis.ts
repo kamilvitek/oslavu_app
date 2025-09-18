@@ -1123,7 +1123,7 @@ export class ConflictAnalysisService {
     }
 
     // Fallback to main thread calculation
-    return await this.calculateConflictScoreFallback(competingEvents, expectedAttendees, category, config);
+    return await this.calculateConflictScoreFallback(competingEvents, expectedAttendees, category, config, params);
   }
 
   /**
@@ -1133,7 +1133,8 @@ export class ConflictAnalysisService {
     competingEvents: Event[],
     expectedAttendees: number,
     category: string,
-    config: ConflictSeverityConfig
+    config: ConflictSeverityConfig,
+    params?: ConflictAnalysisParams
   ): Promise<number> {
     const startTime = Date.now();
     let score = 0;
@@ -1164,9 +1165,48 @@ export class ConflictAnalysisService {
         // Calculate score using optimized algorithm
         eventScore = this.calculateEventConflictScore(event, category, config);
         
+        // Apply audience overlap analysis if enabled and available
+        if (params?.enableAdvancedAnalysis) {
+          // Create a mock event for the user's planned event
+          const plannedEvent: Event = {
+            id: 'planned_event',
+            title: 'Planned Event',
+            date: params.startDate,
+            city: params.city,
+            category: params.category,
+            expectedAttendees: params.expectedAttendees,
+            source: 'manual',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          // Calculate audience overlap with longer timeout and fallback logic
+          try {
+            const overlap = await Promise.race([
+              openaiAudienceOverlapService.isAvailable()
+                ? openaiAudienceOverlapService.predictAudienceOverlap(plannedEvent, event)
+                : audienceOverlapService.predictAudienceOverlap(plannedEvent, event),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Audience overlap analysis timeout')), 10000) // Increased to 10 seconds
+              )
+            ]) as any;
+
+            // Apply audience overlap multiplier with improved logic
+            const overlapMultiplier = this.calculateAudienceOverlapMultiplier(overlap.overlapScore, event.category, category);
+            eventScore *= overlapMultiplier;
+            console.log(`  "${event.title}": audience overlap ${(overlap.overlapScore * 100).toFixed(1)}% -> multiplier ${overlapMultiplier.toFixed(2)} (${openaiAudienceOverlapService.isAvailable() ? 'AI-powered' : 'rule-based'})`);
+          } catch (overlapError) {
+            // Fallback: Use conservative overlap estimation based on category similarity
+            const fallbackOverlap = this.estimateOverlapFromCategories(event.category, category);
+            const overlapMultiplier = this.calculateAudienceOverlapMultiplier(fallbackOverlap, event.category, category);
+            eventScore *= overlapMultiplier;
+            console.log(`  "${event.title}": audience overlap analysis failed, using fallback estimation ${(fallbackOverlap * 100).toFixed(1)}% -> multiplier ${overlapMultiplier.toFixed(2)}`);
+          }
+        }
+        
         // Cache the result
         this.setCachedConflictScore('planned', event.id, config, eventScore);
-        console.log(`  "${event.title}": calculated score = ${eventScore}`);
+        console.log(`  "${event.title}": final calculated score = ${eventScore}`);
       }
       
       score += eventScore;
@@ -1175,7 +1215,7 @@ export class ConflictAnalysisService {
     // Add base score for remaining events (not processed in detail for performance)
     const remainingEvents = competingEvents.length - sortedEvents.length;
     if (remainingEvents > 0) {
-      const remainingScore = remainingEvents * 10; // Lower base score for unprocessed events
+      const remainingScore = remainingEvents * 5; // Further reduced base score for unprocessed events
       score += remainingScore;
       console.log(`Added base score for ${remainingEvents} remaining events: +${remainingScore}`);
     }
@@ -1184,10 +1224,10 @@ export class ConflictAnalysisService {
 
     // Adjust based on expected attendees (larger events are more affected by conflicts)
     if (expectedAttendees > 1000) {
-      score *= 1.2;
+      score *= 1.05;
       console.log(`Large event (${expectedAttendees} attendees): score *= 1.2 = ${score}`);
     } else if (expectedAttendees > 500) {
-      score *= 1.1;
+      score *= 1.05;
       console.log(`Medium event (${expectedAttendees} attendees): score *= 1.1 = ${score}`);
     }
 
@@ -1236,38 +1276,114 @@ export class ConflictAnalysisService {
   private calculateEventConflictScore(event: Event, category: string, config: ConflictSeverityConfig): number {
     let eventScore = 0;
     
-    // Base score for any competing event
-    eventScore += 20;
+    // Base score for any competing event (reduced from 20 to 10)
+    eventScore += 10;
     
-    // Higher score for same category
+    // Higher score for same category (reduced from 30 to 15)
     if (event.category === category) {
-      eventScore += 30;
-    }
-    
-    // Higher score for events with venues (more significant)
-    if (event.venue) {
       eventScore += 15;
     }
     
-    // Higher score for events with images (more professional/promoted)
-    if (event.imageUrl) {
-      eventScore += 10;
+    // Higher score for events with venues (more significant) (reduced from 15 to 8)
+    if (event.venue) {
+      eventScore += 8;
     }
     
-    // Higher score for events with descriptions (more detailed/promoted)
-    if (event.description && event.description.length > 50) {
+    // Higher score for events with images (more professional/promoted) (reduced from 10 to 5)
+    if (event.imageUrl) {
       eventScore += 5;
+    }
+    
+    // Higher score for events with descriptions (more detailed/promoted) (reduced from 5 to 3)
+    if (event.description && event.description.length > 50) {
+      eventScore += 3;
     }
     
     // Adjust based on analysis depth
     if (config.depth === 'deep') {
       // More detailed analysis for deep mode
       if (event.expectedAttendees && event.expectedAttendees > 500) {
-        eventScore += 10;
+        eventScore += 5; // Reduced from 10 to 5
       }
     }
     
     return eventScore;
+  }
+
+  /**
+   * Calculate audience overlap multiplier with improved logic for small overlaps
+   */
+  private calculateAudienceOverlapMultiplier(overlapScore: number, competingEventCategory: string, plannedEventCategory: string): number {
+    // Convert overlap score to percentage for easier understanding
+    const overlapPercentage = overlapScore * 100;
+    
+    // Base multiplier starts at 1.0 (no change)
+    let multiplier = 1.0;
+    
+    // For very small overlaps (less than 15%), apply minimal impact
+    if (overlapPercentage < 15) {
+      // Small overlaps should have minimal impact, especially for different categories
+      if (competingEventCategory !== plannedEventCategory) {
+        // Different categories with small overlap: minimal impact
+        multiplier = 1.0 + (overlapPercentage * 0.01); // Max 0.15x increase for 15% overlap
+      } else {
+        // Same category with small overlap: slightly more impact
+        multiplier = 1.0 + (overlapPercentage * 0.02); // Max 0.3x increase for 15% overlap
+      }
+    }
+    // For moderate overlaps (15-40%), apply proportional impact
+    else if (overlapPercentage <= 40) {
+      if (competingEventCategory !== plannedEventCategory) {
+        // Different categories: moderate impact
+        multiplier = 1.0 + (overlapPercentage * 0.05); // Max 2x increase for 40% overlap
+      } else {
+        // Same category: higher impact
+        multiplier = 1.0 + (overlapPercentage * 0.08); // Max 3.2x increase for 40% overlap
+      }
+    }
+    // For high overlaps (40%+), apply significant impact
+    else {
+      if (competingEventCategory !== plannedEventCategory) {
+        // Different categories: significant but not extreme impact
+        multiplier = 1.0 + (overlapPercentage * 0.1); // Max 4x increase for 40%+ overlap
+      } else {
+        // Same category: high impact
+        multiplier = 1.0 + (overlapPercentage * 0.15); // Max 6x increase for 40%+ overlap
+      }
+    }
+    
+    // Cap the multiplier to prevent extreme scores
+    multiplier = Math.min(multiplier, 1.5); // Maximum 1.5x multiplier (reduced from 2.0)
+    
+    console.log(`    Audience overlap analysis: ${overlapPercentage.toFixed(1)}% overlap, ${competingEventCategory} vs ${plannedEventCategory} -> ${multiplier.toFixed(2)}x multiplier`);
+    
+    return multiplier;
+  }
+
+  /**
+   * Estimate overlap from category similarity when audience analysis fails
+   */
+  private estimateOverlapFromCategories(competingEventCategory: string, plannedEventCategory: string): number {
+    // Same category: moderate overlap (30-50%)
+    if (competingEventCategory === plannedEventCategory) {
+      return 0.4; // 40% estimated overlap
+    }
+    
+    // Related categories: low overlap (10-20%)
+    const relatedCategories = {
+      'Business': ['Marketing', 'Professional Development', 'Networking', 'Conferences'],
+      'Technology': ['Business', 'Professional Development'],
+      'Sports': ['Entertainment'],
+      'Entertainment': ['Sports', 'Music', 'Art']
+    };
+    
+    const plannedRelated = relatedCategories[plannedEventCategory as keyof typeof relatedCategories] || [];
+    if (plannedRelated.includes(competingEventCategory)) {
+      return 0.15; // 15% estimated overlap
+    }
+    
+    // Unrelated categories: very low overlap (5-10%)
+    return 0.075; // 7.5% estimated overlap
   }
 
   /**
@@ -1403,10 +1519,10 @@ export class ConflictAnalysisService {
 
     // Adjust based on expected attendees (larger events are more affected by conflicts)
     if (expectedAttendees > 1000) {
-      score *= 1.2;
+      score *= 1.05;
       console.log(`Large event (${expectedAttendees} attendees): score *= 1.2 = ${score}`);
     } else if (expectedAttendees > 500) {
-      score *= 1.1;
+      score *= 1.05;
       console.log(`Medium event (${expectedAttendees} attendees): score *= 1.1 = ${score}`);
     }
 
@@ -1998,7 +2114,8 @@ export class ConflictAnalysisService {
         overlapScores.push(overlap.overlapScore);
         allReasoning.push(...overlap.reasoning);
 
-        if (overlap.overlapScore > 0.6) {
+        // Only consider events with significant overlap (>30%) as high overlap
+        if (overlap.overlapScore > 0.3) {
           highOverlapEvents.push(event);
         }
       } catch (error) {

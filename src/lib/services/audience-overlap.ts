@@ -429,22 +429,28 @@ export class AudienceOverlapService {
       reasoning.push('High demographic similarity between target audiences');
     } else if (factors.demographicSimilarity > 0.4) {
       reasoning.push('Moderate demographic overlap');
+    } else if (factors.demographicSimilarity > 0.1) {
+      reasoning.push('Minimal demographic overlap');
     } else {
-      reasoning.push('Low demographic similarity');
+      reasoning.push('Very low demographic similarity');
     }
 
     if (factors.interestAlignment > 0.6) {
       reasoning.push('Strong interest alignment in event topics');
     } else if (factors.interestAlignment > 0.3) {
       reasoning.push('Some shared interests between audiences');
+    } else if (factors.interestAlignment > 0.1) {
+      reasoning.push('Minimal interest overlap');
     } else {
-      reasoning.push('Limited interest overlap');
+      reasoning.push('Very limited interest overlap');
     }
 
     if (factors.behaviorPatterns > 0.6) {
       reasoning.push('Similar spending and attendance patterns');
     } else if (factors.behaviorPatterns > 0.3) {
       reasoning.push('Some behavioral similarities');
+    } else if (factors.behaviorPatterns > 0.1) {
+      reasoning.push('Minimal behavioral overlap');
     } else {
       reasoning.push('Different audience behavior patterns');
     }
