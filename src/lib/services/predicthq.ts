@@ -328,10 +328,13 @@ export class PredictHQService {
       if (extractedCity) {
         actualEventCity = extractedCity;
         console.log(`🇨🇿 PredictHQ: Extracted city "${extractedCity}" from Czech event title "${phqEvent.title}"`);
+      } else if (requestedCity) {
+        // If we're searching for a specific Czech city and this is a Czech event,
+        // use the requested city as the most likely location
+        actualEventCity = requestedCity;
+        console.log(`🇨🇿 PredictHQ: Using requested city "${requestedCity}" for Czech event "${phqEvent.title}" (no city info available)`);
       } else {
-        // Don't assume - if we can't extract city, mark as unknown to be filtered out
-        // This prevents foreign events from being incorrectly labeled as local
-        // If we can't extract city and no valid requested city, mark as unknown Czech event
+        // Last resort: mark as Czech Republic (will be handled by location filter)
         actualEventCity = 'Czech Republic';
         console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" has no city info and couldn't extract from title`);
       }

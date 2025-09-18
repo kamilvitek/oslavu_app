@@ -1672,7 +1672,7 @@ export class ConflictAnalysisService {
         alias.includes(eventCity)
       );
       
-      // SPECIAL CASE: Handle events where Ticketmaster returns "Czech Republic" as city name
+      // SPECIAL CASE: Handle events where APIs return "Czech Republic" as city name
       // If we're searching for a Czech city and the event city is "Czech Republic", 
       // check if the venue or title contains the target city name
       if (!isMatchingCity && isCzechCity && eventCity === 'czech republic') {
@@ -1683,8 +1683,22 @@ export class ConflictAnalysisService {
           event.title.toLowerCase().includes(alias.toLowerCase())
         );
         
-        if (hasTargetCityInVenue || hasTargetCityInTitle) {
-          console.log(`✅ Event "${event.title}" from "Czech Republic" matched by ${hasTargetCityInVenue ? 'venue' : 'title'} for city "${targetCity}"`);
+        // ENHANCED: Also check if venue is a known venue for the target city
+        let isKnownVenueForCity = false;
+        if (event.venue) {
+          // Import venue-city mapping service to check if venue belongs to target city
+          const { venueCityMappingService } = require('./venue-city-mapping');
+          const venueCity = venueCityMappingService.getCityForVenue(event.venue);
+          if (venueCity && targetAliases.some(alias => 
+            venueCity.toLowerCase() === alias.toLowerCase()
+          )) {
+            isKnownVenueForCity = true;
+            console.log(`✅ Event "${event.title}" from "Czech Republic" matched by known venue "${event.venue}" for city "${targetCity}"`);
+          }
+        }
+        
+        if (hasTargetCityInVenue || hasTargetCityInTitle || isKnownVenueForCity) {
+          console.log(`✅ Event "${event.title}" from "Czech Republic" matched by ${hasTargetCityInVenue ? 'venue' : hasTargetCityInTitle ? 'title' : 'known venue'} for city "${targetCity}"`);
           return true;
         }
       }
@@ -1696,6 +1710,7 @@ export class ConflictAnalysisService {
       
       // If no city match, check if the event has a venue in the target city
       if (!isMatchingCity && event.venue) {
+        // First try simple venue name matching
         const isMatchingVenue = targetAliases.some(alias => 
           eventVenue.includes(alias) || 
           alias.includes(eventVenue)
@@ -1703,6 +1718,16 @@ export class ConflictAnalysisService {
         
         if (isMatchingVenue) {
           console.log(`✅ Event "${event.title}" matched by venue "${event.venue}" for city "${targetCity}"`);
+          return true;
+        }
+        
+        // ENHANCED: Also check if venue is a known venue for the target city using venue-city mapping
+        const { venueCityMappingService } = require('./venue-city-mapping');
+        const venueCity = venueCityMappingService.getCityForVenue(event.venue);
+        if (venueCity && targetAliases.some(alias => 
+          venueCity.toLowerCase() === alias.toLowerCase()
+        )) {
+          console.log(`✅ Event "${event.title}" matched by known venue "${event.venue}" (${venueCity}) for city "${targetCity}"`);
           return true;
         }
       }
