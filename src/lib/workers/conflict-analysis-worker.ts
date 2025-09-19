@@ -119,15 +119,15 @@ function calculateConflictScoreInWorker(data: ConflictCalculationTask['data']): 
   // Add base score for remaining events
   const remainingEvents = competingEvents.length - sortedEvents.length;
   if (remainingEvents > 0) {
-    const remainingScore = remainingEvents * 10;
+    const remainingScore = remainingEvents * 2; // Reduced from 10 to 2
     score += remainingScore;
   }
 
-  // Adjust based on expected attendees
+  // Adjust based on expected attendees (reduced multipliers)
   if (expectedAttendees > 1000) {
-    score *= 1.2;
+    score *= 1.1; // Reduced from 1.2 to 1.1
   } else if (expectedAttendees > 500) {
-    score *= 1.1;
+    score *= 1.05; // Reduced from 1.1 to 1.05
   }
 
   // Cap the score at 100
@@ -179,34 +179,34 @@ function calculateEventSignificance(event: Event): number {
 function calculateEventConflictScore(event: Event, category: string, config: ConflictCalculationTask['data']['config']): number {
   let eventScore = 0;
   
-  // Base score for any competing event
-  eventScore += 20;
+  // Base score for any competing event (reduced from 20 to 3)
+  eventScore += 3;
   
-  // Higher score for same category
+  // Higher score for same category (reduced from 30 to 8)
   if (event.category === category) {
-    eventScore += 30;
+    eventScore += 8;
   }
   
-  // Higher score for events with venues (more significant)
+  // Higher score for events with venues (more significant) (reduced from 15 to 4)
   if (event.venue) {
-    eventScore += 15;
+    eventScore += 4;
   }
   
-  // Higher score for events with images (more professional/promoted)
+  // Higher score for events with images (more professional/promoted) (reduced from 10 to 2)
   if (event.imageUrl) {
-    eventScore += 10;
+    eventScore += 2;
   }
   
-  // Higher score for events with descriptions (more detailed/promoted)
+  // Higher score for events with descriptions (more detailed/promoted) (reduced from 5 to 1)
   if (event.description && event.description.length > 50) {
-    eventScore += 5;
+    eventScore += 1;
   }
   
   // Adjust based on analysis depth
   if (config.depth === 'deep') {
     // More detailed analysis for deep mode
     if (event.expectedAttendees && event.expectedAttendees > 500) {
-      eventScore += 10;
+      eventScore += 2; // Reduced from 10 to 2
     }
   }
   

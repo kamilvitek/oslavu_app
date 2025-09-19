@@ -1215,20 +1215,26 @@ export class ConflictAnalysisService {
     // Add base score for remaining events (not processed in detail for performance)
     const remainingEvents = competingEvents.length - sortedEvents.length;
     if (remainingEvents > 0) {
-      const remainingScore = remainingEvents * 5; // Further reduced base score for unprocessed events
+      const remainingScore = remainingEvents * 2; // Further reduced base score for unprocessed events
       score += remainingScore;
       console.log(`Added base score for ${remainingEvents} remaining events: +${remainingScore}`);
     }
 
     console.log(`Base score before attendee adjustment: ${score}`);
 
+    // Apply proportional scaling based on audience size and overlap
+    // Smaller events should have proportionally lower conflict scores
+    const audienceScalingFactor = this.calculateAudienceScalingFactor(expectedAttendees, competingEvents);
+    score *= audienceScalingFactor;
+    console.log(`Audience scaling factor: ${audienceScalingFactor.toFixed(2)} (${expectedAttendees} attendees) -> adjusted score: ${score}`);
+
     // Adjust based on expected attendees (larger events are more affected by conflicts)
     if (expectedAttendees > 1000) {
-      score *= 1.05;
-      console.log(`Large event (${expectedAttendees} attendees): score *= 1.2 = ${score}`);
+      score *= 1.1; // Reduced from 1.05 to 1.1
+      console.log(`Large event (${expectedAttendees} attendees): score *= 1.1 = ${score}`);
     } else if (expectedAttendees > 500) {
-      score *= 1.05;
-      console.log(`Medium event (${expectedAttendees} attendees): score *= 1.1 = ${score}`);
+      score *= 1.05; // Reduced from 1.05 to 1.05
+      console.log(`Medium event (${expectedAttendees} attendees): score *= 1.05 = ${score}`);
     }
 
     // Cap the score at 100
@@ -1244,27 +1250,27 @@ export class ConflictAnalysisService {
   private calculateEventSignificance(event: Event): number {
     let significance = 0;
     
-    // Base significance
-    significance += 10;
+    // Base significance (reduced from 10 to 5)
+    significance += 5;
     
-    // Higher significance for events with venues
+    // Higher significance for events with venues (reduced from 20 to 10)
     if (event.venue) {
-      significance += 20;
-    }
-    
-    // Higher significance for events with images
-    if (event.imageUrl) {
-      significance += 15;
-    }
-    
-    // Higher significance for events with descriptions
-    if (event.description && event.description.length > 50) {
       significance += 10;
     }
     
-    // Higher significance for events with expected attendees
+    // Higher significance for events with images (reduced from 15 to 8)
+    if (event.imageUrl) {
+      significance += 8;
+    }
+    
+    // Higher significance for events with descriptions (reduced from 10 to 5)
+    if (event.description && event.description.length > 50) {
+      significance += 5;
+    }
+    
+    // Higher significance for events with expected attendees (reduced impact)
     if (event.expectedAttendees && event.expectedAttendees > 100) {
-      significance += Math.min(event.expectedAttendees / 10, 25);
+      significance += Math.min(event.expectedAttendees / 20, 15); // Reduced from /10, 25 to /20, 15
     }
     
     return significance;
@@ -1276,34 +1282,34 @@ export class ConflictAnalysisService {
   private calculateEventConflictScore(event: Event, category: string, config: ConflictSeverityConfig): number {
     let eventScore = 0;
     
-    // Base score for any competing event (reduced from 20 to 10)
-    eventScore += 10;
+    // Base score for any competing event (further reduced from 10 to 3)
+    eventScore += 3;
     
-    // Higher score for same category (reduced from 30 to 15)
+    // Higher score for same category (reduced from 15 to 8)
     if (event.category === category) {
-      eventScore += 15;
-    }
-    
-    // Higher score for events with venues (more significant) (reduced from 15 to 8)
-    if (event.venue) {
       eventScore += 8;
     }
     
-    // Higher score for events with images (more professional/promoted) (reduced from 10 to 5)
-    if (event.imageUrl) {
-      eventScore += 5;
+    // Higher score for events with venues (more significant) (reduced from 8 to 4)
+    if (event.venue) {
+      eventScore += 4;
     }
     
-    // Higher score for events with descriptions (more detailed/promoted) (reduced from 5 to 3)
+    // Higher score for events with images (more professional/promoted) (reduced from 5 to 2)
+    if (event.imageUrl) {
+      eventScore += 2;
+    }
+    
+    // Higher score for events with descriptions (more detailed/promoted) (reduced from 3 to 1)
     if (event.description && event.description.length > 50) {
-      eventScore += 3;
+      eventScore += 1;
     }
     
     // Adjust based on analysis depth
     if (config.depth === 'deep') {
       // More detailed analysis for deep mode
       if (event.expectedAttendees && event.expectedAttendees > 500) {
-        eventScore += 5; // Reduced from 10 to 5
+        eventScore += 2; // Reduced from 5 to 2
       }
     }
     
@@ -1320,44 +1326,99 @@ export class ConflictAnalysisService {
     // Base multiplier starts at 1.0 (no change)
     let multiplier = 1.0;
     
-    // For very small overlaps (less than 15%), apply minimal impact
-    if (overlapPercentage < 15) {
+    // For very small overlaps (less than 10%), apply minimal impact
+    if (overlapPercentage < 10) {
       // Small overlaps should have minimal impact, especially for different categories
       if (competingEventCategory !== plannedEventCategory) {
-        // Different categories with small overlap: minimal impact
-        multiplier = 1.0 + (overlapPercentage * 0.01); // Max 0.15x increase for 15% overlap
+        // Different categories with small overlap: very minimal impact
+        multiplier = 1.0 + (overlapPercentage * 0.005); // Max 0.05x increase for 10% overlap
       } else {
         // Same category with small overlap: slightly more impact
-        multiplier = 1.0 + (overlapPercentage * 0.02); // Max 0.3x increase for 15% overlap
+        multiplier = 1.0 + (overlapPercentage * 0.01); // Max 0.1x increase for 10% overlap
       }
     }
-    // For moderate overlaps (15-40%), apply proportional impact
-    else if (overlapPercentage <= 40) {
+    // For small to moderate overlaps (10-25%), apply proportional impact
+    else if (overlapPercentage <= 25) {
       if (competingEventCategory !== plannedEventCategory) {
         // Different categories: moderate impact
-        multiplier = 1.0 + (overlapPercentage * 0.05); // Max 2x increase for 40% overlap
+        multiplier = 1.0 + (overlapPercentage * 0.02); // Max 0.5x increase for 25% overlap
       } else {
         // Same category: higher impact
-        multiplier = 1.0 + (overlapPercentage * 0.08); // Max 3.2x increase for 40% overlap
+        multiplier = 1.0 + (overlapPercentage * 0.03); // Max 0.75x increase for 25% overlap
       }
     }
-    // For high overlaps (40%+), apply significant impact
-    else {
+    // For moderate overlaps (25-50%), apply significant impact
+    else if (overlapPercentage <= 50) {
       if (competingEventCategory !== plannedEventCategory) {
-        // Different categories: significant but not extreme impact
-        multiplier = 1.0 + (overlapPercentage * 0.1); // Max 4x increase for 40%+ overlap
+        // Different categories: significant impact
+        multiplier = 1.0 + (overlapPercentage * 0.04); // Max 2x increase for 50% overlap
       } else {
         // Same category: high impact
-        multiplier = 1.0 + (overlapPercentage * 0.15); // Max 6x increase for 40%+ overlap
+        multiplier = 1.0 + (overlapPercentage * 0.06); // Max 3x increase for 50% overlap
+      }
+    }
+    // For high overlaps (50%+), apply maximum impact
+    else {
+      if (competingEventCategory !== plannedEventCategory) {
+        // Different categories: maximum impact
+        multiplier = 1.0 + (overlapPercentage * 0.08); // Max 5x increase for 50%+ overlap
+      } else {
+        // Same category: very high impact
+        multiplier = 1.0 + (overlapPercentage * 0.12); // Max 7x increase for 50%+ overlap
       }
     }
     
     // Cap the multiplier to prevent extreme scores
-    multiplier = Math.min(multiplier, 1.5); // Maximum 1.5x multiplier (reduced from 2.0)
+    multiplier = Math.min(multiplier, 2.0); // Maximum 2.0x multiplier (increased from 1.5)
     
     console.log(`    Audience overlap analysis: ${overlapPercentage.toFixed(1)}% overlap, ${competingEventCategory} vs ${plannedEventCategory} -> ${multiplier.toFixed(2)}x multiplier`);
     
     return multiplier;
+  }
+
+  /**
+   * Calculate audience scaling factor based on event size and competing events
+   */
+  private calculateAudienceScalingFactor(expectedAttendees: number, competingEvents: Event[]): number {
+    // Base scaling factor
+    let scalingFactor = 1.0;
+    
+    // Calculate total potential audience from competing events
+    const totalCompetingAudience = competingEvents.reduce((sum, event) => {
+      return sum + (event.expectedAttendees || 100); // Default to 100 if not specified
+    }, 0);
+    
+    // Calculate market saturation factor
+    const marketSaturation = totalCompetingAudience / (expectedAttendees + totalCompetingAudience);
+    
+    // Apply scaling based on market saturation
+    if (marketSaturation < 0.1) {
+      // Low saturation: minimal impact
+      scalingFactor = 0.3;
+    } else if (marketSaturation < 0.3) {
+      // Moderate saturation: moderate impact
+      scalingFactor = 0.5;
+    } else if (marketSaturation < 0.6) {
+      // High saturation: significant impact
+      scalingFactor = 0.8;
+    } else {
+      // Very high saturation: maximum impact
+      scalingFactor = 1.0;
+    }
+    
+    // Adjust for event size - smaller events are less affected by conflicts
+    if (expectedAttendees < 100) {
+      scalingFactor *= 0.5; // Very small events
+    } else if (expectedAttendees < 500) {
+      scalingFactor *= 0.7; // Small events
+    } else if (expectedAttendees < 1000) {
+      scalingFactor *= 0.9; // Medium events
+    }
+    // Large events (1000+) keep full scaling factor
+    
+    console.log(`    Audience scaling: ${expectedAttendees} attendees, ${totalCompetingAudience} competing audience, saturation: ${(marketSaturation * 100).toFixed(1)}% -> factor: ${scalingFactor.toFixed(2)}`);
+    
+    return Math.max(scalingFactor, 0.1); // Minimum 0.1 factor to prevent zero scores
   }
 
   /**
