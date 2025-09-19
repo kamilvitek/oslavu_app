@@ -403,7 +403,7 @@ export class ConflictAnalysisService {
       // Also include medium risk dates with high scores as potential high-risk dates if we don't have enough high-risk dates
       if (highRiskDates.length < 3) {
         const additionalHighRisk = dateRecommendations
-          .filter(rec => rec.riskLevel === 'Medium' && rec.conflictScore > 50)
+          .filter(rec => rec.riskLevel === 'Medium' && rec.conflictScore > 10)
           .sort((a, b) => b.conflictScore - a.conflictScore)
           .slice(0, 3 - highRiskDates.length);
         
@@ -1598,9 +1598,9 @@ export class ConflictAnalysisService {
    */
   private determineRiskLevel(conflictScore: number): 'Low' | 'Medium' | 'High' {
     let riskLevel: 'Low' | 'Medium' | 'High';
-    if (conflictScore <= 25) {
+    if (conflictScore <= 5) {
       riskLevel = 'Low';
-    } else if (conflictScore <= 50) {
+    } else if (conflictScore <= 15) {
       riskLevel = 'Medium';
     } else {
       riskLevel = 'High';
