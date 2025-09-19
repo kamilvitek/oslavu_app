@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
             searchCity,
             startDate,
             endDate,
-            searchCategory || undefined,
+            category || undefined,
             searchRadius || '50'
           );
         }
