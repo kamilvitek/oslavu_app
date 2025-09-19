@@ -7,7 +7,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MapPin, Users, Tag, Brain, Calendar } from "lucide-react";
+import { MapPin, Users, Tag, Calendar } from "lucide-react";
 import { EVENT_CATEGORIES } from "@/types";
 
 const analysisSchema = z.object({
@@ -16,7 +16,6 @@ const analysisSchema = z.object({
   expectedAttendees: z.number().min(1, "Expected attendees is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
-  enableAdvancedAnalysis: z.boolean().optional(),
 });
 
 type AnalysisForm = z.infer<typeof analysisSchema>;
@@ -36,12 +35,9 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
     formState: { errors },
   } = useForm<AnalysisForm>({
     resolver: zodResolver(analysisSchema),
-    defaultValues: {
-      enableAdvancedAnalysis: false,
-    },
+    defaultValues: {},
   });
 
-  const enableAdvancedAnalysis = watch('enableAdvancedAnalysis');
 
   // Calculate automatic analysis range based on preferred dates, attendees, and category
   const calculateAnalysisRange = (startDate: string, endDate: string, attendees: number, category: string) => {
@@ -225,23 +221,6 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
       </div>
 
 
-      <div className="space-y-2">
-        <div className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            id="enableAdvancedAnalysis"
-            {...register("enableAdvancedAnalysis")}
-            className="rounded border-gray-300"
-          />
-          <Label htmlFor="enableAdvancedAnalysis" className="flex items-center space-x-2">
-            <Brain className="h-4 w-4" />
-            <span>Enable Advanced Analysis</span>
-          </Label>
-        </div>
-        <p className="text-sm text-gray-600">
-          Includes AI-powered audience overlap prediction and advanced conflict analysis
-        </p>
-      </div>
 
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Analyzing..." : "Get your date"}

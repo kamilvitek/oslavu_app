@@ -56,7 +56,7 @@ export interface ConflictAnalysisParams {
   endDate: string; // preferred end date
   dateRangeStart: string; // analysis range start (auto-calculated)
   dateRangeEnd: string; // analysis range end (auto-calculated)
-  enableAdvancedAnalysis?: boolean; // enable audience overlap analysis
+  enableAdvancedAnalysis?: boolean; // enable audience overlap analysis (defaults to true)
   searchRadius?: string; // search radius for geographic coverage (e.g., "50km", "25miles")
   useComprehensiveFallback?: boolean; // use comprehensive fallback strategies
 }
@@ -772,7 +772,8 @@ export class ConflictAnalysisService {
       // Advanced analysis features
       let audienceOverlap;
 
-      if (params.enableAdvancedAnalysis) {
+      // Advanced analysis is enabled by default for best results
+      if (params.enableAdvancedAnalysis !== false) {
         // Calculate audience overlap analysis
         audienceOverlap = await this.calculateAudienceOverlapAnalysis(
           competingEvents,
@@ -849,7 +850,8 @@ export class ConflictAnalysisService {
       // Advanced analysis features
       let audienceOverlap;
 
-      if (params.enableAdvancedAnalysis) {
+      // Advanced analysis is enabled by default for best results
+      if (params.enableAdvancedAnalysis !== false) {
         // Calculate audience overlap analysis
         audienceOverlap = await this.calculateAudienceOverlapAnalysis(
           competingEvents,

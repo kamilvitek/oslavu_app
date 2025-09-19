@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       endDate: preferredEnd,
       dateRangeStart: sanitizedBody.dateRange.start,
       dateRangeEnd: sanitizedBody.dateRange.end,
-      enableAdvancedAnalysis: sanitizedBody.enableAdvancedAnalysis,
+      enableAdvancedAnalysis: sanitizedBody.enableAdvancedAnalysis ?? true, // Default to true for best results
       useComprehensiveFallback: false, // DISABLED for performance - was causing 5min delays
     });
     

@@ -29,7 +29,7 @@ export default function TestWorkingAnalysis() {
             end: "2025-09-30",
           },
           preferredDates: ["2025-09-15", "2025-09-16"],
-          enableAdvancedAnalysis: false,
+          enableAdvancedAnalysis: true, // Always enabled for best results
         }),
       });
 

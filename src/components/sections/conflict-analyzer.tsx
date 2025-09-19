@@ -101,7 +101,7 @@ export function ConflictAnalyzer() {
             end: formData.dateRangeEnd
           },
           preferredDates: [formData.startDate, formData.endDate],
-          enableAdvancedAnalysis: formData.enableAdvancedAnalysis
+          enableAdvancedAnalysis: true // Always enabled for best results
         })
       });
 
