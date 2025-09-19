@@ -308,38 +308,6 @@ export function ConflictAnalyzer() {
 
               {analysisResult && (
                 <>
-                  {/* Analysis Method Status */}
-                  <Card className="glass-effect border-chart-info/20 bg-blue-50/50 dark:bg-blue-950/20">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <Target className="h-5 w-5 text-chart-info" />
-                          <span className="font-medium text-chart-info">Analysis Method</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {openaiAvailable ? (
-                            <SuccessBadge 
-                              label="AI-Powered Analysis" 
-                              size="sm"
-                              variant="subtle"
-                            />
-                          ) : (
-                            <WarningBadge 
-                              label="Rule-Based Analysis" 
-                              size="sm"
-                              variant="subtle"
-                            />
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-xs text-chart-info mt-2">
-                        {openaiAvailable 
-                          ? "✨ Using OpenAI for advanced audience overlap prediction and semantic analysis"
-                          : "⚡ Using algorithmic analysis. Add OpenAI API key for enhanced AI-powered features"
-                        }
-                      </p>
-                    </CardContent>
-                  </Card>
 
                   <Card className="border-chart-success/20 bg-green-50/50 dark:bg-green-950/20 animate-scale-in">
                     <CardHeader>
