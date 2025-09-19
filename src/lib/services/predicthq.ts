@@ -555,34 +555,32 @@ export class PredictHQService {
     // First check for specific keywords in title/description for better categorization
     const content = `${title || ''} ${description || ''}`.toLowerCase();
     
+    // Sports-specific keywords (check first to avoid false positives)
+    if (this.hasSportsKeywords(content)) {
+      console.log(`🔮 PredictHQ: Mapped "${title}" to Sports based on content keywords`);
+      return 'Sports';
+    }
+    
     // Technology-specific keywords
-    if (content.includes('tech') || content.includes('digital') || content.includes('software') || 
-        content.includes('ai') || content.includes('data') || content.includes('coding') ||
-        content.includes('programming') || content.includes('cyber') || content.includes('cloud')) {
+    if (this.hasTechnologyKeywords(content)) {
       console.log(`🔮 PredictHQ: Mapped "${title}" to Technology based on content keywords`);
       return 'Technology';
     }
     
     // Healthcare-specific keywords
-    if (content.includes('medical') || content.includes('health') || content.includes('clinical') ||
-        content.includes('doctor') || content.includes('nurse') || content.includes('patient') ||
-        content.includes('hospital') || content.includes('pharma') || content.includes('drug') ||
-        content.includes('surgery') || content.includes('anaesth') || content.includes('o&g') ||
-        content.includes('gems study')) {
+    if (this.hasHealthcareKeywords(content)) {
       console.log(`🔮 PredictHQ: Mapped "${title}" to Healthcare based on content keywords`);
       return 'Healthcare';
     }
     
     // Finance-specific keywords
-    if (content.includes('finance') || content.includes('banking') || content.includes('investment') ||
-        content.includes('trading') || content.includes('fintech') || content.includes('crypto')) {
+    if (this.hasFinanceKeywords(content)) {
       console.log(`🔮 PredictHQ: Mapped "${title}" to Finance based on content keywords`);
       return 'Finance';
     }
     
-    // Marketing-specific keywords
-    if (content.includes('marketing') || content.includes('advertising') || content.includes('brand') ||
-        content.includes('social media') || content.includes('seo') || content.includes('digital marketing')) {
+    // Marketing-specific keywords (with improved matching)
+    if (this.hasMarketingKeywords(content)) {
       console.log(`🔮 PredictHQ: Mapped "${title}" to Marketing based on content keywords`);
       return 'Marketing';
     }
@@ -618,6 +616,83 @@ export class PredictHQService {
     };
 
     return categoryMap[phqCategory] || 'Other';
+  }
+
+  /**
+   * Check if content has sports keywords with word boundary matching
+   */
+  private hasSportsKeywords(content: string): boolean {
+    const sportsKeywords = [
+      'sport', 'game', 'match', 'tournament', 'league', 'athletic', 'fitness',
+      'football', 'soccer', 'basketball', 'tennis', 'hockey', 'baseball',
+      'championship', 'cup', 'vs', 'versus', 'liga', 'division', 'team'
+    ];
+    
+    return sportsKeywords.some(keyword => {
+      // Use word boundary matching to avoid false positives
+      const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+      return regex.test(content);
+    });
+  }
+
+  /**
+   * Check if content has technology keywords with word boundary matching
+   */
+  private hasTechnologyKeywords(content: string): boolean {
+    const techKeywords = [
+      'tech', 'digital', 'software', 'ai', 'data', 'coding', 'programming', 
+      'cyber', 'cloud', 'startup', 'innovation', 'computer', 'algorithm'
+    ];
+    
+    return techKeywords.some(keyword => {
+      const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+      return regex.test(content);
+    });
+  }
+
+  /**
+   * Check if content has healthcare keywords with word boundary matching
+   */
+  private hasHealthcareKeywords(content: string): boolean {
+    const healthKeywords = [
+      'medical', 'health', 'clinical', 'doctor', 'nurse', 'patient', 
+      'hospital', 'pharma', 'drug', 'surgery', 'anaesth', 'o&g', 'gems study'
+    ];
+    
+    return healthKeywords.some(keyword => {
+      const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+      return regex.test(content);
+    });
+  }
+
+  /**
+   * Check if content has finance keywords with word boundary matching
+   */
+  private hasFinanceKeywords(content: string): boolean {
+    const financeKeywords = [
+      'finance', 'banking', 'investment', 'trading', 'fintech', 'crypto', 'financial'
+    ];
+    
+    return financeKeywords.some(keyword => {
+      const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+      return regex.test(content);
+    });
+  }
+
+  /**
+   * Check if content has marketing keywords with improved matching to avoid false positives
+   */
+  private hasMarketingKeywords(content: string): boolean {
+    // Use more specific marketing terms to avoid false positives
+    const marketingKeywords = [
+      'marketing', 'advertising', 'branding', 'social media', 'seo', 'digital marketing', 
+      'promotion', 'campaign', 'brand awareness', 'marketing strategy'
+    ];
+    
+    return marketingKeywords.some(keyword => {
+      const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+      return regex.test(content);
+    });
   }
 
   /**
