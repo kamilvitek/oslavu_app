@@ -43,7 +43,7 @@ export default function DesignSystemDemo() {
 
   const heatmapData: ConflictDataPoint[] = Array.from({ length: 30 }, (_, i) => ({
     date: new Date(2024, 2, i + 1).toISOString(),
-    conflictScore: Math.random() * 100,
+    conflictScore: Math.random() * 20,
     riskLevel: ['Low', 'Medium', 'High'][Math.floor(Math.random() * 3)] as 'Low' | 'Medium' | 'High',
     eventCount: Math.floor(Math.random() * 10) + 1,
     dayOfWeek: new Date(2024, 2, i + 1).toLocaleDateString('en-US', { weekday: 'long' })

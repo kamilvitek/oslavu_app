@@ -503,7 +503,7 @@ export function AdvancedAnalysisTestComponent() {
                           <div className="p-3 border rounded-lg">
                             <h5 className="font-medium mb-2">Conflict Analysis</h5>
                             <div className="text-sm space-y-1">
-                              <div><strong>Conflict Score:</strong> {(result.data.analysis.conflictScore * 100).toFixed(1)}%</div>
+                              <div><strong>Conflict Score:</strong> {result.data.analysis.conflictScore.toFixed(1)}/20</div>
                               <div><strong>Capacity Utilization:</strong> {(result.data.analysis.factors.capacityUtilization * 100).toFixed(1)}%</div>
                               <div><strong>Pricing Impact:</strong> {(result.data.analysis.factors.pricingImpact * 100).toFixed(1)}%</div>
                               <div><strong>Competitor Pressure:</strong> {(result.data.analysis.factors.competitorPressure * 100).toFixed(1)}%</div>

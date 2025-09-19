@@ -1237,8 +1237,8 @@ export class ConflictAnalysisService {
       console.log(`Medium event (${expectedAttendees} attendees): score *= 1.05 = ${score}`);
     }
 
-    // Cap the score at 100
-    const finalScore = Math.min(score, 100);
+    // Cap the score at 20 (adjusted for new scoring system)
+    const finalScore = Math.min(score, 20);
     const calculationTime = Date.now() - startTime;
     console.log(`✅ Main thread conflict score calculation completed in ${calculationTime}ms: ${finalScore}`);
     return finalScore;
@@ -1587,8 +1587,8 @@ export class ConflictAnalysisService {
       console.log(`Medium event (${expectedAttendees} attendees): score *= 1.1 = ${score}`);
     }
 
-    // Cap the score at 100
-    const finalScore = Math.min(score, 100);
+    // Cap the score at 20 (adjusted for new scoring system)
+    const finalScore = Math.min(score, 20);
     console.log(`Final conflict score: ${finalScore}`);
     return finalScore;
   }

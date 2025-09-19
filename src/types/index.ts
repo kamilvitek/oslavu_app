@@ -30,7 +30,7 @@ export interface ConflictAnalysis {
 
 export interface ConflictScore {
   date: string;
-  score: number; // 0-100, where 0 = no conflicts, 100 = major conflicts
+  score: number; // 0-20, where 0 = no conflicts, 20 = major conflicts
   risk: 'low' | 'medium' | 'high';
   conflictingEvents: ConflictingEvent[];
   recommendation: string;

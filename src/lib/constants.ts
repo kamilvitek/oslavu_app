@@ -31,9 +31,9 @@ export const CITIES = [
 ] as const;
 
 export const CONFLICT_SCORE_RANGES = {
-  LOW: { min: 0, max: 30, color: 'green' },
-  MEDIUM: { min: 31, max: 70, color: 'yellow' },
-  HIGH: { min: 71, max: 100, color: 'red' },
+  LOW: { min: 0, max: 5, color: 'green' },
+  MEDIUM: { min: 6, max: 15, color: 'yellow' },
+  HIGH: { min: 16, max: 20, color: 'red' },
 } as const;
 
 export const SUBSCRIPTION_PLANS = {

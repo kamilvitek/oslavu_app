@@ -130,8 +130,8 @@ function calculateConflictScoreInWorker(data: ConflictCalculationTask['data']): 
     score *= 1.05; // Reduced from 1.1 to 1.05
   }
 
-  // Cap the score at 100
-  const finalScore = Math.min(score, 100);
+  // Cap the score at 20 (adjusted for new scoring system)
+  const finalScore = Math.min(score, 20);
   const processingTime = performance.now() - startTime;
 
   return {

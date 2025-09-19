@@ -370,7 +370,7 @@ export function ConflictAnalyzer() {
                                 {formatDateRange(recommendation.startDate, recommendation.endDate)}
                               </div>
                               <div className={`text-sm ${getRiskColor(recommendation.riskLevel)}`}>
-                                Conflict Score: {recommendation.conflictScore}/100 ({recommendation.riskLevel} Risk)
+                                Conflict Score: {recommendation.conflictScore.toFixed(1)}/20 ({recommendation.riskLevel} Risk)
                               </div>
                               <div className={`text-xs ${getRiskDetailColor(recommendation.riskLevel)} mt-1`}>
                                 {recommendation.reasons.join(' • ')}
@@ -429,7 +429,7 @@ export function ConflictAnalyzer() {
                                 {formatDateRange(recommendation.startDate, recommendation.endDate)}
                               </div>
                               <div className={`text-sm ${getRiskColor(recommendation.riskLevel)}`}>
-                                Conflict Score: {recommendation.conflictScore}/100 ({recommendation.riskLevel} Risk)
+                                Conflict Score: {recommendation.conflictScore.toFixed(1)}/20 ({recommendation.riskLevel} Risk)
                               </div>
                               <div className={`text-xs ${getRiskDetailColor(recommendation.riskLevel)} mt-1`}>
                                 {recommendation.reasons.join(' • ')}

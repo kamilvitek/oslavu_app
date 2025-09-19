@@ -21,7 +21,7 @@ export interface ConflictHeatmapProps {
 }
 
 const getRiskColor = (riskLevel: string, conflictScore: number): string => {
-  const intensity = Math.min(conflictScore / 100, 1);
+  const intensity = Math.min(conflictScore / 20, 1);
   
   switch (riskLevel) {
     case 'Low':
@@ -133,7 +133,7 @@ export const ConflictHeatmap: React.FC<ConflictHeatmapProps> = ({
                         {formatTooltipDate(dataPoint.date)}
                       </div>
                       <div className="text-xs text-muted-foreground mt-1 space-y-1">
-                        <div>Conflict Score: {dataPoint.conflictScore}/100</div>
+                        <div>Conflict Score: {dataPoint.conflictScore.toFixed(1)}/20</div>
                         <div>Risk Level: <span className={getRiskTextColor(dataPoint.riskLevel)}>{dataPoint.riskLevel}</span></div>
                         <div>Events Found: {dataPoint.eventCount}</div>
                       </div>
@@ -153,15 +153,15 @@ export const ConflictHeatmap: React.FC<ConflictHeatmapProps> = ({
                 <span className="text-sm text-muted-foreground">Risk Level:</span>
                 <div className="flex items-center space-x-3">
                   <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: getRiskColor('Low', 50) }} />
+                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: getRiskColor('Low', 10) }} />
                     <span className="text-xs text-green-700 dark:text-green-400">Low</span>
                   </div>
                   <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: getRiskColor('Medium', 50) }} />
+                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: getRiskColor('Medium', 10) }} />
                     <span className="text-xs text-yellow-700 dark:text-yellow-400">Medium</span>
                   </div>
                   <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: getRiskColor('High', 50) }} />
+                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: getRiskColor('High', 10) }} />
                     <span className="text-xs text-red-700 dark:text-red-400">High</span>
                   </div>
                 </div>

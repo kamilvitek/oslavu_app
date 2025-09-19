@@ -230,7 +230,7 @@ export default function TestConflictAnalysisPage() {
                                 {rec.startDate} to {rec.endDate}
                               </div>
                               <Badge variant="destructive">
-                                Score: {rec.conflictScore}/100
+                                Score: {rec.conflictScore.toFixed(1)}/20
                               </Badge>
                             </div>
                             <div className="text-sm text-gray-600 mb-2">
@@ -264,7 +264,7 @@ export default function TestConflictAnalysisPage() {
                                 {rec.startDate} to {rec.endDate}
                               </div>
                               <Badge variant="secondary">
-                                Score: {rec.conflictScore}/100
+                                Score: {rec.conflictScore.toFixed(1)}/20
                               </Badge>
                             </div>
                             <div className="text-sm text-gray-600 mb-2">
