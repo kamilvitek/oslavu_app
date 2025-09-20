@@ -193,7 +193,7 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="startDate" className="text-sm text-muted-foreground">
-              Start Date
+              First Day of Event
             </Label>
             <Input
               id="startDate"
@@ -206,7 +206,7 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
           </div>
           <div>
             <Label htmlFor="endDate" className="text-sm text-muted-foreground">
-              End Date
+              Last Day of Event
             </Label>
             <Input
               id="endDate"

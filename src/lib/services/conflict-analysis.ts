@@ -521,7 +521,7 @@ export class ConflictAnalysisService {
         specificTimeout = 8000; // Restored to reasonable timeout for external API
       } else if (apiName === 'predicthq') {
         specificTimeout = 10000; // Restored to reasonable timeout for external API
-      } else if (apiName === 'brno') {
+      } else if (apiName === 'brno') { 
         specificTimeout = 6000; // Restored to reasonable timeout for external API
       }
 
