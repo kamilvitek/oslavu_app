@@ -2,6 +2,9 @@
 import { Event } from '@/types';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 import { venueCityMappingService } from './venue-city-mapping';
+import { eventStorageService } from './event-storage';
+import { dataTransformer } from './data-transformer';
+import { CreateEventData } from '@/lib/types/events';
 
 interface PredictHQEvent {
   id: string;
@@ -1269,6 +1272,227 @@ export class PredictHQService {
         allEvents.push(event);
         seenEvents.add(eventKey);
       }
+    }
+  }
+
+  /**
+   * Get events with storage integration - fetches from API and saves to database
+   */
+  async getEventsWithStorage(params: PredictHQSearchParams): Promise<{ events: Event[]; total: number; stored: number }> {
+    try {
+      // Fetch events from API
+      const { events, total } = await this.getEvents(params);
+      
+      if (events.length === 0) {
+        return { events, total, stored: 0 };
+      }
+
+      // Transform events to database format
+      const eventsToStore: CreateEventData[] = [];
+      for (const event of events) {
+        try {
+          // Convert Event to CreateEventData format
+          const createEventData: CreateEventData = {
+            title: event.title,
+            description: event.description,
+            date: event.date,
+            end_date: event.endDate,
+            city: event.city,
+            venue: event.venue,
+            category: event.category,
+            subcategory: event.subcategory,
+            expected_attendees: event.expectedAttendees,
+            source: 'predicthq',
+            source_id: event.sourceId,
+            url: event.url,
+            image_url: event.imageUrl,
+          };
+
+          // Validate the event data
+          const validation = dataTransformer.validateEventData(createEventData);
+          if (validation.isValid) {
+            eventsToStore.push(validation.sanitizedData);
+          } else {
+            console.warn(`Skipping invalid PredictHQ event "${event.title}": ${validation.errors.join(', ')}`);
+          }
+        } catch (error) {
+          console.warn(`Failed to transform PredictHQ event "${event.title}":`, error);
+        }
+      }
+
+      // Save events to database
+      let storedCount = 0;
+      if (eventsToStore.length > 0) {
+        try {
+          const saveResult = await eventStorageService.saveEvents(eventsToStore);
+          storedCount = saveResult.created + saveResult.updated;
+          console.log(`Stored ${storedCount} PredictHQ events (${saveResult.created} created, ${saveResult.updated} updated, ${saveResult.skipped} skipped)`);
+        } catch (error) {
+          console.error('Failed to store PredictHQ events:', error);
+        }
+      }
+
+      return { events, total, stored: storedCount };
+    } catch (error) {
+      console.error('Error in getEventsWithStorage:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get events for city with storage integration
+   */
+  async getEventsForCityWithStorage(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<{ events: Event[]; stored: number }> {
+    try {
+      const locationParams = this.getCityLocationParams(city);
+      
+      const { events, total, stored } = await this.getEventsWithStorage({
+        ...locationParams,
+        city: city,
+        'start.gte': `${startDate}T00:00:00`,
+        'start.lte': `${endDate}T23:59:59`,
+        category: category ? this.mapCategoryToPredictHQ(category) : undefined,
+        limit: 500,
+        offset: 0,
+      });
+
+      return { events, stored };
+    } catch (error) {
+      console.error('Error in getEventsForCityWithStorage:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get events with radius and storage integration
+   */
+  async getEventsWithRadiusAndStorage(
+    city: string,
+    startDate: string,
+    endDate: string,
+    radius: string = '50km',
+    category?: string
+  ): Promise<{ events: Event[]; stored: number }> {
+    try {
+      const locationParams = this.getCityLocationParams(city);
+      
+      console.log(`🔮 PredictHQ: Searching ${city} with storage integration and radius ${radius}`);
+      
+      const allEvents: Event[] = [];
+      let offset = 0;
+      const limit = 500;
+      let totalStored = 0;
+      
+      while (true) {
+        const { events, total, stored } = await this.getEventsWithStorage({
+          ...locationParams,
+          city: city,
+          'start.gte': `${startDate}T00:00:00`,
+          'start.lte': `${endDate}T23:59:59`,
+          category: category ? this.mapCategoryToPredictHQ(category) : undefined,
+          limit,
+          offset,
+        });
+
+        allEvents.push(...events);
+        totalStored += stored;
+        
+        if (events.length < limit || allEvents.length >= total || offset >= 1500) {
+          break;
+        }
+        
+        offset += limit;
+      }
+      
+      console.log(`🔮 PredictHQ: Retrieved ${allEvents.length} total events for ${city} with ${totalStored} stored in database`);
+      return { events: allEvents, stored: totalStored };
+    } catch (error) {
+      console.error('Error in getEventsWithRadiusAndStorage:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get events from database (cached results)
+   */
+  async getEventsFromDatabase(
+    city: string,
+    startDate?: string,
+    endDate?: string,
+    category?: string,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<Event[]> {
+    try {
+      const dbEvents = await eventStorageService.getEventsByCity(
+        city,
+        startDate,
+        endDate,
+        category,
+        limit,
+        offset
+      );
+
+      // Convert database events to Event format
+      return dbEvents.map(dbEvent => ({
+        id: dbEvent.id,
+        title: dbEvent.title,
+        description: dbEvent.description,
+        date: dbEvent.date,
+        endDate: dbEvent.end_date,
+        city: dbEvent.city,
+        venue: dbEvent.venue,
+        category: dbEvent.category,
+        subcategory: dbEvent.subcategory,
+        expectedAttendees: dbEvent.expected_attendees,
+        source: dbEvent.source as 'ticketmaster' | 'meetup' | 'predicthq' | 'manual' | 'brno',
+        sourceId: dbEvent.source_id,
+        url: dbEvent.url,
+        imageUrl: dbEvent.image_url,
+        createdAt: dbEvent.created_at,
+        updatedAt: dbEvent.updated_at,
+      }));
+    } catch (error) {
+      console.error('Error fetching events from database:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sync events for a specific city and date range
+   */
+  async syncEventsForCity(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<{ events: Event[]; stored: number; errors: string[] }> {
+    const errors: string[] = [];
+    
+    try {
+      console.log(`🔮 PredictHQ: Syncing events for ${city} from ${startDate} to ${endDate}`);
+      
+      const { events, stored } = await this.getEventsForCityWithStorage(
+        city,
+        startDate,
+        endDate,
+        category
+      );
+
+      console.log(`🔮 PredictHQ: Sync completed - ${events.length} events found, ${stored} stored`);
+      
+      return { events, stored, errors };
+    } catch (error) {
+      const errorMessage = `Failed to sync PredictHQ events for ${city}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      console.error(errorMessage);
+      errors.push(errorMessage);
+      
+      return { events: [], stored: 0, errors };
     }
   }
 }

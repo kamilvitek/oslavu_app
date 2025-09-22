@@ -3,6 +3,9 @@ import { Event } from '@/types';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 import { sanitizeApiParameters, logSanitizationResults } from '@/lib/utils/input-sanitization';
 import { venueCityMappingService } from './venue-city-mapping';
+import { eventStorageService } from './event-storage';
+import { dataTransformer } from './data-transformer';
+import { CreateEventData } from '@/lib/types/events';
 
 interface TicketmasterEvent {
   id: string;
@@ -1514,6 +1517,273 @@ export class TicketmasterService {
         allEvents.push(event);
         seenEvents.add(eventKey);
       }
+    }
+  }
+
+  /**
+   * Get events with storage integration - fetches from API and saves to database
+   */
+  async getEventsWithStorage(params: {
+    city?: string;
+    countryCode?: string;
+    radius?: string;
+    postalCode?: string;
+    marketId?: string;
+    startDateTime?: string;
+    endDateTime?: string;
+    onsaleStartDateTime?: string;
+    onsaleEndDateTime?: string;
+    classificationName?: string;
+    classificationId?: string;
+    segmentId?: string;
+    genreId?: string;
+    subGenreId?: string;
+    keyword?: string;
+    attractionId?: string;
+    venueId?: string;
+    promoterId?: string;
+    size?: number;
+    page?: number;
+    sort?: string;
+    source?: string;
+    locale?: string;
+    includeTBA?: boolean;
+    includeTBD?: boolean;
+    includeTest?: boolean;
+  }): Promise<{ events: Event[]; total: number; stored: number }> {
+    try {
+      // Fetch events from API
+      const { events, total } = await this.getEvents(params);
+      
+      if (events.length === 0) {
+        return { events, total, stored: 0 };
+      }
+
+      // Transform events to database format
+      const eventsToStore: CreateEventData[] = [];
+      for (const event of events) {
+        try {
+          // Convert Event to CreateEventData format
+          const createEventData: CreateEventData = {
+            title: event.title,
+            description: event.description,
+            date: event.date,
+            end_date: event.endDate,
+            city: event.city,
+            venue: event.venue,
+            category: event.category,
+            subcategory: event.subcategory,
+            expected_attendees: event.expectedAttendees,
+            source: 'ticketmaster',
+            source_id: event.sourceId,
+            url: event.url,
+            image_url: event.imageUrl,
+          };
+
+          // Validate the event data
+          const validation = dataTransformer.validateEventData(createEventData);
+          if (validation.isValid) {
+            eventsToStore.push(validation.sanitizedData);
+          } else {
+            console.warn(`Skipping invalid Ticketmaster event "${event.title}": ${validation.errors.join(', ')}`);
+          }
+        } catch (error) {
+          console.warn(`Failed to transform Ticketmaster event "${event.title}":`, error);
+        }
+      }
+
+      // Save events to database
+      let storedCount = 0;
+      if (eventsToStore.length > 0) {
+        try {
+          const saveResult = await eventStorageService.saveEvents(eventsToStore);
+          storedCount = saveResult.created + saveResult.updated;
+          console.log(`Stored ${storedCount} Ticketmaster events (${saveResult.created} created, ${saveResult.updated} updated, ${saveResult.skipped} skipped)`);
+        } catch (error) {
+          console.error('Failed to store Ticketmaster events:', error);
+        }
+      }
+
+      return { events, total, stored: storedCount };
+    } catch (error) {
+      console.error('Error in getEventsWithStorage:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get events for city with storage integration
+   */
+  async getEventsForCityWithStorage(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<{ events: Event[]; stored: number }> {
+    try {
+      const { events, total, stored } = await this.getEventsWithStorage({
+        city,
+        countryCode: getCityCountryCode(city),
+        startDateTime: `${startDate}T00:00:00Z`,
+        endDateTime: `${endDate}T23:59:59Z`,
+        classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
+        size: 199,
+        page: 0,
+      });
+
+      return { events, stored };
+    } catch (error) {
+      console.error('Error in getEventsForCityWithStorage:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get events with radius and storage integration
+   */
+  async getEventsWithRadiusAndStorage(
+    city: string,
+    startDate: string,
+    endDate: string,
+    radius: string = '50',
+    category?: string
+  ): Promise<{ events: Event[]; stored: number }> {
+    try {
+      const allEvents: Event[] = [];
+      const seenEventIds = new Set<string>();
+      const countryCode = getCityCountryCode(city);
+      const postalCode = this.getCityPostalCode(city);
+      const cityVariations = this.mapCityForTicketmaster(city);
+      const radiusValue = this.validateRadius(radius);
+      
+      let totalStored = 0;
+
+      console.log(`🎟️ Ticketmaster: Searching ${city} with storage integration using variations: ${cityVariations.join(', ')} with radius ${radiusValue} miles`);
+      
+      // Search each city variation with radius
+      for (const cityVariation of cityVariations) {
+        let page = 0;
+        const pageSize = 199;
+        let totalAvailable = 0;
+        
+        while (true) {
+          const { events, total, stored } = await this.getEventsWithStorage({
+            city: cityVariation,
+            countryCode,
+            radius: radiusValue,
+            postalCode,
+            startDateTime: `${startDate}T00:00:00Z`,
+            endDateTime: `${endDate}T23:59:59Z`,
+            classificationName: category ? this.mapCategoryToTicketmaster(category) : undefined,
+            size: pageSize,
+            page,
+          });
+
+          // Add unique events only
+          for (const event of events) {
+            if (event.sourceId && !seenEventIds.has(event.sourceId)) {
+              allEvents.push(event);
+              seenEventIds.add(event.sourceId);
+            } else if (!event.sourceId) {
+              allEvents.push(event);
+            }
+          }
+          
+          totalStored += stored;
+          totalAvailable = total;
+          
+          if (events.length < pageSize || events.length >= total || page >= 3) {
+            break;
+          }
+          
+          page++;
+        }
+      }
+      
+      console.log(`🎟️ Ticketmaster: Retrieved ${allEvents.length} total unique events for ${city} with ${totalStored} stored in database`);
+      return { events: allEvents, stored: totalStored };
+    } catch (error) {
+      console.error('Error in getEventsWithRadiusAndStorage:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get events from database (cached results)
+   */
+  async getEventsFromDatabase(
+    city: string,
+    startDate?: string,
+    endDate?: string,
+    category?: string,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<Event[]> {
+    try {
+      const dbEvents = await eventStorageService.getEventsByCity(
+        city,
+        startDate,
+        endDate,
+        category,
+        limit,
+        offset
+      );
+
+      // Convert database events to Event format
+      return dbEvents.map(dbEvent => ({
+        id: dbEvent.id,
+        title: dbEvent.title,
+        description: dbEvent.description,
+        date: dbEvent.date,
+        endDate: dbEvent.end_date,
+        city: dbEvent.city,
+        venue: dbEvent.venue,
+        category: dbEvent.category,
+        subcategory: dbEvent.subcategory,
+        expectedAttendees: dbEvent.expected_attendees,
+        source: dbEvent.source as 'ticketmaster' | 'meetup' | 'predicthq' | 'manual' | 'brno',
+        sourceId: dbEvent.source_id,
+        url: dbEvent.url,
+        imageUrl: dbEvent.image_url,
+        createdAt: dbEvent.created_at,
+        updatedAt: dbEvent.updated_at,
+      }));
+    } catch (error) {
+      console.error('Error fetching events from database:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sync events for a specific city and date range
+   */
+  async syncEventsForCity(
+    city: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<{ events: Event[]; stored: number; errors: string[] }> {
+    const errors: string[] = [];
+    
+    try {
+      console.log(`🎟️ Ticketmaster: Syncing events for ${city} from ${startDate} to ${endDate}`);
+      
+      const { events, stored } = await this.getEventsForCityWithStorage(
+        city,
+        startDate,
+        endDate,
+        category
+      );
+
+      console.log(`🎟️ Ticketmaster: Sync completed - ${events.length} events found, ${stored} stored`);
+      
+      return { events, stored, errors };
+    } catch (error) {
+      const errorMessage = `Failed to sync Ticketmaster events for ${city}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      console.error(errorMessage);
+      errors.push(errorMessage);
+      
+      return { events: [], stored: 0, errors };
     }
   }
 }
