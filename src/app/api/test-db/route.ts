@@ -111,7 +111,7 @@ export async function GET() {
       success: true,
       data: {
         connection: 'OK',
-        total_records: connectionTest?.count || 0,
+        total_records: (connectionTest as any)?.count || 0,
         table_accessible: !tableError,
         sample_records: tableData || [],
         table_error: tableError ? {

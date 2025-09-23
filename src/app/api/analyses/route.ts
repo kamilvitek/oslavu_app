@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         connection: 'OK',
-        total_analyses: connectionTest?.count || 0,
+        total_analyses: (connectionTest as any)?.count || 0,
         table_accessible: !tableError,
         sample_record: tableInfo?.[0] || null
       },

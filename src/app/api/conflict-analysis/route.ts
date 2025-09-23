@@ -158,11 +158,7 @@ export async function POST(request: NextRequest) {
         user_id: null, // Anonymous analysis for now
         results: {
           // Store all analysis data in the results JSONB field
-          city,
-          category,
           subcategory: null,
-          preferred_dates,
-          expected_attendees,
           date_range_start: startDate,
           date_range_end: endDate,
           ...analysisData

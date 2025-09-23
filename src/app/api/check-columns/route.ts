@@ -23,7 +23,7 @@ export async function GET() {
       { name: 'created_at', test: () => serverDatabaseService.getClient().from('conflict_analyses').select('created_at').limit(1) }
     ];
 
-    const results = {};
+    const results: Record<string, { exists: boolean; error: string | null }> = {};
     
     for (const columnTest of columnTests) {
       try {
