@@ -20,6 +20,7 @@ export function Hero() {
       {/* Background with gradient and subtle pattern */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-blue-900 dark:to-purple-900">
         <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-background/20"></div>
       </div>
       
       {/* Floating elements for visual interest */}
@@ -66,7 +67,7 @@ export function Hero() {
                 icon={Shield}
                 colorScheme="success"
                 description="Automated detection of scheduling conflicts"
-                className="interactive-element"
+                className="micro-animation hover-lift"
               />
               
               <MetricCard
@@ -75,7 +76,7 @@ export function Hero() {
                 icon={BarChart3}
                 colorScheme="info"
                 description={`${metrics?.activeAPIs || 0} APIs covering events, meetups, and festivals`}
-                className="interactive-element"
+                className="micro-animation hover-lift"
               />
               
               <MetricCard
@@ -84,7 +85,7 @@ export function Hero() {
                 icon={Zap}
                 colorScheme="warning"
                 description="Lightning-fast conflict score calculation"
-                className="interactive-element"
+                className="micro-animation hover-lift"
               />
             </div>
           </div>

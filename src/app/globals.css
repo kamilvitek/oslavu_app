@@ -23,7 +23,7 @@
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
-    --radius: 0.5rem;
+    --radius: 1rem;
     
     /* Enhanced data visualization colors */
     --chart-primary: 222 84% 53%;
@@ -57,25 +57,25 @@
   }
 
   .dark {
-    --background: 240 10% 3.9%;
+    --background: 240 10% 2%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
+    --card: 240 10% 4%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
+    --popover: 240 10% 4%;
     --popover-foreground: 0 0% 98%;
-    --primary: 222 84% 53%;
-    --primary-foreground: 240 10% 3.9%;
-    --secondary: 240 3.7% 15.9%;
+    --primary: 222 84% 58%;
+    --primary-foreground: 240 10% 2%;
+    --secondary: 240 3.7% 12%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
+    --muted: 240 3.7% 12%;
+    --muted-foreground: 240 5% 70%;
+    --accent: 240 3.7% 12%;
     --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 62.8% 35%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    --border: 240 3.7% 18%;
+    --input: 240 3.7% 18%;
+    --ring: 240 4.9% 85%;
     
     /* Enhanced data visualization colors for dark mode */
     --chart-primary: 222 84% 58%;
@@ -96,11 +96,11 @@
     --gradient-secondary: linear-gradient(135deg, hsl(240 3.7% 15.9%) 0%, hsl(240 3.7% 20%) 100%);
     --gradient-data: linear-gradient(135deg, hsl(199 89% 53%) 0%, hsl(142 76% 41%) 100%);
     
-    /* Shadow system for dark mode */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
-    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.4), 0 8px 10px -6px rgb(0 0 0 / 0.3);
+    /* Enhanced shadow system for dark mode with better contrast */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.6), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.6), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.4);
   }
 }
 
@@ -151,15 +151,60 @@ html {
   }
   
   .interactive-element {
-    @apply transition-all duration-200 ease-in-out;
+    @apply transition-all duration-300 ease-out;
   }
   
   .interactive-element:hover {
-    @apply scale-[1.02] shadow-md;
+    @apply scale-[1.02] shadow-lg;
+  }
+  
+  .micro-animation {
+    @apply transition-all duration-200 ease-out;
+  }
+  
+  .micro-animation:hover {
+    @apply scale-[1.01] shadow-md;
+  }
+  
+  .scroll-reveal {
+    @apply opacity-0 translate-y-8 transition-all duration-700 ease-out;
+  }
+  
+  .scroll-reveal.revealed {
+    @apply opacity-100 translate-y-0;
+  }
+  
+  .hover-lift {
+    @apply transition-transform duration-300 ease-out;
+  }
+  
+  .hover-lift:hover {
+    @apply -translate-y-1;
   }
   
   .glass-effect {
-    @apply bg-background/80 backdrop-blur-md border border-border/50;
+    @apply bg-background/80 backdrop-blur-md border border-background/80 rounded-2xl;
+  }
+  
+  .glass-effect-strong {
+    @apply bg-background/60 backdrop-blur-lg border border-background/60 rounded-2xl shadow-xl;
+  }
+  
+  .glass-effect-subtle {
+    @apply bg-background/90 backdrop-blur-sm border border-background/90 rounded-xl;
+  }
+  
+  /* Dark mode specific glass effects */
+  .dark .glass-effect {
+    @apply bg-background/70 backdrop-blur-lg border border-background/70;
+  }
+  
+  .dark .glass-effect-strong {
+    @apply bg-background/50 backdrop-blur-xl border border-background/50 shadow-2xl;
+  }
+  
+  .dark .glass-effect-subtle {
+    @apply bg-background/80 backdrop-blur-md border border-background/80;
   }
   
   .gradient-primary {
@@ -269,6 +314,10 @@ html {
   animation: fadeInUp 0.6s ease-out forwards;
 }
 
-.animate-scale-in {
-  animation: scaleIn 0.4s ease-out forwards;
-}
+  .animate-scale-in {
+    animation: scaleIn 0.4s ease-out forwards;
+  }
+  
+  .shadow-centered {
+    box-shadow: 0 0 10px 0 hsl(var(--primary) / 0.25);
+  }

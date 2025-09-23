@@ -79,7 +79,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
 
   return (
     <Card className={cn(
-      "metric-card interactive-element",
+      "metric-card glass-effect-subtle hover-lift",
       colorSchemeClasses[colorScheme],
       className
     )}>

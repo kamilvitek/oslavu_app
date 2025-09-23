@@ -200,7 +200,7 @@ export function ConflictAnalyzer() {
 
         <div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <Card className="interactive-element glass-effect">
+            <Card className="glass-effect-strong shadow-centered">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Target className="h-5 w-5 text-chart-primary" />
