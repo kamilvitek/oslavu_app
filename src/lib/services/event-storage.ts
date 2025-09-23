@@ -209,7 +209,26 @@ export class EventStorageService {
         const result = await this.db.getClient()
           .from('events')
           .insert(events.map(event => ({
-            ...event,
+            // Map CreateEventData fields to database columns
+            name: event.title,
+            description: event.description,
+            date: event.date,
+            end_time: event.end_date ? new Date(event.end_date).toISOString() : null,
+            venue_name: event.venue,
+            city: event.city,
+            category: event.category,
+            capacity: event.expected_attendees,
+            source: event.source,
+            source_id: event.source_id,
+            source_url: event.url,
+            // Add the new columns we created
+            title: event.title,
+            venue: event.venue,
+            expected_attendees: event.expected_attendees,
+            url: event.url,
+            image_url: event.image_url,
+            end_date: event.end_date,
+            subcategory: event.subcategory,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })))
