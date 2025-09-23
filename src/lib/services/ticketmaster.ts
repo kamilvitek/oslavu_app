@@ -65,7 +65,7 @@ export class TicketmasterService {
   
   // Rate limiting properties (5 requests per second as per Ticketmaster API docs)
   private lastRequestTime = 0;
-  private readonly minRequestInterval = 200; // 200ms = 5 requests per second
+  private readonly minRequestInterval = 300; // 300ms = ~3.3 requests per second for safety
   private requestCount = 0;
   private dailyRequestLimit = 5000; // Default daily limit
 
@@ -223,6 +223,12 @@ export class TicketmasterService {
       if (sanitizedParams.countryCode) searchParams.append('countryCode', sanitizedParams.countryCode);
       if (sanitizedParams.radius) searchParams.append('radius', sanitizedParams.radius);
       if (sanitizedParams.postalCode) searchParams.append('postalCode', sanitizedParams.postalCode);
+      
+      // For Prague specifically, try using postal code as well for better coverage
+      if (sanitizedParams.city && sanitizedParams.city.toLowerCase() === 'prague' && !sanitizedParams.postalCode) {
+        searchParams.append('postalCode', '11000'); // Prague postal code
+        console.log('🎟️ Ticketmaster: Added Prague postal code for better coverage');
+      }
       // marketId removed - using geographic parameters instead
       
       // Add date parameters (using sanitized values)

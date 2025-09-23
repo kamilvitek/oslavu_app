@@ -210,27 +210,69 @@ export async function GET(request: NextRequest) {
           useComprehensiveFallback
         });
         
-        // Search for multiple categories to get better event coverage
+        // Optimized search strategy: Start with primary category, then try broader search if needed
         const allEvents: Event[] = [];
         
-        for (const searchCategory of expandedCategories) {
-          try {
-            const result = await ticketmasterService.getEvents({
-              city: searchCity,
-              countryCode: getCityCountryCode(searchCity),
-              radius: searchRadius,
-              startDateTime: `${startDate}T00:00:00Z`,
-              endDateTime: `${endDate}T23:59:59Z`,
-              classificationName: searchCategory,
-              page: 0,
-              size: Math.ceil((size || 25) / expandedCategories.length), // Distribute size across categories
-            });
+        // First, try the primary category with a larger size
+        try {
+          const primaryResult = await ticketmasterService.getEvents({
+            city: searchCity,
+            countryCode: getCityCountryCode(searchCity),
+            radius: searchRadius,
+            startDateTime: `${startDate}T00:00:00Z`,
+            endDateTime: `${endDate}T23:59:59Z`,
+            classificationName: category, // Use primary category first
+            page: 0,
+            size: Math.min(size || 25, 50), // Use larger size for primary search
+          });
+          
+          allEvents.push(...primaryResult.events);
+          console.log(`🎟️ Found ${primaryResult.events.length} events for primary category "${category}"`);
+          
+          // If we found events, we can stop here to avoid rate limiting
+          if (primaryResult.events.length > 0) {
+            console.log(`🎟️ Primary search successful, skipping additional category searches to avoid rate limits`);
+          } else {
+            // Only try additional categories if primary search returned no results
+            console.log(`🎟️ Primary search returned no results, trying additional categories...`);
             
-            allEvents.push(...result.events);
-            console.log(`🎟️ Found ${result.events.length} events for category "${searchCategory}"`);
-          } catch (error) {
-            console.warn(`🎟️ Failed to search category "${searchCategory}":`, error);
+            // Try one additional category with a delay to respect rate limits
+            for (const searchCategory of expandedCategories.slice(1, 3)) { // Limit to 2 additional categories
+              try {
+                // Add delay between requests to respect rate limits
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                const result = await ticketmasterService.getEvents({
+                  city: searchCity,
+                  countryCode: getCityCountryCode(searchCity),
+                  radius: searchRadius,
+                  startDateTime: `${startDate}T00:00:00Z`,
+                  endDateTime: `${endDate}T23:59:59Z`,
+                  classificationName: searchCategory,
+                  page: 0,
+                  size: 10, // Smaller size for additional searches
+                });
+                
+                allEvents.push(...result.events);
+                console.log(`🎟️ Found ${result.events.length} events for category "${searchCategory}"`);
+                
+                // If we found events in this category, we can stop to avoid rate limits
+                if (result.events.length > 0) {
+                  console.log(`🎟️ Found events in "${searchCategory}", stopping additional searches to avoid rate limits`);
+                  break;
+                }
+              } catch (error) {
+                console.warn(`🎟️ Failed to search category "${searchCategory}":`, error);
+                // If we hit rate limits, stop trying additional categories
+                if (error instanceof Error && (error.message.includes('429') || error.message.includes('rate limit'))) {
+                  console.log(`🎟️ Rate limit hit, stopping additional category searches`);
+                  break;
+                }
+              }
+            }
           }
+        } catch (error) {
+          console.warn(`🎟️ Primary search failed:`, error);
         }
         
         // Remove duplicates and limit results
@@ -247,6 +289,31 @@ export async function GET(request: NextRequest) {
             category || undefined,
             searchRadius || '50'
           );
+        }
+        
+        // If still no events and this is Prague, try alternative search strategies
+        if (events.length === 0 && searchCity.toLowerCase() === 'prague') {
+          console.log('🎟️ Ticketmaster: No events found for Prague, trying alternative search strategies');
+          
+          try {
+            // Try without classification to get broader results
+            const broadResult = await ticketmasterService.getEvents({
+              city: searchCity,
+              countryCode: getCityCountryCode(searchCity),
+              postalCode: '11000', // Prague postal code
+              startDateTime: `${startDate}T00:00:00Z`,
+              endDateTime: `${endDate}T23:59:59Z`,
+              page: 0,
+              size: 25,
+            });
+            
+            if (broadResult.events.length > 0) {
+              console.log(`🎟️ Ticketmaster: Found ${broadResult.events.length} events with broad Prague search`);
+              events = broadResult.events;
+            }
+          } catch (error) {
+            console.warn('🎟️ Ticketmaster: Alternative Prague search failed:', error);
+          }
         }
       } else {
         // Get general events (AI transformer disabled, using original params)
@@ -269,22 +336,22 @@ export async function GET(request: NextRequest) {
     } catch (serviceError) {
       console.error('🎟️ Ticketmaster service error:', serviceError);
       
-      // Handle specific error types gracefully
-      if (serviceError instanceof Error) {
-        // Rate limit errors
-        if (serviceError.message.includes('rate limit') || serviceError.message.includes('429')) {
-          console.warn('🎟️ Ticketmaster: Rate limit exceeded');
-          return createResponse({
-            success: false,
-            error: 'Rate limit exceeded',
-            data: {
-              events: [],
-              total: 0,
-              source: 'ticketmaster',
-              message: 'Ticketmaster API rate limit exceeded. Please try again later.'
-            }
-          }, { status: 429 });
-        }
+        // Handle specific error types gracefully
+        if (serviceError instanceof Error) {
+          // Rate limit errors - return empty results instead of error to allow other APIs to work
+          if (serviceError.message.includes('rate limit') || serviceError.message.includes('429')) {
+            console.warn('🎟️ Ticketmaster: Rate limit exceeded, returning empty results to allow other APIs to work');
+            return createResponse({
+              success: true, // Return success with empty results
+              data: {
+                events: [],
+                total: 0,
+                source: 'ticketmaster',
+                message: 'Rate limit exceeded - using other data sources',
+                rateLimited: true
+              }
+            });
+          }
         
         // API key errors
         if (serviceError.message.includes('API key') || serviceError.message.includes('401') || serviceError.message.includes('403')) {
