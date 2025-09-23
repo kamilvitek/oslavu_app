@@ -147,19 +147,20 @@ export class EventStorageService {
    */
   private async getExistingEventsBySourceIds(sourceIds: string[]): Promise<Map<string, DatabaseEvent>> {
     try {
-      const { data, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .select('*')
-          .in('source_id', sourceIds)
-      );
+          .in('source_id', sourceIds);
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch existing events: ${error.message}`);
       }
 
       const eventMap = new Map<string, DatabaseEvent>();
-      data?.forEach(event => {
+      data?.forEach((event: any) => {
         if (event.source_id) {
           eventMap.set(event.source_id, event as DatabaseEvent);
         }
@@ -204,16 +205,17 @@ export class EventStorageService {
     const result = { created: 0, errors: [] as string[] };
 
     try {
-      const { data, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .insert(events.map(event => ({
             ...event,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })))
-          .select()
-      );
+          .select();
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to insert events: ${error.message}`);
@@ -238,12 +240,13 @@ export class EventStorageService {
       // Update events one by one to handle individual failures
       for (const update of updates) {
         try {
-          const { error } = await this.db.executeWithRetry(() =>
-            this.db.getClient()
+          const { error } = await this.db.executeWithRetry(async () => {
+            const result = await this.db.getClient()
               .from('events')
               .update(update.data)
-              .eq('id', update.id)
-          );
+              .eq('id', update.id);
+            return result;
+          });
 
           if (error) {
             result.errors.push(`Failed to update event ${update.id}: ${error.message}`);
@@ -293,7 +296,10 @@ export class EventStorageService {
         query = query.eq('category', category);
       }
 
-      const { data, error } = await this.db.executeWithRetry(() => query);
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch events: ${error.message}`);
@@ -337,7 +343,10 @@ export class EventStorageService {
         query = query.lte('date', endDate);
       }
 
-      const { data, error } = await this.db.executeWithRetry(() => query);
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch events by category: ${error.message}`);
@@ -378,7 +387,10 @@ export class EventStorageService {
         query = query.eq('category', category);
       }
 
-      const { data, error } = await this.db.executeWithRetry(() => query);
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch events in date range: ${error.message}`);
@@ -438,7 +450,10 @@ export class EventStorageService {
         query = query.lte('expected_attendees', validatedParams.max_attendees);
       }
 
-      const { data, error } = await this.db.executeWithRetry(() => query);
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to search events: ${error.message}`);
@@ -460,13 +475,14 @@ export class EventStorageService {
       cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
       const cutoffDateString = cutoffDate.toISOString().split('T')[0];
 
-      const { data, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .delete()
           .lt('date', cutoffDateString)
-          .select('id')
-      );
+          .select('id');
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to delete old events: ${error.message}`);
@@ -544,13 +560,14 @@ export class EventStorageService {
    */
   async getEventById(id: string): Promise<DatabaseEvent | null> {
     try {
-      const { data, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .select('*')
           .eq('id', id)
-          .single()
-      );
+          .single();
+        return result;
+      });
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -571,8 +588,8 @@ export class EventStorageService {
    */
   async updateEvent(id: string, updateData: UpdateEventData): Promise<DatabaseEvent | null> {
     try {
-      const { data, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .update({
             ...updateData,
@@ -580,8 +597,9 @@ export class EventStorageService {
           })
           .eq('id', id)
           .select()
-          .single()
-      );
+          .single();
+        return result;
+      });
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -602,12 +620,13 @@ export class EventStorageService {
    */
   async deleteEvent(id: string): Promise<boolean> {
     try {
-      const { error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .delete()
-          .eq('id', id)
-      );
+          .eq('id', id);
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to delete event: ${error.message}`);

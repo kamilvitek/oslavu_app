@@ -7,6 +7,7 @@ import {
   ConflictScore,
   ConflictingEvent
 } from '@/lib/types/events';
+import { eventStorageService } from './event-storage';
 
 /**
  * Advanced query utilities for event data analysis and conflict detection
@@ -42,7 +43,10 @@ export class EventQueryService {
         query = query.eq('category', category);
       }
 
-      const { data, error } = await this.db.executeWithRetry(() => query);
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch events for conflict analysis: ${error.message}`);
@@ -66,8 +70,8 @@ export class EventQueryService {
     limit: number = 50
   ): Promise<DatabaseEvent[]> {
     try {
-      const { data, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .select('*')
           .eq('city', city)
@@ -75,8 +79,9 @@ export class EventQueryService {
           .lte('date', endDate)
           .gte('expected_attendees', minAttendees)
           .order('expected_attendees', { ascending: false })
-          .limit(limit)
-      );
+          .limit(limit);
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch high-impact events: ${error.message}`);
@@ -119,7 +124,10 @@ export class EventQueryService {
         query = query.lte('date', endDate);
       }
 
-      const { data, error } = await this.db.executeWithRetry(() => query);
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch events by venue: ${error.message}`);
@@ -162,7 +170,10 @@ export class EventQueryService {
         query = query.lte('date', endDate);
       }
 
-      const { data, error } = await this.db.executeWithRetry(() => query);
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch events by source: ${error.message}`);
@@ -202,7 +213,10 @@ export class EventQueryService {
         query = query.eq('category', category);
       }
 
-      const { data, error } = await this.db.executeWithRetry(() => query);
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch upcoming events: ${error.message}`);
@@ -224,29 +238,31 @@ export class EventQueryService {
   ): Promise<DatabaseEvent[]> {
     try {
       // First get the original event
-      const { data: originalEvent, error: fetchError } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data: originalEvent, error: fetchError } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .select('*')
           .eq('id', eventId)
-          .single()
-      );
+          .single();
+        return result;
+      });
 
       if (fetchError || !originalEvent) {
         throw new Error('Original event not found');
       }
 
       // Find similar events
-      const { data, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .select('*')
           .eq('category', originalEvent.category)
           .eq('city', originalEvent.city)
           .neq('id', eventId)
           .order('date', { ascending: true })
-          .limit(limit)
-      );
+          .limit(limit);
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch similar events: ${error.message}`);
@@ -268,65 +284,40 @@ export class EventQueryService {
     endDate?: string
   ): Promise<EventAnalytics> {
     try {
-      // Build base query
-      let baseQuery = this.db.getClient().from('events');
-      
-      if (city) {
-        baseQuery = baseQuery.eq('city', city);
-      }
-      
-      if (startDate) {
-        baseQuery = baseQuery.gte('date', startDate);
-      }
-      
-      if (endDate) {
-        baseQuery = baseQuery.lte('date', endDate);
-      }
-
-      // Execute multiple queries in parallel
-      const [
-        totalResult,
-        venuesResult,
-        citiesResult,
-        categoriesResult,
-        sourcesResult,
-        dateRangeResult
-      ] = await Promise.all([
-        baseQuery.select('count', { count: 'exact' }),
-        baseQuery.select('venue').not('venue', 'is', null),
-        baseQuery.select('city'),
-        baseQuery.select('category'),
-        baseQuery.select('source'),
-        baseQuery.select('date').order('date', { ascending: true })
-      ]);
+      // Get all events with basic filtering
+      const events = await eventStorageService.getEventsInDateRange(
+        startDate || '1900-01-01',
+        endDate || '2100-12-31',
+        city
+      );
 
       // Process results
-      const uniqueVenues = new Set(venuesResult.data?.map(event => event.venue).filter(Boolean) || []);
-      const uniqueCities = new Set(citiesResult.data?.map(event => event.city) || []);
+      const uniqueVenues = new Set(events.map((event: any) => event.venue).filter(Boolean));
+      const uniqueCities = new Set(events.map((event: any) => event.city));
       
       const categoryCounts: Record<string, number> = {};
-      categoriesResult.data?.forEach(event => {
+      events.forEach((event: any) => {
         categoryCounts[event.category] = (categoryCounts[event.category] || 0) + 1;
       });
 
       const cityCounts: Record<string, number> = {};
-      citiesResult.data?.forEach(event => {
+      events.forEach((event: any) => {
         cityCounts[event.city] = (cityCounts[event.city] || 0) + 1;
       });
 
       const venueCounts: Record<string, number> = {};
-      venuesResult.data?.forEach(event => {
+      events.forEach((event: any) => {
         if (event.venue) {
           venueCounts[event.venue] = (venueCounts[event.venue] || 0) + 1;
         }
       });
 
       const sourceCounts: Record<string, number> = {};
-      sourcesResult.data?.forEach(event => {
+      events.forEach((event: any) => {
         sourceCounts[event.source] = (sourceCounts[event.source] || 0) + 1;
       });
 
-      const dates = dateRangeResult.data?.map(event => event.date).sort() || [];
+      const dates = events.map((event: any) => event.date).sort();
       const earliest = dates[0] || null;
       const latest = dates[dates.length - 1] || null;
 
@@ -351,7 +342,7 @@ export class EventQueryService {
         .sort((a, b) => b.count - a.count);
 
       return {
-        total_events: totalResult.count || 0,
+        total_events: events.length,
         unique_venues: uniqueVenues.size,
         unique_cities: uniqueCities.size,
         date_range: {
@@ -380,14 +371,15 @@ export class EventQueryService {
   ): Promise<ConflictScore> {
     try {
       // Get events on the same date in the same city and category
-      const { data, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .select('*')
           .eq('city', city)
           .eq('date', date)
-          .eq('category', category)
-      );
+          .eq('category', category);
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to detect conflicts: ${error.message}`);
@@ -515,8 +507,8 @@ export class EventQueryService {
     minPredictedAttendees: number = 100
   ): Promise<DatabaseEvent[]> {
     try {
-      const { data, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
           .select('*')
           .eq('city', city)
@@ -524,8 +516,9 @@ export class EventQueryService {
           .lte('date', endDate)
           .gte('expected_attendees', minPredictedAttendees)
           .not('expected_attendees', 'is', null)
-          .order('expected_attendees', { ascending: false })
-      );
+          .order('expected_attendees', { ascending: false });
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch events with attendance predictions: ${error.message}`);
@@ -537,6 +530,7 @@ export class EventQueryService {
       throw error;
     }
   }
+
 
   /**
    * Get venue popularity analysis
@@ -561,7 +555,10 @@ export class EventQueryService {
         query = query.lte('date', endDate);
       }
 
-      const { data, error } = await this.db.executeWithRetry(() => query);
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch venue popularity: ${error.message}`);
@@ -570,7 +567,7 @@ export class EventQueryService {
       // Process venue data
       const venueStats: Record<string, { count: number; totalAttendees: number }> = {};
       
-      data?.forEach(event => {
+      data?.forEach((event: any) => {
         if (event.venue) {
           if (!venueStats[event.venue]) {
             venueStats[event.venue] = { count: 0, totalAttendees: 0 };

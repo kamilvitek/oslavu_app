@@ -71,7 +71,7 @@ export class DataTransformer {
     }
 
     // Additional business logic validation
-    this.validateBusinessRules(sanitizedData, errors, warnings);
+    this.validateBusinessRules(sanitizedData, errors, warnings, sanitizedData);
 
     return {
       isValid: errors.length === 0,
@@ -87,7 +87,8 @@ export class DataTransformer {
   private validateBusinessRules(
     event: CreateEventData,
     errors: string[],
-    warnings: string[]
+    warnings: string[],
+    sanitizedData: CreateEventData
   ): void {
     // Date validation
     if (event.end_date && event.end_date < event.date) {

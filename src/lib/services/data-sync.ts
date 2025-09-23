@@ -446,11 +446,12 @@ export class DataSyncService {
   }> {
     try {
       // Get all events
-      const { data: events, error } = await this.db.executeWithRetry(() =>
-        this.db.getClient()
+      const { data: events, error } = await this.db.executeWithRetry(async () => {
+        const result = await this.db.getClient()
           .from('events')
-          .select('*')
-      );
+          .select('*');
+        return result;
+      });
 
       if (error) {
         throw new Error(`Failed to fetch events for quality validation: ${error.message}`);

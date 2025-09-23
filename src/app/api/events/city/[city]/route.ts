@@ -19,11 +19,12 @@ const CityEventsQuerySchema = z.object({
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { city: string } }
+  { params }: { params: Promise<{ city: string }> }
 ) {
   try {
     const { searchParams } = new URL(request.url);
-    const city = decodeURIComponent(params.city);
+    const resolvedParams = await params;
+    const city = decodeURIComponent(resolvedParams.city);
     
     // Parse and validate query parameters
     const queryParams = {

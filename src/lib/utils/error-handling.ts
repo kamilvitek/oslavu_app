@@ -49,7 +49,7 @@ export class ErrorHandler {
       field: err.path.join('.'),
       message: err.message,
       code: err.code,
-      received: err.received
+      received: (err as any).received
     }));
 
     return NextResponse.json({
