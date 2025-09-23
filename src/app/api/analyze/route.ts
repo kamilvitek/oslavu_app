@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { conflictAnalysisService } from '@/lib/services/conflict-analysis';
 import { AnalysisRequest } from '@/types';
 import { sanitizeApiParameters, logSanitizationResults } from '@/lib/utils/input-sanitization';
+import { serverDatabaseService } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
@@ -88,6 +89,70 @@ export async function POST(request: NextRequest) {
         return all.reduce((sum, r) => sum + r.conflictScore, 0) / all.length;
       })(),
     });
+
+    // Save analysis results to database
+    try {
+      console.log('Saving analysis results to database...');
+      
+      // Create analysis record for database (using actual schema)
+      const averageConflictScore = (() => {
+        const all = [...analysis.recommendedDates, ...analysis.highRiskDates];
+        if (all.length === 0) return 0;
+        return all.reduce((sum, r) => sum + r.conflictScore, 0) / all.length;
+      })();
+
+      const analysisRecord = {
+        user_id: null, // Anonymous analysis for now
+        request_data: {
+          city: sanitizedBody.city,
+          category: sanitizedBody.category,
+          expected_attendees: sanitizedBody.expectedAttendees,
+          date_range: sanitizedBody.dateRange,
+          preferred_dates: [preferredStart, preferredEnd]
+        },
+        conflict_score: averageConflictScore,
+        results: {
+          // Store all analysis data in the results JSONB field
+          city: sanitizedBody.city,
+          category: sanitizedBody.category,
+          subcategory: sanitizedBody.subcategory || null,
+          preferred_dates: [preferredStart, preferredEnd],
+          expected_attendees: sanitizedBody.expectedAttendees,
+          date_range_start: sanitizedBody.dateRange.start,
+          date_range_end: sanitizedBody.dateRange.end,
+          recommendedDates: analysis.recommendedDates,
+          highRiskDates: analysis.highRiskDates,
+          allEvents: analysis.allEvents,
+          analysisDate: analysis.analysisDate,
+          summary: {
+            totalRecommendations: analysis.recommendedDates.length,
+            totalHighRiskDates: analysis.highRiskDates.length,
+            totalEventsAnalyzed: analysis.allEvents.length,
+            averageConflictScore: averageConflictScore
+          }
+        }
+      };
+
+      // Insert into conflict_analyses table
+      const { data: savedAnalysis, error: saveError } = await serverDatabaseService.executeWithRetry(async () => {
+        const result = await serverDatabaseService.getClient()
+          .from('conflict_analyses')
+          .insert(analysisRecord)
+          .select()
+          .single();
+        return result;
+      });
+
+      if (saveError) {
+        console.error('Failed to save analysis to database:', saveError);
+        // Continue with response even if save fails
+      } else {
+        console.log('Analysis saved to database with ID:', savedAnalysis?.id);
+      }
+    } catch (saveError) {
+      console.error('Error saving analysis to database:', saveError);
+      // Continue with response even if save fails
+    }
 
     return NextResponse.json({
       data: analysis,

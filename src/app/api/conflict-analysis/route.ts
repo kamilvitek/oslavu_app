@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eventQueryService } from '@/lib/services/event-queries';
 import { eventStorageService } from '@/lib/services/event-storage';
+import { serverDatabaseService } from '@/lib/supabase';
 import { z } from 'zod';
 
 const ConflictAnalysisSchema = z.object({
@@ -124,31 +125,72 @@ export async function POST(request: NextRequest) {
       recommendations.push(`${highRiskDates} of your preferred dates have high conflict risk`);
     }
 
+    // Prepare analysis data for response
+    const analysisData = {
+      analysis_id: `analysis_${Date.now()}`,
+      city,
+      category,
+      expected_attendees,
+      preferred_dates,
+      conflict_scores: conflictScores,
+      overall_assessment: {
+        risk_level: overallRisk,
+        average_score: Math.round(averageScore * 10) / 10,
+        max_score: maxScore,
+        high_risk_dates: highRiskDates,
+        total_dates_analyzed: preferred_dates.length
+      },
+      recommendations,
+      additional_insights: additionalInsights,
+      analysis_metadata: {
+        events_analyzed: events.length,
+        date_range: { start: startDate, end: endDate },
+        analysis_timestamp: new Date().toISOString(),
+        advanced_analysis_enabled: enable_advanced_analysis
+      }
+    };
+
+    // Save analysis results to database
+    try {
+      console.log('Saving conflict analysis results to database...');
+      
+      const analysisRecord = {
+        user_id: null, // Anonymous analysis for now
+        results: {
+          // Store all analysis data in the results JSONB field
+          city,
+          category,
+          subcategory: null,
+          preferred_dates,
+          expected_attendees,
+          date_range_start: startDate,
+          date_range_end: endDate,
+          ...analysisData
+        }
+      };
+
+      const { data: savedAnalysis, error: saveError } = await serverDatabaseService.executeWithRetry(async () => {
+        const result = await serverDatabaseService.getClient()
+          .from('conflict_analyses')
+          .insert(analysisRecord)
+          .select()
+          .single();
+        return result;
+      });
+
+      if (saveError) {
+        console.error('Failed to save conflict analysis to database:', saveError);
+      } else {
+        console.log('Conflict analysis saved to database with ID:', savedAnalysis?.id);
+        analysisData.analysis_id = savedAnalysis?.id || analysisData.analysis_id;
+      }
+    } catch (saveError) {
+      console.error('Error saving conflict analysis to database:', saveError);
+    }
+
     return NextResponse.json({
       success: true,
-      data: {
-        analysis_id: `analysis_${Date.now()}`,
-        city,
-        category,
-        expected_attendees,
-        preferred_dates,
-        conflict_scores: conflictScores,
-        overall_assessment: {
-          risk_level: overallRisk,
-          average_score: Math.round(averageScore * 10) / 10,
-          max_score: maxScore,
-          high_risk_dates: highRiskDates,
-          total_dates_analyzed: preferred_dates.length
-        },
-        recommendations,
-        additional_insights: additionalInsights,
-        analysis_metadata: {
-          events_analyzed: events.length,
-          date_range: { start: startDate, end: endDate },
-          analysis_timestamp: new Date().toISOString(),
-          advanced_analysis_enabled: enable_advanced_analysis
-        }
-      },
+      data: analysisData,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
