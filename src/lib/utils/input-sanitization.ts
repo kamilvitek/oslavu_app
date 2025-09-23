@@ -663,6 +663,13 @@ export function sanitizeApiParameters(params: Record<string, unknown>): {
           }
           break;
 
+        case 'countrycode':
+          const countryCodeResult = sanitizeCountryCode(value);
+          if (!countryCodeResult.isValid) errors.push(...countryCodeResult.errors);
+          if (countryCodeResult.warnings.length > 0) warnings.push(...countryCodeResult.warnings);
+          sanitizedParams[key] = countryCodeResult.sanitizedValue;
+          break;
+
         default:
           // For unknown parameters, apply basic string sanitization
           const stringResult = sanitizeString(value, { maxLength: 500 });

@@ -116,6 +116,17 @@ export async function GET(request: NextRequest) {
     const apiKey = process.env.TICKETMASTER_API_KEY;
     const isValidKey = !!(apiKey && apiKey.length > 10 && !apiKey.includes('your_') && !apiKey.includes('here'));
     
+    // FIXED: Add detailed API key debugging
+    console.log('🔑 Route API Key Debug:', {
+      hasApiKey: !!apiKey,
+      keyLength: apiKey?.length || 0,
+      keyStart: apiKey?.substring(0, 4) || 'none',
+      keyEnd: apiKey?.substring(apiKey.length - 4) || 'none',
+      isPlaceholder: apiKey?.includes('your_') || apiKey?.includes('here') || false,
+      isValidKey,
+      envVar: process.env.TICKETMASTER_API_KEY ? 'SET' : 'NOT_SET'
+    });
+    
     if (!isValidKey) {
       console.error('❌ TICKETMASTER_API_KEY is not set in environment variables');
       console.error('🎟️ Ticketmaster API key is not properly configured');
@@ -215,16 +226,36 @@ export async function GET(request: NextRequest) {
         
         // First, try the primary category with a larger size
         try {
-          const primaryResult = await ticketmasterService.getEvents({
-            city: searchCity,
-            countryCode: getCityCountryCode(searchCity),
-            radius: searchRadius,
-            startDateTime: `${startDate}T00:00:00Z`,
-            endDateTime: `${endDate}T23:59:59Z`,
-            classificationName: category, // Use primary category first
-            page: 0,
-            size: Math.min(size || 25, 50), // Use larger size for primary search
-          });
+          // FIXED: Use proper Ticketmaster category mapping
+          const ticketmasterClassification = ticketmasterService.mapCategoryToTicketmaster ? 
+            ticketmasterService.mapCategoryToTicketmaster(category) : category;
+          
+          console.log(`🎟️ Ticketmaster: Mapped category "${category}" to "${ticketmasterClassification}"`);
+          
+          // NEW APPROACH: For Prague, use country-based search with AI city detection directly
+          let primaryResult;
+          if (searchCity.toLowerCase() === 'prague') {
+            console.log(`🎟️ Route: Using country-based search with AI city detection for Prague`);
+            primaryResult = await ticketmasterService.getEventsByCountryWithAICityDetection(
+              searchCity,
+              'CZ',
+              startDate,
+              endDate,
+              category
+            );
+          } else {
+            console.log(`🎟️ Route: Using standard search for ${searchCity}`);
+            primaryResult = await ticketmasterService.getEvents({
+              city: searchCity,
+              countryCode: getCityCountryCode(searchCity),
+              radius: searchRadius,
+              startDateTime: `${startDate}T00:00:00Z`,
+              endDateTime: `${endDate}T23:59:59Z`,
+              classificationName: ticketmasterClassification,
+              page: 0,
+              size: Math.min(size || 25, 50),
+            });
+          }
           
           allEvents.push(...primaryResult.events);
           console.log(`🎟️ Found ${primaryResult.events.length} events for primary category "${category}"`);
@@ -242,13 +273,17 @@ export async function GET(request: NextRequest) {
                 // Add delay between requests to respect rate limits
                 await new Promise(resolve => setTimeout(resolve, 500));
                 
+                // FIXED: Use proper Ticketmaster category mapping for additional searches
+                const mappedCategory = ticketmasterService.mapCategoryToTicketmaster(searchCategory);
+                console.log(`🎟️ Ticketmaster: Mapped additional category "${searchCategory}" to "${mappedCategory}"`);
+                
                 const result = await ticketmasterService.getEvents({
                   city: searchCity,
                   countryCode: getCityCountryCode(searchCity),
                   radius: searchRadius,
                   startDateTime: `${startDate}T00:00:00Z`,
                   endDateTime: `${endDate}T23:59:59Z`,
-                  classificationName: searchCategory,
+                  classificationName: mappedCategory, // FIXED: Use mapped classification
                   page: 0,
                   size: 10, // Smaller size for additional searches
                 });
@@ -291,25 +326,23 @@ export async function GET(request: NextRequest) {
           );
         }
         
-        // If still no events and this is Prague, try alternative search strategies
-        if (events.length === 0 && searchCity.toLowerCase() === 'prague') {
-          console.log('🎟️ Ticketmaster: No events found for Prague, trying alternative search strategies');
+        // NEW APPROACH: If no events found for Czech cities, use country-based search with AI city detection
+        if (events.length === 0 && (searchCity.toLowerCase() === 'prague' || searchCity.toLowerCase().includes('czech'))) {
+          console.log(`🎟️ Ticketmaster: No events found for ${searchCity}, trying country-based search with AI city detection`);
           
           try {
-            // Try without classification to get broader results
-            const broadResult = await ticketmasterService.getEvents({
-              city: searchCity,
-              countryCode: getCityCountryCode(searchCity),
-              postalCode: '11000', // Prague postal code
-              startDateTime: `${startDate}T00:00:00Z`,
-              endDateTime: `${endDate}T23:59:59Z`,
-              page: 0,
-              size: 25,
-            });
+            // FIXED: Use the new country-based search method
+            const countryResult = await ticketmasterService.getEventsByCountryWithAICityDetection(
+              searchCity,
+              'CZ',
+              startDate,
+              endDate,
+              category
+            );
             
-            if (broadResult.events.length > 0) {
-              console.log(`🎟️ Ticketmaster: Found ${broadResult.events.length} events with broad Prague search`);
-              events = broadResult.events;
+            if (countryResult.events.length > 0) {
+              console.log(`🎟️ Ticketmaster: Country-based search found ${countryResult.events.length} events for ${searchCity}`);
+              events = countryResult.events;
             }
           } catch (error) {
             console.warn('🎟️ Ticketmaster: Alternative Prague search failed:', error);

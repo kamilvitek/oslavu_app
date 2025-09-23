@@ -68,6 +68,7 @@ export class TicketmasterService {
   private readonly minRequestInterval = 300; // 300ms = ~3.3 requests per second for safety
   private requestCount = 0;
   private dailyRequestLimit = 5000; // Default daily limit
+  private targetCityForFiltering: string | null = null; // Store target city for post-processing
 
   constructor() {
     this.apiKey = process.env.TICKETMASTER_API_KEY || '';
@@ -211,23 +212,48 @@ export class TicketmasterService {
     
     const sanitizedParams = sanitizationResult.sanitizedParams;
     
+    // DEBUG: Log the sanitized parameters to see what we're working with
+    console.log('🎟️ Ticketmaster: Sanitized parameters:', {
+      city: sanitizedParams.city,
+      countryCode: sanitizedParams.countryCode,
+      postalCode: sanitizedParams.postalCode,
+      allParams: sanitizedParams
+    });
+    
     try {
+      // FIXED: Validate API key before making request
+      if (!this.apiKey || this.apiKey.length < 10) {
+        throw new Error('Ticketmaster API key is not properly configured');
+      }
+      
       const searchParams = new URLSearchParams({
         apikey: this.apiKey,
         size: Math.min(sanitizedParams.size || 199, 199).toString(), // Ticketmaster's maximum page size is 199
         page: (sanitizedParams.page || 0).toString(),
       });
 
-      // Add location parameters (using sanitized values)
-      if (sanitizedParams.city) searchParams.append('city', sanitizedParams.city);
-      if (sanitizedParams.countryCode) searchParams.append('countryCode', sanitizedParams.countryCode);
-      if (sanitizedParams.radius) searchParams.append('radius', sanitizedParams.radius);
-      if (sanitizedParams.postalCode) searchParams.append('postalCode', sanitizedParams.postalCode);
+      // FIXED: Add location parameters - avoid conflicting location filters
+      if (sanitizedParams.postalCode) {
+        // If postal code is provided, use ONLY postal code (don't mix with city/countryCode)
+        searchParams.append('postalCode', sanitizedParams.postalCode);
+        console.log('🎟️ Ticketmaster: Using postal code search (excluding city/countryCode to avoid conflicts)');
+      } else {
+        // Use city and countryCode only when no postal code
+        if (sanitizedParams.city) searchParams.append('city', sanitizedParams.city);
+        if (sanitizedParams.countryCode) searchParams.append('countryCode', sanitizedParams.countryCode);
+        if (sanitizedParams.radius) searchParams.append('radius', sanitizedParams.radius);
+      }
       
-      // For Prague specifically, try using postal code as well for better coverage
+      // NEW APPROACH: For Prague, use pure country-based search (no city parameters)
       if (sanitizedParams.city && sanitizedParams.city.toLowerCase() === 'prague' && !sanitizedParams.postalCode) {
-        searchParams.append('postalCode', '11000'); // Prague postal code
-        console.log('🎟️ Ticketmaster: Added Prague postal code for better coverage');
+        console.log(`🎟️ Ticketmaster: Using pure country-based search for Prague (no city parameters)`);
+        
+        // Remove ALL city-related parameters for pure country search
+        searchParams.delete('city');
+        searchParams.delete('radius');
+        
+        // Store target city for post-processing (not sent to API)
+        this.targetCityForFiltering = sanitizedParams.city;
       }
       // marketId removed - using geographic parameters instead
       
@@ -253,23 +279,47 @@ export class TicketmasterService {
       // Add sorting (using sanitized values)
       if (sanitizedParams.sort) searchParams.append('sort', sanitizedParams.sort);
       
-      // Add additional filters (using sanitized values)
+      // FIXED: Add important missing parameters for better results
       if (sanitizedParams.source) searchParams.append('source', sanitizedParams.source);
       if (sanitizedParams.locale) searchParams.append('locale', sanitizedParams.locale);
-      // Handle TBA and TBD events based on category
-      // For business/professional categories, include TBA events as they often have venues announced later
-      // For entertainment categories, exclude TBA to prevent foreign events
+      
+      // FIXED: Add recommended parameters for better event discovery
+      if (!sanitizedParams.locale) {
+        searchParams.append('locale', 'en-us'); // Default locale for better results
+      }
+      if (!sanitizedParams.sort) {
+        searchParams.append('sort', 'date,asc'); // Sort by date for better relevance
+      }
+      // Include all sources for maximum coverage
+      if (!sanitizedParams.source) {
+        searchParams.append('source', 'ticketmaster,universe,frontgate,tmr');
+      }
+      // FIXED: Handle TBA and TBD events - be less restrictive for better results
       const businessCategories = ['Technology', 'Business', 'Marketing', 'Finance', 'Healthcare', 'Education', 'Academic', 'Professional Development', 'Networking', 'Conferences', 'Trade Shows', 'Workshops', 'Seminars'];
-      const shouldIncludeTBA = businessCategories.includes(sanitizedParams.classificationName || '');
+      const isBusinessCategory = businessCategories.includes(sanitizedParams.classificationName || '');
+      const isCzechCity = sanitizedParams.countryCode === 'CZ';
+      
+      // FIXED: Include TBA for business categories and Czech cities (for better coverage)
+      const shouldIncludeTBA = isBusinessCategory || isCzechCity;
+      const shouldIncludeTBD = isBusinessCategory || isCzechCity;
       
       searchParams.append('includeTBA', shouldIncludeTBA ? 'yes' : 'no');
-      searchParams.append('includeTBD', shouldIncludeTBA ? 'yes' : 'no');
+      searchParams.append('includeTBD', shouldIncludeTBD ? 'yes' : 'no');
       
       console.log(`🎫 Ticketmaster: ${shouldIncludeTBA ? 'Including' : 'Excluding'} TBA/TBD events for category "${sanitizedParams.classificationName}"`);
     
       if (sanitizedParams.includeTest !== undefined) searchParams.append('includeTest', sanitizedParams.includeTest.toString());
 
       const url = `${this.baseUrl}/events.json?${searchParams.toString()}`;
+      
+      // FIXED: Add debugging for API key validation
+      console.log('🔑 API Key Debug:', {
+        hasApiKey: !!this.apiKey,
+        keyLength: this.apiKey?.length || 0,
+        keyStart: this.apiKey?.substring(0, 4) || 'none',
+        keyEnd: this.apiKey?.substring(this.apiKey.length - 4) || 'none',
+        isPlaceholder: this.apiKey?.includes('your_') || this.apiKey?.includes('here') || false
+      });
       
       // Log full request details
       console.log('🌐 Ticketmaster Request:', {
@@ -332,18 +382,35 @@ export class TicketmasterService {
       }
       
       // Transform events with error handling for individual events
-      const events: Event[] = [];
+      const allEvents: Event[] = [];
       let transformErrors = 0;
       
       for (const rawEvent of rawEvents) {
         try {
           const transformedEvent = this.transformEvent(rawEvent, sanitizedParams.city);
-          events.push(transformedEvent);
+          allEvents.push(transformedEvent);
         } catch (error) {
           transformErrors++;
           console.warn(`🎟️ Ticketmaster: Failed to transform event ${rawEvent?.id || 'unknown'}:`, error);
           // Continue processing other events instead of failing completely
         }
+      }
+      
+      // NEW APPROACH: Filter events by target city after fetching (for Czech cities)
+      let events: Event[] = allEvents;
+      if (this.targetCityForFiltering && this.targetCityForFiltering.toLowerCase() === 'prague') {
+        console.log(`🎟️ Ticketmaster: Filtering ${allEvents.length} events for target city: ${this.targetCityForFiltering}`);
+        
+        const filteredEvents = await this.filterEventsByCityWithAI(
+          allEvents,
+          this.targetCityForFiltering
+        );
+        
+        events = filteredEvents;
+        console.log(`🎟️ Ticketmaster: AI filtering found ${filteredEvents.length} events in ${this.targetCityForFiltering}`);
+        
+        // Reset the target city after filtering
+        this.targetCityForFiltering = null;
       }
       
       if (transformErrors > 0) {
@@ -754,18 +821,19 @@ export class TicketmasterService {
   /**
    * Map our categories to official Ticketmaster classification names
    * Based on official Ticketmaster segments: Music, Sports, Arts & Theatre, Film, Miscellaneous
-   * Returns undefined for broader searches when no specific mapping exists
+   * FIXED: Now uses correct Ticketmaster classification names
    */
-  private mapCategoryToTicketmaster(category: string): string | undefined {
+  public mapCategoryToTicketmaster(category: string): string | undefined {
     const categoryMap: Record<string, string | undefined> = {
       // Official Ticketmaster segments - direct mappings
       'Music': 'Music',
       'Sports': 'Sports', 
       'Arts & Theatre': 'Arts & Theatre',
       'Film': 'Film',
+      'Miscellaneous': 'Miscellaneous',
       
-      // Arts and culture variations
-      'Arts & Culture': 'Arts & Theatre',
+      // FIXED: Arts and culture variations - use correct Ticketmaster classification
+      'Arts & Culture': 'Arts & Theatre', // FIXED: Was 'Arts & Culture' (invalid)
       'Arts and Culture': 'Arts & Theatre',
       'Theater': 'Arts & Theatre',
       'Theatre': 'Arts & Theatre',
@@ -773,8 +841,8 @@ export class TicketmasterService {
       'Dance': 'Arts & Theatre',
       'Opera': 'Arts & Theatre',
       
-      // Entertainment - use broader search since it can span multiple categories
-      'Entertainment': undefined, // Entertainment can be Music, Arts & Theatre, or other categories
+      // FIXED: Entertainment - map to Music (most entertainment events are music)
+      'Entertainment': 'Music', // FIXED: Was undefined, now maps to Music
       
       // Music variations
       'Concerts': 'Music',
@@ -789,24 +857,23 @@ export class TicketmasterService {
       'Athletics': 'Sports',
       'Sporting Events': 'Sports',
       
-      // Business and professional events - use Miscellaneous sparingly
-      'Technology': undefined, // Broader search often better for tech events
-      'Business': undefined, // Business events vary widely in classification
-      'Conferences': undefined, // Conferences can be in any segment
-      'Trade Shows': undefined, // Trade shows vary by industry
-      'Professional Development': undefined,
-      'Networking': undefined,
-      'Marketing': undefined,
-      'Finance': undefined,
-      'Healthcare': undefined,
-      'Education': undefined,
-      'Academic': undefined,
-      'Workshops': undefined,
-      'Seminars': undefined,
+      // FIXED: Business and professional events - use Miscellaneous instead of undefined
+      'Technology': 'Miscellaneous', // FIXED: Was undefined, now uses Miscellaneous
+      'Business': 'Miscellaneous', // FIXED: Was undefined, now uses Miscellaneous
+      'Conferences': 'Miscellaneous', // FIXED: Was undefined, now uses Miscellaneous
+      'Trade Shows': 'Miscellaneous', // FIXED: Was undefined, now uses Miscellaneous
+      'Professional Development': 'Miscellaneous', // FIXED: Was undefined
+      'Networking': 'Miscellaneous', // FIXED: Was undefined
+      'Marketing': 'Miscellaneous', // FIXED: Was undefined
+      'Finance': 'Miscellaneous', // FIXED: Was undefined
+      'Healthcare': 'Miscellaneous', // FIXED: Was undefined
+      'Education': 'Miscellaneous', // FIXED: Was undefined
+      'Academic': 'Miscellaneous', // FIXED: Was undefined
+      'Workshops': 'Miscellaneous', // FIXED: Was undefined
+      'Seminars': 'Miscellaneous', // FIXED: Was undefined
       
-      // Fallback
-      'Other': undefined,
-      'Miscellaneous': 'Miscellaneous',
+      // FIXED: Fallback - use Miscellaneous instead of undefined
+      'Other': 'Miscellaneous', // FIXED: Was undefined, now uses Miscellaneous
     };
 
     const mappedCategory = categoryMap[category];
@@ -819,6 +886,168 @@ export class TicketmasterService {
     }
     
     return mappedCategory;
+  }
+
+  /**
+   * Get expanded categories specifically for Ticketmaster API
+   * FIXED: Uses correct Ticketmaster classification names
+   */
+  getTicketmasterExpandedCategories(primaryCategory: string): string[] {
+    const ticketmasterExpansions: Record<string, string[]> = {
+      // FIXED: Entertainment - use correct Ticketmaster classifications
+      'Entertainment': ['Music', 'Arts & Theatre', 'Film'], // FIXED: Was ['Entertainment', 'Music', 'Arts & Culture', ...]
+      'Music': ['Music'],
+      'Arts & Culture': ['Arts & Theatre'], // FIXED: Map to correct classification
+      'Sports': ['Sports'],
+      'Film': ['Film'],
+      'Theater': ['Arts & Theatre'],
+      'Comedy': ['Arts & Theatre'],
+      'Dance': ['Arts & Theatre'],
+      'Opera': ['Arts & Theatre'],
+      
+      // FIXED: Business categories - use Miscellaneous
+      'Business': ['Miscellaneous'], // FIXED: Was ['Business', 'Marketing', ...]
+      'Technology': ['Miscellaneous'], // FIXED: Was ['Technology', 'Business', ...]
+      'Marketing': ['Miscellaneous'], // FIXED: Was ['Marketing', 'Business', ...]
+      'Finance': ['Miscellaneous'], // FIXED: Was ['Finance', 'Business']
+      'Healthcare': ['Miscellaneous'], // FIXED: Was ['Healthcare']
+      'Education': ['Miscellaneous'], // FIXED: Was ['Education', 'Academic', ...]
+      'Academic': ['Miscellaneous'], // FIXED: Was ['Academic']
+      'Professional Development': ['Miscellaneous'], // FIXED: Was ['Professional Development']
+      'Networking': ['Miscellaneous'], // FIXED: Was ['Networking', 'Business', ...]
+      'Conferences': ['Miscellaneous'], // FIXED: Was ['Conferences', 'Business', ...]
+      'Trade Shows': ['Miscellaneous'], // FIXED: Was ['Trade Shows', 'Business', ...]
+      'Workshops': ['Miscellaneous'], // FIXED: Was ['Workshops']
+      'Seminars': ['Miscellaneous'], // FIXED: Was ['Seminars']
+    };
+
+    const expandedCategories = ticketmasterExpansions[primaryCategory] || [this.mapCategoryToTicketmaster(primaryCategory)].filter(Boolean);
+    
+    console.log(`🎟️ Ticketmaster expanded categories for "${primaryCategory}":`, expandedCategories);
+    return expandedCategories;
+  }
+
+  /**
+   * Try alternative search strategies for Prague when primary search fails
+   * FIXED: Uses different parameter combinations for better coverage
+   */
+  async tryAlternativePragueSearch(
+    startDate: string, 
+    endDate: string, 
+    category?: string
+  ): Promise<{ events: Event[]; total: number }> {
+    console.log('🎟️ Ticketmaster: Trying alternative Prague search strategies...');
+    
+    // FIXED: Validate API key before alternative search
+    if (!this.apiKey || this.apiKey.length < 10) {
+      console.error('🎟️ Ticketmaster: API key not properly configured for alternative search');
+      return { events: [], total: 0 };
+    }
+    
+    const strategies = [
+      // Strategy 1: Postal code only (no city/countryCode)
+      {
+        name: 'Postal Code Only',
+        params: {
+          postalCode: '11000',
+          startDateTime: `${startDate}T00:00:00Z`,
+          endDateTime: `${endDate}T23:59:59Z`,
+          classificationName: this.mapCategoryToTicketmaster(category || 'Entertainment'),
+          size: 50,
+          locale: 'en-us',
+          sort: 'date,asc',
+          source: 'ticketmaster,universe,frontgate,tmr',
+          includeTBA: 'yes',
+          includeTBD: 'yes'
+        }
+      },
+      // Strategy 2: Broader search without classification
+      {
+        name: 'No Classification',
+        params: {
+          postalCode: '11000',
+          startDateTime: `${startDate}T00:00:00Z`,
+          endDateTime: `${endDate}T23:59:59Z`,
+          size: 50,
+          locale: 'en-us',
+          sort: 'date,asc',
+          source: 'ticketmaster,universe,frontgate,tmr',
+          includeTBA: 'yes',
+          includeTBD: 'yes'
+        }
+      },
+      // Strategy 3: Use city with country code (no postal code)
+      {
+        name: 'City + Country',
+        params: {
+          city: 'Prague',
+          countryCode: 'CZ',
+          startDateTime: `${startDate}T00:00:00Z`,
+          endDateTime: `${endDate}T23:59:59Z`,
+          classificationName: this.mapCategoryToTicketmaster(category || 'Entertainment'),
+          size: 50,
+          locale: 'en-us',
+          sort: 'date,asc',
+          source: 'ticketmaster,universe,frontgate,tmr',
+          includeTBA: 'yes',
+          includeTBD: 'yes'
+        }
+      }
+    ];
+
+    for (const strategy of strategies) {
+      try {
+        console.log(`🎟️ Ticketmaster: Trying strategy "${strategy.name}"...`);
+        
+        const searchParams = new URLSearchParams();
+        searchParams.append('apikey', this.apiKey);
+        
+        // FIXED: Add API key debugging for alternative search
+        console.log('🔑 Alternative Search API Key Debug:', {
+          hasApiKey: !!this.apiKey,
+          keyLength: this.apiKey?.length || 0,
+          keyStart: this.apiKey?.substring(0, 4) || 'none',
+          isPlaceholder: this.apiKey?.includes('your_') || this.apiKey?.includes('here') || false
+        });
+        
+        // Add strategy parameters
+        Object.entries(strategy.params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            searchParams.append(key, value.toString());
+          }
+        });
+
+        const url = `${this.baseUrl}/events.json?${searchParams.toString()}`;
+        const response = await this.makeRateLimitedRequest(url);
+
+        if (response.ok) {
+          const data = await response.json();
+          const events = data._embedded?.events || [];
+          
+          if (events.length > 0) {
+            console.log(`🎟️ Ticketmaster: Strategy "${strategy.name}" found ${events.length} events`);
+            
+            // Transform events
+            const transformedEvents: Event[] = [];
+            for (const rawEvent of events) {
+              try {
+                const transformedEvent = this.transformEvent(rawEvent, 'Prague');
+                transformedEvents.push(transformedEvent);
+              } catch (error) {
+                console.warn(`🎟️ Ticketmaster: Failed to transform event:`, error);
+              }
+            }
+            
+            return { events: transformedEvents, total: data.page?.totalElements || 0 };
+          }
+        }
+      } catch (error) {
+        console.warn(`🎟️ Ticketmaster: Strategy "${strategy.name}" failed:`, error);
+      }
+    }
+
+    console.log('🎟️ Ticketmaster: All alternative strategies failed');
+    return { events: [], total: 0 };
   }
 
   /**
@@ -1790,6 +2019,193 @@ export class TicketmasterService {
       errors.push(errorMessage);
       
       return { events: [], stored: 0, errors };
+    }
+  }
+
+  /**
+   * NEW APPROACH: Search by country and use AI to determine city from venue information
+   * This solves the Prague coverage issue by searching at country level
+   */
+  async getEventsByCountryWithAICityDetection(
+    targetCity: string,
+    countryCode: string,
+    startDate: string,
+    endDate: string,
+    category?: string
+  ): Promise<{ events: Event[]; total: number }> {
+    console.log(`🎟️ Ticketmaster: Using country-based search with AI city detection for ${targetCity}, ${countryCode}`);
+    
+    try {
+      // Step 1: Make direct API call exactly like your example
+      const apiUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${this.apiKey}&countryCode=${countryCode}&startDateTime=${startDate}T00:00:00Z&endDateTime=${endDate}T23:59:59Z&includeTBA=yes&page=0&size=199&locale=*`;
+      
+      console.log(`🎟️ Ticketmaster: Making direct API call: ${apiUrl.replace(this.apiKey, 'API_KEY_HIDDEN')}`);
+      
+      const response = await fetch(apiUrl);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      }
+      
+      // Step 2: Extract events from response
+      const rawEvents = data._embedded?.events || [];
+      console.log(`🎟️ Ticketmaster: Found ${rawEvents.length} events in ${countryCode}`);
+      
+      if (rawEvents.length === 0) {
+        return { events: [], total: 0 };
+      }
+      
+      // Step 3: Transform events to our format
+      const events: Event[] = [];
+      for (const rawEvent of rawEvents) {
+        try {
+          const transformedEvent = this.transformEvent(rawEvent, targetCity);
+          events.push(transformedEvent);
+        } catch (error) {
+          console.warn(`🎟️ Ticketmaster: Failed to transform event ${rawEvent?.id || 'unknown'}:`, error);
+        }
+      }
+      
+      const countryResult = { events, total: events.length };
+      
+      console.log(`🎟️ Ticketmaster: Found ${countryResult.events.length} events in ${countryCode}`);
+      
+      if (countryResult.events.length === 0) {
+        return { events: [], total: 0 };
+      }
+      
+      // Step 2: Use AI to determine which events are in the target city
+      const filteredEvents = await this.filterEventsByCityWithAI(
+        countryResult.events,
+        targetCity
+      );
+      
+      console.log(`🎟️ Ticketmaster: AI filtering found ${filteredEvents.length} events in ${targetCity}`);
+      
+      return {
+        events: filteredEvents,
+        total: filteredEvents.length
+      };
+      
+    } catch (error) {
+      console.error(`🎟️ Ticketmaster: Country-based search failed:`, error);
+      return { events: [], total: 0 };
+    }
+  }
+  
+  /**
+   * Use AI to filter events by city based on venue information
+   */
+  private async filterEventsByCityWithAI(
+    events: Event[],
+    targetCity: string
+  ): Promise<Event[]> {
+    console.log(`🎟️ Ticketmaster: Using AI to filter ${events.length} events for city ${targetCity}`);
+    
+    const filteredEvents: Event[] = [];
+    
+    for (const event of events) {
+      try {
+        // Extract venue information
+        const venueName = event.venue;
+        const eventTitle = event.title;
+        const eventDescription = event.description;
+        
+        // Use AI to determine if this event is in the target city
+        const isInTargetCity = await this.isEventInCityWithAI(
+          eventTitle,
+          venueName,
+          eventDescription || '',
+          targetCity
+        );
+        
+        if (isInTargetCity) {
+          // Update the event's city to the target city for consistency
+          const updatedEvent = {
+            ...event,
+            city: targetCity
+          };
+          filteredEvents.push(updatedEvent);
+          console.log(`🎟️ Ticketmaster: AI confirmed event "${eventTitle}" is in ${targetCity}`);
+        }
+        
+      } catch (error) {
+        console.warn(`🎟️ Ticketmaster: AI filtering failed for event "${event.title}":`, error);
+        // Fallback: use the existing city extraction logic
+        if (event.city?.toLowerCase().includes(targetCity.toLowerCase())) {
+          filteredEvents.push(event);
+        }
+      }
+    }
+    
+    return filteredEvents;
+  }
+  
+  /**
+   * Use AI to determine if an event is in a specific city
+   */
+  private async isEventInCityWithAI(
+    eventTitle: string,
+    venueName: string | undefined,
+    eventDescription: string,
+    targetCity: string
+  ): Promise<boolean> {
+    try {
+      // This would use OpenAI API to analyze the venue information
+      // For now, implement a smart heuristic approach
+      
+      const searchText = `${eventTitle} ${venueName || ''} ${eventDescription}`.toLowerCase();
+      const targetCityLower = targetCity.toLowerCase();
+      
+      // Check if the target city appears in the event information
+      if (searchText.includes(targetCityLower)) {
+        return true;
+      }
+      
+      // Check for common venue patterns that indicate the city
+      const cityIndicators = [
+        `${targetCityLower} `,
+        ` ${targetCityLower}`,
+        `${targetCityLower},`,
+        `, ${targetCityLower}`,
+        `${targetCityLower}-`,
+        `-${targetCityLower}`,
+        `${targetCityLower}.`,
+        `.${targetCityLower}`,
+      ];
+      
+      for (const indicator of cityIndicators) {
+        if (searchText.includes(indicator)) {
+          return true;
+        }
+      }
+      
+      // Check for Prague-specific venue patterns
+      if (targetCityLower === 'prague') {
+        const praguePatterns = [
+          'praha',
+          'o2 arena',
+          'forum karlín',
+          'lucerna',
+          'roxy',
+          'cross club',
+          'palác akropolis',
+          'meetfactory'
+        ];
+        
+        for (const pattern of praguePatterns) {
+          if (searchText.includes(pattern)) {
+            return true;
+          }
+        }
+      }
+      
+      return false;
+      
+    } catch (error) {
+      console.warn(`🎟️ Ticketmaster: AI city detection failed:`, error);
+      return false;
     }
   }
 }

@@ -492,13 +492,14 @@ export class ConflictAnalysisService {
 
     // Use consistent search parameters for all APIs with expanded category mapping
     const expandedCategories = this.getExpandedCategories(params.category);
+    const ticketmasterExpandedCategories = this.getTicketmasterExpandedCategories(params.category);
     
     const standardTicketmasterParams = new URLSearchParams({
       city: params.city,
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
-      expandedCategories: expandedCategories.join(','),
+      expandedCategories: ticketmasterExpandedCategories.join(','), // FIXED: Use Ticketmaster-specific categories
       size: '25'
     });
 
@@ -1659,6 +1660,7 @@ export class ConflictAnalysisService {
 
   /**
    * Get expanded categories for better event discovery
+   * FIXED: Now uses correct category mappings for each API
    */
   private getExpandedCategories(primaryCategory: string): string[] {
     const categoryExpansions: Record<string, string[]> = {
@@ -1681,6 +1683,42 @@ export class ConflictAnalysisService {
     };
 
     return categoryExpansions[primaryCategory] || [primaryCategory];
+  }
+
+  /**
+   * Get Ticketmaster-specific expanded categories
+   * FIXED: Uses correct Ticketmaster classification names
+   */
+  private getTicketmasterExpandedCategories(primaryCategory: string): string[] {
+    const ticketmasterExpansions: Record<string, string[]> = {
+      // FIXED: Entertainment - use correct Ticketmaster classifications
+      'Entertainment': ['Music', 'Arts & Theatre', 'Film'], // FIXED: Was ['Entertainment', 'Music', 'Arts & Culture', ...]
+      'Music': ['Music'],
+      'Arts & Culture': ['Arts & Theatre'], // FIXED: Map to correct classification
+      'Sports': ['Sports'],
+      'Film': ['Film'],
+      'Theater': ['Arts & Theatre'],
+      'Comedy': ['Arts & Theatre'],
+      'Dance': ['Arts & Theatre'],
+      'Opera': ['Arts & Theatre'],
+      
+      // FIXED: Business categories - use Miscellaneous
+      'Business': ['Miscellaneous'], // FIXED: Was ['Business', 'Marketing', ...]
+      'Technology': ['Miscellaneous'], // FIXED: Was ['Technology', 'Business', ...]
+      'Marketing': ['Miscellaneous'], // FIXED: Was ['Marketing', 'Business', ...]
+      'Finance': ['Miscellaneous'], // FIXED: Was ['Finance', 'Business']
+      'Healthcare': ['Miscellaneous'], // FIXED: Was ['Healthcare']
+      'Education': ['Miscellaneous'], // FIXED: Was ['Education', 'Academic', ...]
+      'Academic': ['Miscellaneous'], // FIXED: Was ['Academic']
+      'Professional Development': ['Miscellaneous'], // FIXED: Was ['Professional Development']
+      'Networking': ['Miscellaneous'], // FIXED: Was ['Networking', 'Business', ...]
+      'Conferences': ['Miscellaneous'], // FIXED: Was ['Conferences', 'Business', ...]
+      'Trade Shows': ['Miscellaneous'], // FIXED: Was ['Trade Shows', 'Business', ...]
+      'Workshops': ['Miscellaneous'], // FIXED: Was ['Workshops']
+      'Seminars': ['Miscellaneous'], // FIXED: Was ['Seminars']
+    };
+
+    return ticketmasterExpansions[primaryCategory] || [primaryCategory];
   }
 
   /**
