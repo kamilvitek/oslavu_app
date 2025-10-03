@@ -192,7 +192,7 @@ export class EventScraperService {
       // Rate limiting
       await this.enforceRateLimit();
       
-      const scrapeResult = await this.firecrawl.scrapeUrl(source.url, {
+      const scrapeResult: any = await this.firecrawl.scrape(source.url, {
         formats: ['markdown'],
         onlyMainContent: source.config.onlyMainContent || true,
         waitFor: source.config.waitFor || 2000,
@@ -245,7 +245,7 @@ export class EventScraperService {
     console.log(`🤖 Extracting events with GPT-4 from ${sourceName}`);
     
     try {
-      const prompt = `Extract event information from the following content. Return a JSON array of events with this structure:
+      const prompt: string = `Extract event information from the following content. Return a JSON array of events with this structure:
 {
   "title": "Event title",
   "description": "Event description",
@@ -265,7 +265,7 @@ ${content.substring(0, 8000)} // Limit content to avoid token limits
 
 Return only valid JSON array. If no events found, return empty array [].`;
 
-      const response = await this.openai.chat.completions.create({
+      const response: any = await this.openai.chat.completions.create({
         model: 'gpt-4',
         messages: [
           {
@@ -281,13 +281,13 @@ Return only valid JSON array. If no events found, return empty array [].`;
         max_tokens: 4000
       });
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
+      const responseContent = response.choices[0]?.message?.content;
+      if (!responseContent) {
         throw new Error('No response from GPT-4');
       }
 
       // Parse JSON response
-      const events = JSON.parse(content);
+      const events = JSON.parse(responseContent);
       if (!Array.isArray(events)) {
         throw new Error('GPT-4 response is not an array');
       }
@@ -523,7 +523,7 @@ Return only valid JSON array. If no events found, return empty array [].`;
     try {
       const completedAt = new Date().toISOString();
       const startedAt = new Date(metadata.started_at || completedAt);
-      const durationMs = completedAt.getTime() - startedAt.getTime();
+      const durationMs = new Date(completedAt).getTime() - startedAt.getTime();
 
       await this.db.executeWithRetry(async () => {
         const result = await this.db.getClient()

@@ -12,7 +12,7 @@ export interface DatabaseEvent {
   category: string;
   subcategory?: string;
   expected_attendees?: number;
-  source: 'ticketmaster' | 'predicthq' | 'meetup' | 'manual' | 'brno';
+  source: 'ticketmaster' | 'predicthq' | 'meetup' | 'manual' | 'brno' | 'scraper';
   source_id?: string;
   url?: string;
   image_url?: string;
@@ -39,7 +39,7 @@ export interface CreateEventData {
   category: string;
   subcategory?: string;
   expected_attendees?: number;
-  source: 'ticketmaster' | 'predicthq' | 'meetup' | 'manual' | 'brno';
+  source: 'ticketmaster' | 'predicthq' | 'meetup' | 'manual' | 'brno' | 'scraper';
   source_id?: string;
   url?: string;
   image_url?: string;
@@ -214,7 +214,7 @@ export const CreateEventSchema = z.object({
   category: z.string().min(1).max(50),
   subcategory: z.string().max(50).optional(),
   expected_attendees: z.number().int().min(0).max(1000000).optional(),
-  source: z.enum(['ticketmaster', 'predicthq', 'meetup', 'manual', 'brno']),
+  source: z.enum(['ticketmaster', 'predicthq', 'meetup', 'manual', 'brno', 'scraper']),
   source_id: z.string().max(100).optional(),
   url: z.string().url().max(500).optional(),
   image_url: z.string().url().max(500).optional(),
@@ -225,7 +225,7 @@ export const UpdateEventSchema = CreateEventSchema.partial();
 export const EventQuerySchema = z.object({
   city: z.string().max(100).optional(),
   category: z.string().max(50).optional(),
-  source: z.enum(['ticketmaster', 'predicthq', 'meetup', 'manual', 'brno']).optional(),
+  source: z.enum(['ticketmaster', 'predicthq', 'meetup', 'manual', 'brno', 'scraper']).optional(),
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit: z.number().int().min(1).max(1000).default(50),
@@ -238,7 +238,7 @@ export const EventSearchSchema = z.object({
   query: z.string().max(200).optional(),
   city: z.string().max(100).optional(),
   category: z.string().max(50).optional(),
-  source: z.enum(['ticketmaster', 'predicthq', 'meetup', 'manual', 'brno']).optional(),
+  source: z.enum(['ticketmaster', 'predicthq', 'meetup', 'manual', 'brno', 'scraper']).optional(),
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   min_attendees: z.number().int().min(0).optional(),
