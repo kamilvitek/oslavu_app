@@ -36,6 +36,13 @@ export class DataTransformer {
       transform: this.transformManualEvent.bind(this),
       validate: this.validateEvent.bind(this)
     });
+
+    // Scraper event transformer
+    this.transformers.set('scraper', {
+      source: 'scraper',
+      transform: this.transformScrapedEvent.bind(this),
+      validate: this.validateEvent.bind(this)
+    });
   }
 
   /**
@@ -269,6 +276,27 @@ export class DataTransformer {
       source_id: manualEvent.id,
       url: manualEvent.url,
       image_url: manualEvent.image_url,
+    };
+  }
+
+  /**
+   * Transform scraped event to standardized format
+   */
+  private transformScrapedEvent(scrapedEvent: any): CreateEventData {
+    return {
+      title: scrapedEvent.title,
+      description: scrapedEvent.description || '',
+      date: scrapedEvent.date,
+      end_date: scrapedEvent.endDate || scrapedEvent.end_date,
+      city: this.normalizeCityName(scrapedEvent.city),
+      venue: scrapedEvent.venue,
+      category: this.normalizeCategory(scrapedEvent.category || 'Other'),
+      subcategory: scrapedEvent.subcategory,
+      expected_attendees: scrapedEvent.expectedAttendees || scrapedEvent.expected_attendees,
+      source: 'scraper',
+      source_id: scrapedEvent.source_id,
+      url: scrapedEvent.url,
+      image_url: scrapedEvent.imageUrl || scrapedEvent.image_url,
     };
   }
 

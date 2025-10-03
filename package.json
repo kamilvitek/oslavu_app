@@ -11,10 +11,14 @@
     "prebuild": "npm run type-check",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "scrape": "node scripts/test-scraper.js",
+    "scrape:test": "curl 'http://localhost:3000/api/scraper?action=test'",
+    "scrape:run": "curl 'http://localhost:3000/api/scraper?action=scrape'"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
+    "@mendable/firecrawl-js": "^4.3.7",
     "@radix-ui/react-accordion": "^1.2.1",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-avatar": "^1.1.1",
