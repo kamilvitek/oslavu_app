@@ -203,13 +203,15 @@ export class EventScraperService {
         hasMarkdown: !!scrapeResult.markdown,
         hasMetadata: !!scrapeResult.metadata,
         statusCode: scrapeResult.metadata?.statusCode,
-        creditsUsed: scrapeResult.metadata?.creditsUsed
+        creditsUsed: scrapeResult.metadata?.creditsUsed,
+        fullResponse: JSON.stringify(scrapeResult, null, 2)
       });
       
-      // Check if scraping was successful (Firecrawl returns data directly, not in success field)
+      // Check if scraping was successful (Firecrawl returns markdown at root level)
       if (!scrapeResult.markdown) {
         const errorMsg = 'No markdown content returned from Firecrawl';
         console.error(`❌ Firecrawl API error:`, errorMsg);
+        console.error(`❌ Full Firecrawl response:`, JSON.stringify(scrapeResult, null, 2));
         throw new Error(`Firecrawl scraping failed: ${errorMsg}`);
       }
       
@@ -293,16 +295,30 @@ Return only valid JSON array. If no events found, return empty array [].`;
 
       const responseContent = response.choices[0]?.message?.content;
       if (!responseContent) {
-        throw new Error('No response from GPT-4');
+        console.error(`❌ No response from GPT-4 for ${sourceName}`);
+        return [];
       }
 
-      // Parse JSON response
-      const events = JSON.parse(responseContent);
+      console.log(`🤖 GPT-4 raw response for ${sourceName}:`, responseContent);
+
+      // Parse JSON response with comprehensive error handling
+      let events;
+      try {
+        events = JSON.parse(responseContent);
+      } catch (parseError) {
+        console.error(`❌ Failed to parse GPT-4 JSON response for ${sourceName}:`, parseError);
+        console.error(`❌ Raw GPT-4 response:`, responseContent);
+        return [];
+      }
+
       if (!Array.isArray(events)) {
-        throw new Error('GPT-4 response is not an array');
+        console.error(`❌ GPT-4 response is not an array for ${sourceName}:`, events);
+        console.error(`❌ Raw GPT-4 response:`, responseContent);
+        return [];
       }
 
       console.log(`🤖 GPT-4 extracted ${events.length} events from ${sourceName}`);
+      console.log(`🤖 Sample events:`, events.slice(0, 2));
       return events;
 
     } catch (error) {
@@ -393,8 +409,17 @@ Return only valid JSON array. If no events found, return empty array [].`;
 
     for (const event of events) {
       try {
+        console.log(`🔍 Processing event: ${event.title}`);
+        console.log(`🔍 Event data:`, JSON.stringify(event, null, 2));
+        
         // Validate event data
         const validation = dataTransformer.validateEventData(event);
+        console.log(`🔍 Validation result:`, {
+          isValid: validation.isValid,
+          errors: validation.errors,
+          warnings: validation.warnings
+        });
+        
         if (!validation.isValid) {
           console.warn(`⚠️ Skipping invalid event "${event.title}": ${validation.errors.join(', ')}`);
           result.skipped++;
@@ -420,9 +445,14 @@ Return only valid JSON array. If no events found, return empty array [].`;
           ...validation.sanitizedData,
           embedding: embedding.length > 0 ? embedding : null
         };
+        
+        console.log(`🔍 Final event data for storage:`, JSON.stringify(eventWithEmbedding, null, 2));
 
         // Save to database
+        console.log(`💾 Saving event to database: ${event.title}`);
         const saveResult = await eventStorageService.saveEvents([eventWithEmbedding]);
+        console.log(`💾 Save result:`, saveResult);
+        
         result.created += saveResult.created;
         result.skipped += saveResult.skipped;
         result.errors.push(...saveResult.errors);

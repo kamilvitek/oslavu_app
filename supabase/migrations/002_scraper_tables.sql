@@ -105,5 +105,5 @@ CREATE TRIGGER update_scraper_sources_updated_at BEFORE UPDATE ON scraper_source
 INSERT INTO scraper_sources (name, url, type, config) VALUES
   ('GoOut.cz', 'https://www.goout.net/cs/brno/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('GoOut_Prague', 'https://goout.net/cs/praha/akce/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
-  ('Brno Expat', 'https://brnoexpat.com/events/', 'firecrawl', '{"waitFor": 3000, "onlyMainContent": true}'::jsonb)
+  ('Brno Expat', 'https://www.brnoexpatcentre.eu/events/', 'firecrawl', '{"waitFor": 3000, "onlyMainContent": true}'::jsonb)
 ON CONFLICT DO NOTHING;

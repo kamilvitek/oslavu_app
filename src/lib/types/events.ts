@@ -204,11 +204,24 @@ export interface BatchOperationResult {
 }
 
 // Zod schemas for runtime validation
+// Helper function to normalize date to YYYY-MM-DD format
+const normalizeDate = (date: string): string => {
+  try {
+    const parsed = new Date(date);
+    if (isNaN(parsed.getTime())) {
+      throw new Error('Invalid date');
+    }
+    return parsed.toISOString().split('T')[0];
+  } catch {
+    throw new Error('Invalid date format');
+  }
+};
+
 export const CreateEventSchema = z.object({
   title: z.string().min(1).max(500),
   description: z.string().max(2000).optional(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date: z.string().transform(normalizeDate),
+  end_date: z.string().transform(normalizeDate).optional(),
   city: z.string().min(1).max(100),
   venue: z.string().max(200).optional(),
   category: z.string().min(1).max(50),
