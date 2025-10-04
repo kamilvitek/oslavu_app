@@ -583,6 +583,10 @@ export class ConflictAnalysisService {
     console.log(`  PredictHQ: ${predicthqUrl}`);
     console.log(`  Brno: ${brnoUrl}`);
 
+    // Add scraped events URL
+    const scrapedUrl = `${baseUrl}/api/events/scraped?${queryParams.toString()}`;
+    console.log(`  Scraped: ${scrapedUrl}`);
+
     const apiRequests = [
       {
         name: 'ticketmaster',
@@ -595,6 +599,10 @@ export class ConflictAnalysisService {
       {
         name: 'brno',
         promise: createTimeoutFetch(brnoUrl, 'brno') // Temporarily disable caching for debugging
+      },
+      {
+        name: 'scraped',
+        promise: createTimeoutFetch(scrapedUrl, 'scraped') // Add scraped events
       }
     ];
 
@@ -649,7 +657,7 @@ export class ConflictAnalysisService {
     }
 
     // Create legacy response format for compatibility
-    const [ticketmasterResponse, predicthqResponse, brnoResponse] = responses;
+    const [ticketmasterResponse, predicthqResponse, brnoResponse, scrapedResponse] = responses;
 
     const totalFetchTime = Date.now() - startTime;
     console.log(`🚀 API requests completed in ${totalFetchTime}ms`);
@@ -2312,6 +2320,20 @@ export class ConflictAnalysisService {
           events = Array.isArray(result.data) ? result.data : [];
         }
         console.log(`🏛️ Brno: Extracted ${events.length} events`);
+      } else if (apiName === 'scraped') {
+        console.log('🔍 Scraped events API response structure:', result);
+        if (result.success && result.data?.events) {
+          events = result.data.events;
+        } else if (result.data?.events) {
+          events = result.data.events;
+        } else if (result.data && Array.isArray(result.data)) {
+          events = result.data;
+        } else if (Array.isArray(result)) {
+          events = result;
+        } else if (result.data) {
+          events = Array.isArray(result.data) ? result.data : [];
+        }
+        console.log(`🔍 Scraped: Extracted ${events.length} events`);
       }
 
       return events;

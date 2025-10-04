@@ -12,9 +12,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "scrape": "node scripts/test-scraper.js",
-    "scrape:test": "curl 'http://localhost:3000/api/scraper?action=test'",
-    "scrape:run": "curl 'http://localhost:3000/api/scraper?action=scrape'"
+    "scrape": "tsx scripts/test-scraper.ts",
+    "scrape:test": "tsx scripts/test-scraper.ts test",
+    "scrape:run": "tsx scripts/test-scraper.ts sync"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -70,6 +70,7 @@
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "ts-jest": "^29.4.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
 }

@@ -199,11 +199,21 @@ export class EventScraperService {
         timeout: 30000
       });
       
-      if (!scrapeResult.success) {
-        throw new Error(`Firecrawl scraping failed: ${scrapeResult.error}`);
+      console.log(`🔍 Firecrawl response for ${source.url}:`, {
+        hasMarkdown: !!scrapeResult.markdown,
+        hasMetadata: !!scrapeResult.metadata,
+        statusCode: scrapeResult.metadata?.statusCode,
+        creditsUsed: scrapeResult.metadata?.creditsUsed
+      });
+      
+      // Check if scraping was successful (Firecrawl returns data directly, not in success field)
+      if (!scrapeResult.markdown) {
+        const errorMsg = 'No markdown content returned from Firecrawl';
+        console.error(`❌ Firecrawl API error:`, errorMsg);
+        throw new Error(`Firecrawl scraping failed: ${errorMsg}`);
       }
       
-      const markdown = scrapeResult.data?.markdown;
+      const markdown = scrapeResult.markdown;
       if (!markdown) {
         console.warn(`🔍 No markdown content extracted from ${source.url}`);
         return [];
