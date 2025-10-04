@@ -3,6 +3,7 @@ import { audienceOverlapService } from './audience-overlap';
 import { openaiAudienceOverlapService } from './openai-audience-overlap';
 import { USPUpdater } from './usp-updater';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
+import { eventDeduplicator, DeduplicationMetrics } from './event-deduplicator';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -32,6 +33,7 @@ export interface ConflictAnalysisResult {
   highRiskDates: DateRecommendation[];
   allEvents: Event[];
   analysisDate: string;
+  deduplicationMetrics?: DeduplicationMetrics;
 }
 
 export interface DateRecommendation {
@@ -359,7 +361,7 @@ export class ConflictAnalysisService {
       
       // Fetch events from multiple APIs
       const fetchStartTime = Date.now();
-      const { filteredEvents, allEvents } = await this.fetchEventsFromAPI(params);
+      const { filteredEvents, allEvents, deduplicationResult } = await this.fetchEventsFromAPI(params);
       const fetchTime = Date.now() - fetchStartTime;
       console.log(`Total filtered events: ${filteredEvents.length}, Total unfiltered events: ${allEvents.length} (took ${fetchTime}ms)`);
       
@@ -421,7 +423,8 @@ export class ConflictAnalysisService {
         recommendedDates,
         highRiskDates,
         allEvents: originalAllEvents, // Return original unfiltered events for UI display
-        analysisDate: new Date().toISOString()
+        analysisDate: new Date().toISOString(),
+        deduplicationMetrics: deduplicationResult ? eventDeduplicator.getMetrics(deduplicationResult) : undefined
       };
     } catch (error) {
       const totalTime = Date.now() - startTime;
@@ -433,7 +436,7 @@ export class ConflictAnalysisService {
   /**
    * Fetch events from multiple APIs (Ticketmaster, PredictHQ, and Brno)
    */
-  private async fetchEventsFromAPI(params: ConflictAnalysisParams): Promise<{ filteredEvents: Event[], allEvents: Event[] }> {
+  private async fetchEventsFromAPI(params: ConflictAnalysisParams): Promise<{ filteredEvents: Event[], allEvents: Event[], deduplicationResult?: any }> {
     // Validate required parameters
     if (!params.city) {
       throw new Error('City is required');
@@ -693,9 +696,15 @@ export class ConflictAnalysisService {
     // But for UI display, we'll show only category-relevant events
     console.log(`📂 Using all location-filtered events for conflict analysis, category filtering applied for UI display`);
 
-    // Remove duplicates based on title, date, and venue
-    const uniqueEvents = this.removeDuplicateEvents(locationFilteredEvents);
-    console.log(`🔄 Total unique events after deduplication: ${uniqueEvents.length}`);
+    // NEW: Semantic deduplication across all sources using vector embeddings
+    console.log(`📊 Total events before semantic deduplication: ${locationFilteredEvents.length}`);
+    
+    const deduplicationResult = await eventDeduplicator.deduplicateEvents(locationFilteredEvents);
+    const uniqueEvents: Event[] = deduplicationResult.uniqueEvents;
+    
+    console.log(`📊 Events after semantic deduplication: ${uniqueEvents.length}`);
+    console.log(`📊 Duplicates removed: ${deduplicationResult.duplicatesRemoved}`);
+    console.log(`⏱️ Deduplication took ${deduplicationResult.processingTimeMs}ms`);
 
     // Log search strategy summary
     console.log(`🎯 SEARCH SUMMARY:`);
@@ -734,7 +743,8 @@ export class ConflictAnalysisService {
     
     return { 
       filteredEvents: uniqueEvents, // Use all location-filtered events for conflict analysis
-      allEvents: categoryFilteredEvents // Show only category-relevant events in UI
+      allEvents: categoryFilteredEvents, // Show only category-relevant events in UI
+      deduplicationResult // Include deduplication result for metrics
     };
   }
 
