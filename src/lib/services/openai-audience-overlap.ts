@@ -197,7 +197,7 @@ export class OpenAIAudienceOverlapService {
   /**
    * Call OpenAI API with timeout
    */
-  private async callOpenAI(prompt: string, model: string = 'gpt-3.5-turbo'): Promise<string> {
+  private async callOpenAI(prompt: string, model: string = 'gpt-4o-mini'): Promise<string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 

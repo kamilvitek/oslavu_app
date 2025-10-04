@@ -278,7 +278,7 @@ ${content.substring(0, 8000)} // Limit content to avoid token limits
 Return only valid JSON array. If no events found, return empty array [].`;
 
       const response: any = await this.openai.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',

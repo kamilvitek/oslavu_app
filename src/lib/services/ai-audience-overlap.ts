@@ -82,7 +82,7 @@ export class AIAudienceOverlapService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'text-embedding-ada-002',
+        model: 'text-embedding-3-small',
         input: text
       })
     });
@@ -197,7 +197,7 @@ export class AIAudienceOverlapService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 200
       })
