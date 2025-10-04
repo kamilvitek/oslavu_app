@@ -391,17 +391,49 @@ export function ConflictAnalyzer() {
                           analysisResult.highRiskDates.map((recommendation, index) => (
                             <div 
                               key={index}
-                              className={`p-3 border rounded-lg ${getRiskBgColor(recommendation.riskLevel)}`}
+                              className={`p-4 border rounded-lg ${getRiskBgColor(recommendation.riskLevel)}`}
                             >
-                              <div className={`font-semibold ${getRiskTextColor(recommendation.riskLevel)}`}>
-                                {formatDateRange(recommendation.startDate, recommendation.endDate)}
+                              <div className="flex items-center justify-between mb-2">
+                                <div className={`font-semibold ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                  {formatDateRange(recommendation.startDate, recommendation.endDate)}
+                                </div>
+                                <div className={`text-xs px-2 py-1 rounded-full ${getRiskBgColor(recommendation.riskLevel)} ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                  {recommendation.riskLevel} Risk
+                                </div>
                               </div>
-                              <div className={`text-sm ${getRiskColor(recommendation.riskLevel)}`}>
-                                Conflict Score: {recommendation.conflictScore.toFixed(1)}/20 ({recommendation.riskLevel} Risk)
+                              
+                              <div className={`text-sm ${getRiskColor(recommendation.riskLevel)} mb-2`}>
+                                Conflict Score: {recommendation.conflictScore.toFixed(1)}/20
                               </div>
-                              <div className={`text-xs ${getRiskDetailColor(recommendation.riskLevel)} mt-1`}>
+                              
+                              <div className={`text-xs ${getRiskDetailColor(recommendation.riskLevel)} mb-2`}>
                                 {recommendation.reasons.join(' • ')}
                               </div>
+                              
+                              {/* Show competing events for this date */}
+                              {recommendation.competingEvents.length > 0 && (
+                                <div className="mt-3 p-2 bg-red-50 rounded border-l-4 border-red-400">
+                                  <div className="flex items-center space-x-2 mb-2">
+                                    <Calendar className="h-3 w-3 text-red-600" />
+                                    <span className="text-xs font-medium text-red-800">
+                                      {recommendation.competingEvents.length} Competing Event{recommendation.competingEvents.length > 1 ? 's' : ''}
+                                    </span>
+                                  </div>
+                                  <div className="space-y-1 max-h-20 overflow-y-auto">
+                                    {recommendation.competingEvents.slice(0, 3).map((event, eventIndex) => (
+                                      <div key={eventIndex} className="text-xs text-red-700 flex items-center justify-between">
+                                        <span className="truncate">{event.title}</span>
+                                        <span className="text-red-600 ml-2">{event.category}</span>
+                                      </div>
+                                    ))}
+                                    {recommendation.competingEvents.length > 3 && (
+                                      <div className="text-xs text-red-600">
+                                        ... and {recommendation.competingEvents.length - 3} more events
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                               
                               {/* Advanced Analysis Features for High Risk Dates */}
                               {recommendation.audienceOverlap && (
@@ -419,8 +451,6 @@ export function ConflictAnalyzer() {
                                   )}
                                 </div>
                               )}
-                              
-                              {/* Venue intelligence feature temporarily disabled - property not available on DateRecommendation interface */}
                             </div>
                           ))
                         ) : (
@@ -433,6 +463,95 @@ export function ConflictAnalyzer() {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* User's Preferred Dates Analysis */}
+                  {analysisResult.highRiskDates.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center space-x-2 text-orange-600">
+                          <Target className="h-5 w-5" />
+                          <span>Your Preferred Dates Analysis</span>
+                        </CardTitle>
+                        <CardDescription>
+                          Risk assessment for your selected dates
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {analysisResult.highRiskDates
+                            .filter(rec => rec.startDate === analysisResult.userPreferredStartDate && rec.endDate === analysisResult.userPreferredEndDate)
+                            .map((recommendation, index) => (
+                              <div 
+                                key={index}
+                                className={`p-4 border-2 rounded-lg ${getRiskBgColor(recommendation.riskLevel)}`}
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className={`font-semibold text-lg ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                    {formatDateRange(recommendation.startDate, recommendation.endDate)}
+                                  </div>
+                                  <div className={`text-sm px-3 py-1 rounded-full ${getRiskBgColor(recommendation.riskLevel)} ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                    {recommendation.riskLevel} Risk
+                                  </div>
+                                </div>
+                                
+                                <div className={`text-base ${getRiskColor(recommendation.riskLevel)} mb-3`}>
+                                  Conflict Score: {recommendation.conflictScore.toFixed(1)}/20
+                                </div>
+                                
+                                <div className={`text-sm ${getRiskDetailColor(recommendation.riskLevel)} mb-3`}>
+                                  {recommendation.reasons.join(' • ')}
+                                </div>
+                                
+                                {recommendation.competingEvents.length > 0 && (
+                                  <div className="mt-3 p-3 bg-red-50 rounded border-l-4 border-red-400">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                      <Calendar className="h-4 w-4 text-red-600" />
+                                      <span className="text-sm font-medium text-red-800">
+                                        {recommendation.competingEvents.length} Competing Event{recommendation.competingEvents.length > 1 ? 's' : ''} Found
+                                      </span>
+                                    </div>
+                                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                                      {recommendation.competingEvents.slice(0, 5).map((event, eventIndex) => (
+                                        <div key={eventIndex} className="text-sm text-red-700 flex items-center justify-between p-2 bg-white rounded border">
+                                          <div className="flex-1">
+                                            <div className="font-medium">{event.title}</div>
+                                            <div className="text-xs text-gray-600">{event.venue || 'TBA'} • {new Date(event.date).toLocaleDateString()}</div>
+                                          </div>
+                                          <div className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded ml-2">
+                                            {event.category}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {recommendation.competingEvents.length > 5 && (
+                                        <div className="text-sm text-red-600 text-center py-2">
+                                          ... and {recommendation.competingEvents.length - 5} more events
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {recommendation.audienceOverlap && (
+                                  <div className="mt-3 p-3 bg-red-50 rounded border-l-4 border-red-400">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                      <Users className="h-4 w-4 text-red-600" />
+                                      <span className="text-sm font-medium text-red-800">
+                                        Audience Overlap: {(recommendation.audienceOverlap.averageOverlap * 100).toFixed(1)}%
+                                      </span>
+                                    </div>
+                                    {recommendation.audienceOverlap.overlapReasoning.length > 0 && (
+                                      <div className="text-sm text-red-700">
+                                        ⚠️ {recommendation.audienceOverlap.overlapReasoning[0]}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
                   {analysisResult.allEvents.length > 0 && (
                     <Card>

@@ -39,7 +39,7 @@ export async function GET() {
       message: 'Table structure check completed',
       data: {
         sampleEvent: sampleEvent.data?.[0] || null,
-        insertError: insertError ? insertError.message : null,
+        insertError: insertError && typeof insertError === 'object' && 'message' in insertError ? (insertError as any).message : null,
         tableExists: sampleEvent.data !== null
       },
       timestamp: new Date().toISOString()

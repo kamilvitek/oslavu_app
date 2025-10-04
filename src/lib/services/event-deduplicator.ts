@@ -145,7 +145,9 @@ export class EventDeduplicator {
     // Limit cache size
     if (this.embeddingCache.size > this.CACHE_SIZE_LIMIT) {
       const firstKey = this.embeddingCache.keys().next().value;
-      this.embeddingCache.delete(firstKey);
+      if (firstKey) {
+        this.embeddingCache.delete(firstKey);
+      }
     }
     
     return embedding;

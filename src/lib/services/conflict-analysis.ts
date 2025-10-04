@@ -33,6 +33,8 @@ export interface ConflictAnalysisResult {
   highRiskDates: DateRecommendation[];
   allEvents: Event[];
   analysisDate: string;
+  userPreferredStartDate?: string;
+  userPreferredEndDate?: string;
   deduplicationMetrics?: DeduplicationMetrics;
 }
 
@@ -396,21 +398,25 @@ export class ConflictAnalysisService {
         .filter(rec => rec.riskLevel === 'Low')
         .slice(0, 3); // Top 3 recommendations
 
-      // For high-risk dates, get the highest scoring ones (most problematic)
+      // Enhanced high-risk date detection - be more inclusive
       const highRiskDates = dateRecommendations
-        .filter(rec => rec.riskLevel === 'High')
+        .filter(rec => rec.riskLevel === 'High' || (rec.riskLevel === 'Medium' && rec.conflictScore > 5))
         .sort((a, b) => b.conflictScore - a.conflictScore) // Sort by highest conflict score first
-        .slice(0, 3); // Top 3 high risk dates
+        .slice(0, 5); // Show up to 5 high-risk dates
 
-      // Also include medium risk dates with high scores as potential high-risk dates if we don't have enough high-risk dates
-      if (highRiskDates.length < 3) {
-        const additionalHighRisk = dateRecommendations
-          .filter(rec => rec.riskLevel === 'Medium' && rec.conflictScore > 10)
-          .sort((a, b) => b.conflictScore - a.conflictScore)
-          .slice(0, 3 - highRiskDates.length);
-        
-        highRiskDates.push(...additionalHighRisk);
-        console.log(`Added ${additionalHighRisk.length} medium-risk dates with high scores to high-risk list`);
+      // Ensure we always show the user's preferred dates if they have conflicts, even if not in top 5
+      const userPreferredDates = dateRecommendations.filter(rec => 
+        rec.startDate === params.startDate && rec.endDate === params.endDate
+      );
+      
+      // If user's preferred dates have any conflicts but aren't in high-risk list, add them
+      const userPreferredWithConflicts = userPreferredDates.filter(rec => 
+        rec.conflictScore > 0 && !highRiskDates.some(hr => hr.startDate === rec.startDate)
+      );
+      
+      if (userPreferredWithConflicts.length > 0) {
+        highRiskDates.push(...userPreferredWithConflicts);
+        console.log(`Added user's preferred dates with conflicts to high-risk list: ${userPreferredWithConflicts.length} dates`);
       }
 
       console.log(`Final results: ${recommendedDates.length} low risk dates, ${highRiskDates.length} high risk dates`);
@@ -424,6 +430,8 @@ export class ConflictAnalysisService {
         highRiskDates,
         allEvents: originalAllEvents, // Return original unfiltered events for UI display
         analysisDate: new Date().toISOString(),
+        userPreferredStartDate: params.startDate,
+        userPreferredEndDate: params.endDate,
         deduplicationMetrics: deduplicationResult ? eventDeduplicator.getMetrics(deduplicationResult) : undefined
       };
     } catch (error) {
@@ -1619,9 +1627,9 @@ export class ConflictAnalysisService {
    */
   private determineRiskLevel(conflictScore: number): 'Low' | 'Medium' | 'High' {
     let riskLevel: 'Low' | 'Medium' | 'High';
-    if (conflictScore <= 5) {
+    if (conflictScore <= 3) {
       riskLevel = 'Low';
-    } else if (conflictScore <= 15) {
+    } else if (conflictScore <= 8) {
       riskLevel = 'Medium';
     } else {
       riskLevel = 'High';
