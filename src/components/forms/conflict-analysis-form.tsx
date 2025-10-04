@@ -218,12 +218,6 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
             )}
           </div>
         </div>
-        <div className="text-xs text-muted-foreground mt-2 p-2 bg-blue-50 rounded border-l-4 border-blue-400">
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <span>We'll analyze these dates for potential conflicts with other events</span>
-          </div>
-        </div>
       </div>
 
 

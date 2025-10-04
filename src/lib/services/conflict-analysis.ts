@@ -393,41 +393,40 @@ export class ConflictAnalysisService {
         console.log(`Recommendation ${index + 1}: ${rec.startDate} to ${rec.endDate} - Score: ${rec.conflictScore}, Risk: ${rec.riskLevel}, Competing Events: ${rec.competingEvents.length}`);
       });
 
-      // Categorize recommendations
+      // Categorize recommendations - ensure no overlap between low and high risk
       const recommendedDates = dateRecommendations
         .filter(rec => rec.riskLevel === 'Low')
         .slice(0, 3); // Top 3 recommendations
 
-      // Enhanced high-risk date detection - be more inclusive
+      // Enhanced high-risk date detection - be more inclusive but avoid duplicates
       const highRiskDates = dateRecommendations
-        .filter(rec => rec.riskLevel === 'High' || (rec.riskLevel === 'Medium' && rec.conflictScore > 5))
+        .filter(rec => {
+          // Include high risk dates
+          if (rec.riskLevel === 'High') return true;
+          // Include medium risk dates with significant conflicts
+          if (rec.riskLevel === 'Medium' && rec.conflictScore > 6) return true;
+          // Include user's preferred dates if they have meaningful conflicts (score > 3)
+          if (rec.startDate === params.startDate && rec.endDate === params.endDate && rec.conflictScore > 3) return true;
+          return false;
+        })
         .sort((a, b) => b.conflictScore - a.conflictScore) // Sort by highest conflict score first
         .slice(0, 5); // Show up to 5 high-risk dates
 
-      // Ensure we always show the user's preferred dates if they have conflicts, even if not in top 5
-      const userPreferredDates = dateRecommendations.filter(rec => 
-        rec.startDate === params.startDate && rec.endDate === params.endDate
+      // Remove any dates that are already in recommended dates to avoid duplicates
+      const recommendedDateKeys = new Set(recommendedDates.map(rec => `${rec.startDate}-${rec.endDate}`));
+      const filteredHighRiskDates = highRiskDates.filter(rec => 
+        !recommendedDateKeys.has(`${rec.startDate}-${rec.endDate}`)
       );
-      
-      // If user's preferred dates have any conflicts but aren't in high-risk list, add them
-      const userPreferredWithConflicts = userPreferredDates.filter(rec => 
-        rec.conflictScore > 0 && !highRiskDates.some(hr => hr.startDate === rec.startDate)
-      );
-      
-      if (userPreferredWithConflicts.length > 0) {
-        highRiskDates.push(...userPreferredWithConflicts);
-        console.log(`Added user's preferred dates with conflicts to high-risk list: ${userPreferredWithConflicts.length} dates`);
-      }
 
-      console.log(`Final results: ${recommendedDates.length} low risk dates, ${highRiskDates.length} high risk dates`);
-      console.log(`High-risk dates scores:`, highRiskDates.map(d => `${d.startDate}: ${d.conflictScore} (${d.riskLevel})`));
+      console.log(`Final results: ${recommendedDates.length} low risk dates, ${filteredHighRiskDates.length} high risk dates`);
+      console.log(`High-risk dates scores:`, filteredHighRiskDates.map(d => `${d.startDate}: ${d.conflictScore} (${d.riskLevel})`));
 
       const totalTime = Date.now() - startTime;
       console.log(`🎯 Conflict analysis completed in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`);
 
       return {
         recommendedDates,
-        highRiskDates,
+        highRiskDates: filteredHighRiskDates,
         allEvents: originalAllEvents, // Return original unfiltered events for UI display
         analysisDate: new Date().toISOString(),
         userPreferredStartDate: params.startDate,
@@ -1311,34 +1310,39 @@ export class ConflictAnalysisService {
   private calculateEventConflictScore(event: Event, category: string, config: ConflictSeverityConfig): number {
     let eventScore = 0;
     
-    // Base score for any competing event (further reduced from 10 to 3)
-    eventScore += 3;
+    // Base score for any competing event - increased to catch more events
+    eventScore += 5;
     
-    // Higher score for same category (reduced from 15 to 8)
+    // Higher score for same category - increased to better detect same-category conflicts
     if (event.category === category) {
-      eventScore += 8;
+      eventScore += 10;
     }
     
-    // Higher score for events with venues (more significant) (reduced from 8 to 4)
+    // Higher score for events with venues (more significant) - increased
     if (event.venue) {
-      eventScore += 4;
+      eventScore += 6;
     }
     
-    // Higher score for events with images (more professional/promoted) (reduced from 5 to 2)
+    // Higher score for events with images (more professional/promoted) - increased
     if (event.imageUrl) {
+      eventScore += 3;
+    }
+    
+    // Higher score for events with descriptions (more detailed/promoted) - increased
+    if (event.description && event.description.length > 50) {
       eventScore += 2;
     }
     
-    // Higher score for events with descriptions (more detailed/promoted) (reduced from 3 to 1)
-    if (event.description && event.description.length > 50) {
-      eventScore += 1;
+    // Higher score for events with expected attendees (indicates significant events)
+    if (event.expectedAttendees && event.expectedAttendees > 100) {
+      eventScore += Math.min(event.expectedAttendees / 100, 5); // Up to 5 points for large events
     }
     
     // Adjust based on analysis depth
     if (config.depth === 'deep') {
       // More detailed analysis for deep mode
       if (event.expectedAttendees && event.expectedAttendees > 500) {
-        eventScore += 2; // Reduced from 5 to 2
+        eventScore += 3; // Increased for large events
       }
     }
     
@@ -1627,9 +1631,9 @@ export class ConflictAnalysisService {
    */
   private determineRiskLevel(conflictScore: number): 'Low' | 'Medium' | 'High' {
     let riskLevel: 'Low' | 'Medium' | 'High';
-    if (conflictScore <= 3) {
+    if (conflictScore <= 2) {
       riskLevel = 'Low';
-    } else if (conflictScore <= 8) {
+    } else if (conflictScore <= 6) {
       riskLevel = 'Medium';
     } else {
       riskLevel = 'High';
