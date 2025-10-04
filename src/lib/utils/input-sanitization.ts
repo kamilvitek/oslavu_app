@@ -663,6 +663,21 @@ export function sanitizeApiParameters(params: Record<string, unknown>): {
           }
           break;
 
+        case 'preferreddates':
+          // Handle preferredDates array specially
+          if (value && Array.isArray(value)) {
+            const sanitizedDates = value.map(date => {
+              const dateResult = sanitizeDateString(date);
+              if (!dateResult.isValid) errors.push(...dateResult.errors);
+              if (dateResult.warnings.length > 0) warnings.push(...dateResult.warnings);
+              return dateResult.sanitizedValue;
+            });
+            sanitizedParams[key] = sanitizedDates;
+          } else {
+            errors.push(`Invalid preferredDates format - expected array of date strings`);
+          }
+          break;
+
         case 'countrycode':
           const countryCodeResult = sanitizeCountryCode(value);
           if (!countryCodeResult.isValid) errors.push(...countryCodeResult.errors);
