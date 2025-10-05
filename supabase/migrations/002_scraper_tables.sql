@@ -105,5 +105,19 @@ CREATE TRIGGER update_scraper_sources_updated_at BEFORE UPDATE ON scraper_source
 INSERT INTO scraper_sources (name, url, type, config) VALUES
   ('GoOut.cz', 'https://www.goout.net/cs/brno/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('GoOut_Prague', 'https://goout.net/cs/praha/akce/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
-  ('Brno Expat', 'https://www.brnoexpatcentre.eu/events/', 'firecrawl', '{"waitFor": 3000, "onlyMainContent": true}'::jsonb)
+  ('Brno Expat', 'https://www.brnoexpatcentre.eu/events/', 'firecrawl', '{"waitFor": 3000, "onlyMainContent": true}'::jsonb),
+  ('TicketPortal Music', 'https://www.ticketportal.cz/hudba', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('TicketPortal Theatre', 'https://www.ticketportal.cz/divadlo', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('TicketPortal Shows', 'https://www.ticketportal.cz/show', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('TicketPortal Festivals', 'https://www.ticketportal.cz/festivaly', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('TicketPortal Kids', 'https://www.ticketportal.cz/pro-deti', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('TicketPortal Sports', 'https://www.ticketportal.cz/sport', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('TicketPortal Cinema', 'https://www.ticketportal.cz/kino', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('TicketPortal O2 Arena', 'https://www.ticketportal.cz/o2-arena', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('TicketPortal O2 Universum', 'https://www.ticketportal.cz/o2-universum', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Bandzone', 'https://bandzone.cz/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Eventlook', 'https://www.eventlook.cz/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('CC Events', 'https://cc.cz/eventy/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Forbes Events', 'https://forbes.cz/eventy/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('JIC Events', 'https://www.jic.cz/cz/akce', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
 ON CONFLICT DO NOTHING;
