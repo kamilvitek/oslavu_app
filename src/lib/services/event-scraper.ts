@@ -257,7 +257,11 @@ export class EventScraperService {
     console.log(`🤖 Extracting events with GPT-4 from ${sourceName}`);
     
     try {
-      const prompt: string = `Extract event information from the following content. Return a JSON array of events with this structure:
+      const currentDate = new Date().toISOString().split('T')[0]; // Today's date in YYYY-MM-DD format
+      
+      const prompt: string = `Extract event information from the following content. IMPORTANT: Only extract events that are happening on or after ${currentDate} (today is ${currentDate}). Do NOT extract historical events.
+
+Return a JSON array of events with this structure:
 {
   "title": "Event title",
   "description": "Event description",
@@ -275,7 +279,13 @@ export class EventScraperService {
 Content to extract from:
 ${content.substring(0, 8000)} // Limit content to avoid token limits
 
-Return only valid JSON array. If no events found, return empty array [].`;
+IMPORTANT FILTERING RULES:
+- Only extract events with dates >= ${currentDate}
+- Skip any events from previous years or months
+- Focus on current and future events only
+- If an event has no clear date or is clearly historical, skip it
+
+Return only valid JSON array. If no current/future events found, return empty array [].`;
 
       const response: any = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',

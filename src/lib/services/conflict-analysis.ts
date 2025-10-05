@@ -4,6 +4,7 @@ import { openaiAudienceOverlapService } from './openai-audience-overlap';
 import { USPUpdater } from './usp-updater';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 import { eventDeduplicator, DeduplicationMetrics } from './event-deduplicator';
+import { cityRecognitionService } from './city-recognition';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -696,7 +697,7 @@ export class ConflictAnalysisService {
     });
     console.log(`🚨 Found ${foreignEvents.length} foreign events before location filtering:`, foreignEvents.slice(0, 5).map(e => ({ title: e.title, city: e.city })));
     
-    const locationFilteredEvents = this.filterEventsByLocation(allEvents, params.city);
+    const locationFilteredEvents = await this.filterEventsByLocation(allEvents, params.city);
     console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
 
     // For conflict analysis, use all location-filtered events to consider all potential competitors
@@ -1797,220 +1798,200 @@ export class ConflictAnalysisService {
 
   /**
    * Filter events by location to remove events from distant cities
+   * Uses LLM-based city recognition for intelligent matching
    */
-  private filterEventsByLocation(events: Event[], targetCity: string): Event[] {
-    const normalizedTargetCity = targetCity.toLowerCase().trim();
-    console.log(`🔍 Location filtering: Target city = "${normalizedTargetCity}"`);
+  private async filterEventsByLocation(events: Event[], targetCity: string): Promise<Event[]> {
+    console.log(`🔍 Location filtering: Target city = "${targetCity}"`);
     
-    // Define TBA/TBD venue patterns that should be allowed for local searches
-    const tbaPatterns = ['to be announced', 'tba', 'tbd', 'to be determined', 'venue tba', 'location tba', 'location to be announced'];
-    
-    // Define Czech Republic cities and their aliases
-    const czechCities: Record<string, string[]> = {
-      'prague': ['praha', 'prag', 'prague', 'praha 1', 'praha 2', 'praha 3', 'praha 4', 'praha 5', 'praha 6', 'praha 7', 'praha 8', 'praha 9', 'praha 10', 'praha 11', 'praha 12', 'praha 13', 'praha 14', 'praha 15', 'praha 16', 'praha 17', 'praha 18', 'praha 19', 'praha 20', 'praha 21', 'praha 22'],
-      'brno': ['brno', 'brünn'],
-      'ostrava': ['ostrava'],
-      'olomouc': ['olomouc'],
-      'plzen': ['plzen', 'pilsen'],
-      'liberec': ['liberec'],
-      'ceske budejovice': ['ceske budejovice', 'budweis'],
-      'hradec kralove': ['hradec kralove'],
-      'pardubice': ['pardubice'],
-      'zlin': ['zlin', 'gottwaldov'],
-      'havirov': ['havirov'],
-      'kladno': ['kladno'],
-      'most': ['most'],
-      'karlovy vary': ['karlovy vary', 'karlsbad'],
-      'frydek-mistek': ['frydek-mistek'],
-      'opava': ['opava'],
-      'decín': ['decín'],
-      'chomutov': ['chomutov'],
-      'jihlava': ['jihlava'],
-      'teplice': ['teplice'],
-      'prostejov': ['prostejov'],
-      'prerov': ['prerov'],
-      'jablonec nad nisou': ['jablonec nad nisou'],
-      'melnik': ['melnik'],
-      'ceska lipa': ['ceska lipa'],
-      'třebíč': ['trebic'],
-      'trinec': ['trinec'],
-      'tabor': ['tabor'],
-      'znojmo': ['znojmo'],
-      'pribram': ['pribram'],
-      'orlova': ['orlova'],
-      'cheb': ['cheb'],
-      'modrany': ['modrany'],
-      'chrudim': ['chrudim'],
-      'cesky tesin': ['cesky tesin'],
-      'kromeriz': ['kromeriz'],
-      'sumperk': ['sumperk'],
-      'vsetin': ['vsetin'],
-      'valasske mezirici': ['valasske mezirici'],
-      'litvinov': ['litvinov'],
-      'novy jicin': ['novy jicin'],
-      'uhorske hradiste': ['uhorske hradiste'],
-      'breclav': ['breclav'],
-      'krnov': ['krnov'],
-      'sokolov': ['sokolov'],
-      'litomerice': ['litomerice'],
-      'havlickuv brod': ['havlickuv brod'],
-      'jirkov': ['jirkov']
-    };
+    try {
+      // Use LLM-based city recognition to normalize the target city
+      const cityRecognition = await cityRecognitionService.recognizeCity(targetCity);
+      const normalizedTargetCity = cityRecognition.normalizedCity.toLowerCase();
+      const targetAliases = cityRecognitionService.getCityAliases(cityRecognition.normalizedCity);
+      
+      console.log(`🏙️ City recognition result:`, {
+        input: targetCity,
+        normalized: cityRecognition.normalizedCity,
+        confidence: cityRecognition.confidence,
+        isRecognized: cityRecognition.isRecognized,
+        aliases: targetAliases.slice(0, 5) // Show first 5 aliases
+      });
+      
+      // Define TBA/TBD venue patterns that should be allowed for local searches
+      const tbaPatterns = ['to be announced', 'tba', 'tbd', 'to be determined', 'venue tba', 'location tba', 'location to be announced'];
+      
+      // Define foreign cities that should be filtered out when searching Czech cities
+      const foreignCities: string[] = [
+        'london', 'londres', 'berlin', 'berlín', 'paris', 'parís', 'amsterdam', 'vienna', 'wien', 'vienne',
+        'warsaw', 'warszawa', 'budapest', 'zurich', 'zürich', 'munich', 'münchen', 'stockholm', 'copenhagen', 
+        'københavn', 'helsinki', 'helsingfors', 'oslo', 'madrid', 'barcelona', 'rome', 'roma', 'milan', 'milano',
+        'athens', 'athina', 'lisbon', 'lisboa', 'dublin', 'edinburgh', 'glasgow', 'manchester', 'birmingham',
+        'liverpool', 'leeds', 'sheffield', 'bristol', 'newcastle', 'nottingham', 'leicester', 'hamburg', 'cologne',
+        'köln', 'frankfurt', 'stuttgart', 'düsseldorf', 'dortmund', 'essen', 'leipzig', 'bremen', 'dresden',
+        'hannover', 'nuremberg', 'nürnberg', 'duisburg', 'bochum', 'wuppertal', 'bielefeld', 'bonn', 'münster',
+        'karlsruhe', 'mannheim', 'augsburg', 'wiesbaden', 'gelsenkirchen', 'mönchengladbach', 'braunschweig',
+        'chemnitz', 'kiel', 'aachen', 'halle', 'magdeburg', 'freiburg', 'krefeld', 'lübeck', 'oberhausen',
+        'erfurt', 'mainz', 'rostock', 'kassel', 'hagen', 'hamm', 'saarbrücken', 'mülheim', 'potsdam',
+        'ludwigshafen', 'oldenburg', 'leverkusen', 'osnabrück', 'solingen', 'heidelberg', 'herne', 'neuss',
+        'darmstadt', 'paderborn', 'regensburg', 'ingolstadt', 'würzburg', 'fürth', 'wolfsburg', 'offenbach',
+        'ulm', 'heilbronn', 'pforzheim', 'göttingen', 'bottrop', 'trier', 'recklinghausen', 'reutlingen',
+        'bremerhaven', 'koblenz', 'bergisch gladbach', 'jena', 'remscheid', 'erlangen', 'moers', 'siegen',
+        'hildesheim', 'salzgitter',
+        // Add more foreign cities that might appear in searches
+        'kragujevac', 'westfield', 'belgrade', 'zagreb', 'ljubljana', 'bratislava', 'bucharest', 'sofia',
+        'tirana', 'skopje', 'podgorica', 'sarajevo', 'banja luka', 'novi sad', 'nis', 'subotica', 'kraljevo',
+        'cacak', 'zrenjanin', 'pancevo', 'novi pazar', 'kikinda', 'smederevo', 'leskovac', 'uzice', 'cacak',
+        'sabac', 'pozarevac', 'kragujevac', 'krusevac', 'vranje', 'valjevo', 'sombor', 'zajecar', 'priboj',
+        'prokuplje', 'vrsac', 'backa palanka', 'sremska mitrovica', 'indjija', 'ruma', 'stara pazova',
+        'kula', 'odzaci', 'bajmok', 'backa topola', 'kanjiza', 'senta', 'ada', 'mokrin', 'kikinda',
+        'novi knezevac', 'coka', 'srbobran', 'becej', 'titel', 'zabalj', 'temerin', 'sirig', 'backi petrovac',
+        'kula', 'odzaci', 'bajmok', 'backa topola', 'kanjiza', 'senta', 'ada', 'mokrin', 'kikinda'
+      ];
 
-    // Define foreign cities that should be filtered out when searching Czech cities
-    const foreignCities: string[] = [
-      'london', 'londres', 'berlin', 'berlín', 'paris', 'parís', 'amsterdam', 'vienna', 'wien', 'vienne',
-      'warsaw', 'warszawa', 'budapest', 'zurich', 'zürich', 'munich', 'münchen', 'stockholm', 'copenhagen', 
-      'københavn', 'helsinki', 'helsingfors', 'oslo', 'madrid', 'barcelona', 'rome', 'roma', 'milan', 'milano',
-      'athens', 'athina', 'lisbon', 'lisboa', 'dublin', 'edinburgh', 'glasgow', 'manchester', 'birmingham',
-      'liverpool', 'leeds', 'sheffield', 'bristol', 'newcastle', 'nottingham', 'leicester', 'hamburg', 'cologne',
-      'köln', 'frankfurt', 'stuttgart', 'düsseldorf', 'dortmund', 'essen', 'leipzig', 'bremen', 'dresden',
-      'hannover', 'nuremberg', 'nürnberg', 'duisburg', 'bochum', 'wuppertal', 'bielefeld', 'bonn', 'münster',
-      'karlsruhe', 'mannheim', 'augsburg', 'wiesbaden', 'gelsenkirchen', 'mönchengladbach', 'braunschweig',
-      'chemnitz', 'kiel', 'aachen', 'halle', 'magdeburg', 'freiburg', 'krefeld', 'lübeck', 'oberhausen',
-      'erfurt', 'mainz', 'rostock', 'kassel', 'hagen', 'hamm', 'saarbrücken', 'mülheim', 'potsdam',
-      'ludwigshafen', 'oldenburg', 'leverkusen', 'osnabrück', 'solingen', 'heidelberg', 'herne', 'neuss',
-      'darmstadt', 'paderborn', 'regensburg', 'ingolstadt', 'würzburg', 'fürth', 'wolfsburg', 'offenbach',
-      'ulm', 'heilbronn', 'pforzheim', 'göttingen', 'bottrop', 'trier', 'recklinghausen', 'reutlingen',
-      'bremerhaven', 'koblenz', 'bergisch gladbach', 'jena', 'remscheid', 'erlangen', 'moers', 'siegen',
-      'hildesheim', 'salzgitter',
-      // Add more foreign cities that might appear in searches
-      'kragujevac', 'westfield', 'belgrade', 'zagreb', 'ljubljana', 'bratislava', 'bucharest', 'sofia',
-      'tirana', 'skopje', 'podgorica', 'sarajevo', 'banja luka', 'novi sad', 'nis', 'subotica', 'kraljevo',
-      'cacak', 'zrenjanin', 'pancevo', 'novi pazar', 'kikinda', 'smederevo', 'leskovac', 'uzice', 'cacak',
-      'sabac', 'pozarevac', 'kragujevac', 'krusevac', 'vranje', 'valjevo', 'sombor', 'zajecar', 'priboj',
-      'prokuplje', 'vrsac', 'backa palanka', 'sremska mitrovica', 'indjija', 'ruma', 'stara pazova',
-      'kula', 'odzaci', 'bajmok', 'backa topola', 'kanjiza', 'senta', 'ada', 'mokrin', 'kikinda',
-      'novi knezevac', 'coka', 'srbobran', 'becej', 'titel', 'zabalj', 'temerin', 'sirig', 'backi petrovac',
-      'kula', 'odzaci', 'bajmok', 'backa topola', 'kanjiza', 'senta', 'ada', 'mokrin', 'kikinda'
-    ];
-
-    // Check if target city is a Czech city
-    const isCzechCity = Object.keys(czechCities).includes(normalizedTargetCity) || 
-                       Object.values(czechCities).some(aliases => aliases.includes(normalizedTargetCity));
+      // Check if target city is a Czech city (using LLM recognition result)
+      const isCzechCity = cityRecognition.isRecognized && 
+                         (cityRecognition.normalizedCity.toLowerCase().includes('prague') ||
+                          cityRecognition.normalizedCity.toLowerCase().includes('brno') ||
+                          cityRecognition.normalizedCity.toLowerCase().includes('ostrava') ||
+                          cityRecognition.normalizedCity.toLowerCase().includes('olomouc') ||
+                          cityRecognition.normalizedCity.toLowerCase().includes('plzen') ||
+                          cityRecognition.normalizedCity.toLowerCase().includes('liberec') ||
+                          cityRecognition.normalizedCity.toLowerCase().includes('ceske') ||
+                          cityRecognition.normalizedCity.toLowerCase().includes('hradec') ||
+                          cityRecognition.normalizedCity.toLowerCase().includes('pardubice') ||
+                          cityRecognition.normalizedCity.toLowerCase().includes('zlin'));
     
-    const targetAliases = czechCities[normalizedTargetCity] || [normalizedTargetCity];
-    
-    return events.filter(event => {
-      const eventCity = event.city?.toLowerCase().trim() || '';
-      const eventVenue = event.venue?.toLowerCase().trim() || '';
-      
-      // Check if this is a TBA/TBD event
-      const isTBAEvent = tbaPatterns.some(pattern => 
-        eventVenue.includes(pattern) || 
-        eventCity.includes(pattern) ||
-        event.title?.toLowerCase().includes(pattern)
-      );
-      
-      // For TBA events, be more lenient with location filtering
-      // Assume TBA events from the search are likely local if they came from city-specific searches
-      if (isTBAEvent) {
-        console.log(`📍 Found TBA event "${event.title}" - allowing for local search in "${targetCity}"`);
-        return true; // Allow TBA events to pass through location filtering
-      }
-      
-      // STRICT FILTERING: If searching for a specific city, only allow events from that city or its aliases
-      // This prevents foreign events from appearing in local searches
-      
-      // First, check if event city matches the target city or its aliases
-      let isMatchingCity = targetAliases.some(alias => 
-        eventCity === alias || 
-        eventCity.includes(alias) || 
-        alias.includes(eventCity)
-      );
-      
-      // SPECIAL CASE: Handle events where APIs return "Czech Republic" as city name
-      // If we're searching for a Czech city and the event city is "Czech Republic", 
-      // check if the venue or title contains the target city name
-      if (!isMatchingCity && isCzechCity && eventCity === 'czech republic') {
-        const hasTargetCityInVenue = event.venue && targetAliases.some(alias => 
-          event.venue!.toLowerCase().includes(alias.toLowerCase())
-        );
-        const hasTargetCityInTitle = targetAliases.some(alias => 
-          event.title.toLowerCase().includes(alias.toLowerCase())
+      return events.filter(event => {
+        const eventCity = event.city?.toLowerCase().trim() || '';
+        const eventVenue = event.venue?.toLowerCase().trim() || '';
+        
+        // Check if this is a TBA/TBD event
+        const isTBAEvent = tbaPatterns.some(pattern => 
+          eventVenue.includes(pattern) || 
+          eventCity.includes(pattern) ||
+          event.title?.toLowerCase().includes(pattern)
         );
         
-        // ENHANCED: Also check if venue is a known venue for the target city
-        let isKnownVenueForCity = false;
-        if (event.venue) {
-          // Import venue-city mapping service to check if venue belongs to target city
+        // For TBA events, be more lenient with location filtering
+        // Assume TBA events from the search are likely local if they came from city-specific searches
+        if (isTBAEvent) {
+          console.log(`📍 Found TBA event "${event.title}" - allowing for local search in "${targetCity}"`);
+          return true; // Allow TBA events to pass through location filtering
+        }
+        
+        // STRICT FILTERING: If searching for a specific city, only allow events from that city or its aliases
+        // This prevents foreign events from appearing in local searches
+        
+        // First, check if event city matches the target city or its aliases
+        let isMatchingCity = targetAliases.some(alias => 
+          eventCity === alias || 
+          eventCity.includes(alias) || 
+          alias.includes(eventCity)
+        );
+        
+        // SPECIAL CASE: Handle events where APIs return "Czech Republic" as city name
+        // If we're searching for a Czech city and the event city is "Czech Republic", 
+        // check if the venue or title contains the target city name
+        if (!isMatchingCity && isCzechCity && eventCity === 'czech republic') {
+          const hasTargetCityInVenue = event.venue && targetAliases.some(alias => 
+            event.venue!.toLowerCase().includes(alias.toLowerCase())
+          );
+          const hasTargetCityInTitle = targetAliases.some(alias => 
+            event.title.toLowerCase().includes(alias.toLowerCase())
+          );
+          
+          // ENHANCED: Also check if venue is a known venue for the target city
+          let isKnownVenueForCity = false;
+          if (event.venue) {
+            // Import venue-city mapping service to check if venue belongs to target city
+            const { venueCityMappingService } = require('./venue-city-mapping');
+            const venueCity = venueCityMappingService.getCityForVenue(event.venue);
+            if (venueCity && targetAliases.some(alias => 
+              venueCity.toLowerCase() === alias.toLowerCase()
+            )) {
+              isKnownVenueForCity = true;
+              console.log(`✅ Event "${event.title}" from "Czech Republic" matched by known venue "${event.venue}" for city "${targetCity}"`);
+            }
+          }
+          
+          if (hasTargetCityInVenue || hasTargetCityInTitle || isKnownVenueForCity) {
+            console.log(`✅ Event "${event.title}" from "Czech Republic" matched by ${hasTargetCityInVenue ? 'venue' : hasTargetCityInTitle ? 'title' : 'known venue'} for city "${targetCity}"`);
+            return true;
+          }
+        }
+        
+        // Debug: Log foreign events
+        if (!isMatchingCity && (eventCity === 'kragujevac' || eventCity === 'westfield')) {
+          console.log(`🚨 Location filter: Foreign event "${event.title}" from "${eventCity}" (target: "${normalizedTargetCity}")`);
+        }
+        
+        // If no city match, check if the event has a venue in the target city
+        if (!isMatchingCity && event.venue) {
+          // First try simple venue name matching
+          const isMatchingVenue = targetAliases.some(alias => 
+            eventVenue.includes(alias) || 
+            alias.includes(eventVenue)
+          );
+          
+          if (isMatchingVenue) {
+            console.log(`✅ Event "${event.title}" matched by venue "${event.venue}" for city "${targetCity}"`);
+            return true;
+          }
+          
+          // ENHANCED: Also check if venue is a known venue for the target city using venue-city mapping
           const { venueCityMappingService } = require('./venue-city-mapping');
           const venueCity = venueCityMappingService.getCityForVenue(event.venue);
           if (venueCity && targetAliases.some(alias => 
             venueCity.toLowerCase() === alias.toLowerCase()
           )) {
-            isKnownVenueForCity = true;
-            console.log(`✅ Event "${event.title}" from "Czech Republic" matched by known venue "${event.venue}" for city "${targetCity}"`);
+            console.log(`✅ Event "${event.title}" matched by known venue "${event.venue}" (${venueCity}) for city "${targetCity}"`);
+            return true;
           }
         }
         
-        if (hasTargetCityInVenue || hasTargetCityInTitle || isKnownVenueForCity) {
-          console.log(`✅ Event "${event.title}" from "Czech Republic" matched by ${hasTargetCityInVenue ? 'venue' : hasTargetCityInTitle ? 'title' : 'known venue'} for city "${targetCity}"`);
-          return true;
-        }
-      }
-      
-      // Debug: Log foreign events
-      if (!isMatchingCity && (eventCity === 'kragujevac' || eventCity === 'westfield')) {
-        console.log(`🚨 Location filter: Foreign event "${event.title}" from "${eventCity}" (target: "${normalizedTargetCity}")`);
-      }
-      
-      // If no city match, check if the event has a venue in the target city
-      if (!isMatchingCity && event.venue) {
-        // First try simple venue name matching
-        const isMatchingVenue = targetAliases.some(alias => 
-          eventVenue.includes(alias) || 
-          alias.includes(eventVenue)
-        );
-        
-        if (isMatchingVenue) {
-          console.log(`✅ Event "${event.title}" matched by venue "${event.venue}" for city "${targetCity}"`);
-          return true;
-        }
-        
-        // ENHANCED: Also check if venue is a known venue for the target city using venue-city mapping
-        const { venueCityMappingService } = require('./venue-city-mapping');
-        const venueCity = venueCityMappingService.getCityForVenue(event.venue);
-        if (venueCity && targetAliases.some(alias => 
-          venueCity.toLowerCase() === alias.toLowerCase()
-        )) {
-          console.log(`✅ Event "${event.title}" matched by known venue "${event.venue}" (${venueCity}) for city "${targetCity}"`);
-          return true;
-        }
-      }
-      
-      // If searching for a Czech city, also filter out known foreign cities
-      if (isCzechCity) {
-        // Check if event city is a known foreign city
-        const isForeignCity = foreignCities.some(foreignCity => 
-          eventCity === foreignCity || 
-          eventCity.includes(foreignCity) || 
-          foreignCity.includes(eventCity)
-        );
-        
-        if (isForeignCity) {
-          console.log(`🚫 Filtered out foreign event "${event.title}" from "${event.city}" when searching Czech city "${targetCity}"`);
-          return false;
+        // If searching for a Czech city, also filter out known foreign cities
+        if (isCzechCity) {
+          // Check if event city is a known foreign city
+          const isForeignCity = foreignCities.some(foreignCity => 
+            eventCity === foreignCity || 
+            eventCity.includes(foreignCity) || 
+            foreignCity.includes(eventCity)
+          );
+          
+          if (isForeignCity) {
+            console.log(`🚫 Filtered out foreign event "${event.title}" from "${event.city}" when searching Czech city "${targetCity}"`);
+            return false;
+          }
+          
+          // Check if event venue contains foreign city names
+          const isForeignVenue = foreignCities.some(foreignCity => 
+            eventVenue.includes(foreignCity)
+          );
+          
+          if (isForeignVenue) {
+            console.log(`🚫 Filtered out event with foreign venue "${event.venue}" when searching Czech city "${targetCity}"`);
+            return false;
+          }
         }
         
-        // Check if event venue contains foreign city names
-        const isForeignVenue = foreignCities.some(foreignCity => 
-          eventVenue.includes(foreignCity)
-        );
-        
-        if (isForeignVenue) {
-          console.log(`🚫 Filtered out event with foreign venue "${event.venue}" when searching Czech city "${targetCity}"`);
-          return false;
+        // Log filtered out events for debugging
+        if (!isMatchingCity) {
+          console.log(`🚫 Filtered out event "${event.title}" from "${event.city}" (target: "${targetCity}") - city mismatch`);
         }
-      }
-      
-      // Log filtered out events for debugging
-      if (!isMatchingCity) {
-        console.log(`🚫 Filtered out event "${event.title}" from "${event.city}" (target: "${targetCity}") - city mismatch`);
-      }
-      
-      return isMatchingCity;
-    });
+        
+        return isMatchingCity;
+      });
+    } catch (error) {
+      console.error(`❌ City recognition failed for "${targetCity}":`, error);
+      // Fallback to simple case-insensitive matching
+      const normalizedTargetCity = targetCity.toLowerCase().trim();
+      return events.filter(event => {
+        const eventCity = event.city?.toLowerCase().trim() || '';
+        return eventCity === normalizedTargetCity || 
+               eventCity.includes(normalizedTargetCity) || 
+               normalizedTargetCity.includes(eventCity);
+      });
+    }
   }
 
   /**
