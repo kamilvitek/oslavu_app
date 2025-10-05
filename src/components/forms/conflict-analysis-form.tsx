@@ -53,8 +53,11 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
       analysisRangeDays = 14; // Small events: 2 weeks
     } else if (attendees < 500) {
       analysisRangeDays = 21; // Medium events: 3 weeks
-    } else {
+    } else if (attendees < 5000) {
       analysisRangeDays = 30; // Large events: 1 month
+    } else {
+      // For very large events (5000+), use a more focused range to avoid noise
+      analysisRangeDays = 14; // Focus on 2 weeks around preferred dates
     }
     
     // Adjust for category - some categories have more events
