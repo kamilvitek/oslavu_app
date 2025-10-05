@@ -395,58 +395,41 @@ export class ConflictAnalysisService {
       });
 
       // Categorize recommendations - prioritize user's preferred dates
-      // First, ensure user's preferred dates are always included in the appropriate category
-      const userPreferredDates = dateRecommendations.filter(rec => 
-        rec.startDate === params.startDate && rec.endDate === params.endDate
-      );
-      
-      // Get all other dates (non-user preferred)
-      const otherDates = dateRecommendations.filter(rec => 
-        !(rec.startDate === params.startDate && rec.endDate === params.endDate)
-      );
+      const recommendedDates = dateRecommendations
+        .filter(rec => rec.riskLevel === 'Low')
+        .slice(0, 3); // Top 3 recommendations
 
-      // Build recommended dates: user's preferred dates (if low risk) + other low risk dates
-      const userPreferredLowRisk = userPreferredDates.filter(rec => rec.riskLevel === 'Low');
-      const otherLowRiskDates = otherDates.filter(rec => rec.riskLevel === 'Low');
-      
-      const recommendedDates = [
-        ...userPreferredLowRisk, // Always include user's preferred dates if they're low risk
-        ...otherLowRiskDates
-      ].slice(0, 3); // Top 3 recommendations
-
-      // Build high risk dates: user's preferred dates (if medium/high risk) + other high risk dates
-      const userPreferredMediumHighRisk = userPreferredDates.filter(rec => 
-        rec.riskLevel === 'Medium' || rec.riskLevel === 'High'
-      );
-      const otherHighRiskDates = otherDates.filter(rec => {
-        // Include high risk dates
-        if (rec.riskLevel === 'High') return true;
-        // Include medium risk dates with significant conflicts
-        if (rec.riskLevel === 'Medium' && rec.conflictScore > 6) return true;
-        return false;
-      });
-      
-      const highRiskDates = [
-        ...userPreferredMediumHighRisk, // Always include user's preferred dates if they're medium/high risk
-        ...otherHighRiskDates
-      ].sort((a, b) => {
-        // Prioritize user's preferred dates first
-        const aIsPreferred = a.startDate === params.startDate && a.endDate === params.endDate;
-        const bIsPreferred = b.startDate === params.startDate && b.endDate === params.endDate;
-        if (aIsPreferred && !bIsPreferred) return -1;
-        if (!aIsPreferred && bIsPreferred) return 1;
-        // Then sort by conflict score
-        return b.conflictScore - a.conflictScore;
-      }).slice(0, 5); // Show up to 5 high-risk dates
+      // Enhanced high-risk date detection - prioritize user's preferred dates
+      const highRiskDates = dateRecommendations
+        .filter(rec => {
+          // Include high risk dates
+          if (rec.riskLevel === 'High') return true;
+          // Include medium risk dates with significant conflicts
+          if (rec.riskLevel === 'Medium' && rec.conflictScore > 6) return true;
+          // Include user's preferred dates if they have meaningful conflicts (score > 3)
+          if (rec.startDate === params.startDate && rec.endDate === params.endDate && rec.conflictScore > 3) return true;
+          return false;
+        })
+        .sort((a, b) => {
+          // Prioritize user's preferred dates first
+          const aIsPreferred = a.startDate === params.startDate && a.endDate === params.endDate;
+          const bIsPreferred = b.startDate === params.startDate && b.endDate === params.endDate;
+          if (aIsPreferred && !bIsPreferred) return -1;
+          if (!aIsPreferred && bIsPreferred) return 1;
+          // Then sort by conflict score
+          return b.conflictScore - a.conflictScore;
+        })
+        .slice(0, 5); // Show up to 5 high-risk dates
 
       // Remove any dates that are already in recommended dates to avoid duplicates
       const recommendedDateKeys = new Set(recommendedDates.map(rec => `${rec.startDate}-${rec.endDate}`));
       const filteredHighRiskDates = highRiskDates.filter(rec => {
         const isUserPreferred = rec.startDate === params.startDate && rec.endDate === params.endDate;
         const isDuplicate = recommendedDateKeys.has(`${rec.startDate}-${rec.endDate}`);
-        // Always include user's preferred dates, even if they appear in both categories
+        // Always include user's preferred dates
         return isUserPreferred || !isDuplicate;
       });
+
       console.log(`Final results: ${recommendedDates.length} low risk dates, ${filteredHighRiskDates.length} high risk dates`);
       console.log(`User's preferred dates (${params.startDate} to ${params.endDate}) included: ${filteredHighRiskDates.some(d => d.startDate === params.startDate && d.endDate === params.endDate)}`);
       console.log(`High-risk dates scores:`, filteredHighRiskDates.map(d => `${d.startDate}: ${d.conflictScore} (${d.riskLevel})`));
