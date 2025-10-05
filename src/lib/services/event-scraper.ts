@@ -196,7 +196,7 @@ export class EventScraperService {
         formats: ['markdown'],
         onlyMainContent: source.config.onlyMainContent || true,
         waitFor: source.config.waitFor || 2000,
-        timeout: 30000
+        timeout: 60000
       });
       
       console.log(`🔍 Firecrawl response for ${source.url}:`, {
@@ -314,7 +314,16 @@ Return only valid JSON array. If no current/future events found, return empty ar
       // Parse JSON response with comprehensive error handling
       let events;
       try {
-        events = JSON.parse(responseContent);
+        // Clean up markdown formatting if present
+        let cleanedResponse = responseContent.trim();
+        if (cleanedResponse.startsWith('```json')) {
+          cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        }
+        if (cleanedResponse.startsWith('```')) {
+          cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
+        events = JSON.parse(cleanedResponse);
       } catch (parseError) {
         console.error(`❌ Failed to parse GPT-4 JSON response for ${sourceName}:`, parseError);
         console.error(`❌ Raw GPT-4 response:`, responseContent);
