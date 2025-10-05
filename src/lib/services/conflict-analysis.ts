@@ -1049,12 +1049,11 @@ export class ConflictAnalysisService {
       // Check if it has substantial expected attendance
       const hasAttendance = event.expectedAttendees && event.expectedAttendees > 50;
       
-      // More lenient matching - include events that are:
-      // 1. Same/related category, OR
-      // 2. Significant (has venue), OR  
-      // 3. Has substantial attendance
-      const isCompeting = sameCategory || isSignificant || hasAttendance;
-      
+      // More restrictive matching - only include events that are:
+      // 1. Same/related category (primary criteria), OR
+      // 2. Significant events in related categories (secondary criteria)
+      // This prevents sports events from conflicting with business events
+      const isCompeting = sameCategory || (isSignificant && this.isRelatedCategory(event.category, params.category));      
       if (isCompeting) {
         filteredEventIds.add(eventId);
         console.log(`✅ Competing event "${event.title}" on ${event.date}: category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, hasAttendance=${hasAttendance}, isCompeting=${isCompeting}`);
