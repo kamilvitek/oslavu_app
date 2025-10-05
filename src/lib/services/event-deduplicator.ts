@@ -180,7 +180,6 @@ export class EventDeduplicator {
       ${event.title}
       ${event.description || ''}
       ${event.venue || ''}
-      ${event.date}
       ${event.city}
       ${event.category}
     `.trim();
@@ -190,11 +189,11 @@ export class EventDeduplicator {
    * Generate cache key for an event
    */
   private getCacheKey(event: Event): string {
-    return `${event.source}:${event.sourceId || event.title}:${event.date}`;
+    return `${event.source}:${event.sourceId || event.title}`;
   }
 
   /**
-   * Find duplicate groups using cosine similarity
+   * Find duplicate groups using cosine similarity and exact matching
    */
   private findDuplicateGroups(
     events: Event[],
@@ -232,12 +231,19 @@ export class EventDeduplicator {
         
         const otherEvent = events[j];
         const otherEmbedding = embeddings[j];
-        const similarity = this.calculateCosineSimilarity(currentEmbedding, otherEmbedding);
         
-        if (similarity >= threshold) {
+        // Check for exact matches first (same title and venue)
+        const isExactMatch = this.isExactMatch(currentEvent, otherEvent);
+        
+        // Check for semantic similarity
+        const similarity = this.calculateCosineSimilarity(currentEmbedding, otherEmbedding);
+        const isSimilar = similarity >= threshold;
+        
+        if (isExactMatch || isSimilar) {
+          console.log(`🔍 Found ${isExactMatch ? 'exact' : 'semantic'} duplicate: "${currentEvent.title}" vs "${otherEvent.title}" (similarity: ${similarity.toFixed(3)})`);
           duplicates.push({
             event: otherEvent,
-            similarity
+            similarity: isExactMatch ? 1.0 : similarity
           });
           processed.add(j);
         }
@@ -247,6 +253,9 @@ export class EventDeduplicator {
         // Add current event to duplicates for resolution
         const allEvents = [currentEvent, ...duplicates.map(d => d.event)];
         const primary = this.selectBestEvent(allEvents);
+        
+        console.log(`🔍 Selected primary event: "${primary.title}" (source: ${primary.source}, date: ${primary.date})`);
+        console.log(`🔍 Removing ${duplicates.length} duplicate(s)`);
         
         duplicateGroups.push({
           primary,
@@ -258,6 +267,31 @@ export class EventDeduplicator {
     }
     
     return duplicateGroups;
+  }
+
+  /**
+   * Check if two events are exact matches (same title and venue, ignoring date)
+   */
+  private isExactMatch(event1: Event, event2: Event): boolean {
+    // Normalize titles for comparison
+    const title1 = event1.title.toLowerCase().trim();
+    const title2 = event2.title.toLowerCase().trim();
+    
+    // Normalize venues for comparison
+    const venue1 = (event1.venue || '').toLowerCase().trim();
+    const venue2 = (event2.venue || '').toLowerCase().trim();
+    
+    // Check if titles match exactly
+    const titlesMatch = title1 === title2;
+    
+    // Check if venues match (if both have venues)
+    const venuesMatch = venue1 === '' || venue2 === '' || venue1 === venue2;
+    
+    // Check if cities match
+    const citiesMatch = event1.city.toLowerCase().trim() === event2.city.toLowerCase().trim();
+    
+    // Events are exact matches if they have the same title and venue (if available) and city
+    return titlesMatch && venuesMatch && citiesMatch;
   }
 
   /**
