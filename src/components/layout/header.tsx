@@ -17,9 +17,9 @@ export function Header() {
           <Link href="#features" className="text-muted-foreground hover:text-primary transition-colors">
             Features
           </Link>
-          {/* <Link href="#pricing" className="text-muted-foreground hover:text-primary transition-colors">
+          <Link href="#pricing" className="text-muted-foreground hover:text-primary transition-colors">
             Pricing
-          </Link> */}
+          </Link>
           <Link href="#about" className="text-muted-foreground hover:text-primary transition-colors">
             About
           </Link>

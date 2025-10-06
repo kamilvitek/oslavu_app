@@ -155,7 +155,7 @@ html {
   }
   
   .interactive-element:hover {
-    @apply scale-[1.02] shadow-lg;
+    @apply scale-[1.01] shadow-lg;
   }
   
   .micro-animation {

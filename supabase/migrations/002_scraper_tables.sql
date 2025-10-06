@@ -119,5 +119,19 @@ INSERT INTO scraper_sources (name, url, type, config) VALUES
   ('Eventlook', 'https://www.eventlook.cz/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('CC Events', 'https://cc.cz/eventy/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('Forbes Events', 'https://forbes.cz/eventy/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
-  ('JIC Events', 'https://www.jic.cz/cz/akce', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
+  ('JIC Events', 'https://www.jic.cz/cz/akce', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Impact Hub Calendar', 'https://impacthub.cz/kalendar/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('BVV Calendar', 'https://www.bvv.cz/kalendar', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Forum Karlin Program', 'https://www.forumkarlin.cz/program/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Cubex Centrum Events', 'https://www.cubexcentrum.cz/navstevnici/#event-calendar', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('ND Brno Program', 'https://www.ndbrno.cz/program/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Sono Program', 'https://www.sono.cz/program/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('La Fabrika Program', 'https://www.lafabrika.cz/cs/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('DOX Whats On', 'https://www.dox.cz/en/whats-on', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Navystavisti Program Page 1', 'https://navystavisti.cz/program/?stranka=1', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Navystavisti Program Page 2', 'https://navystavisti.cz/program/?stranka=2', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Navystavisti Program Page 3', 'https://navystavisti.cz/program/?stranka=3', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Navystavisti Program Page 4', 'https://navystavisti.cz/program/?stranka=4', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Navystavisti Program Page 5', 'https://navystavisti.cz/program/?stranka=5', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Navystavisti Program Page 6', 'https://navystavisti.cz/program/?stranka=6', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
 ON CONFLICT DO NOTHING;
