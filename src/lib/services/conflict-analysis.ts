@@ -828,7 +828,9 @@ export class ConflictAnalysisService {
       // Advanced analysis features
       let audienceOverlap;
 
-      // Advanced analysis is enabled by default for best results
+      // Advanced analysis is disabled for performance reasons
+      // Audience overlap analysis causes 70+ second delays due to sequential OpenAI API calls
+      // This feature will be re-enabled in a higher-tier plan with optimized implementation
       if (params.enableAdvancedAnalysis !== false) {
         // Calculate audience overlap analysis
         audienceOverlap = await this.calculateAudienceOverlapAnalysis(
@@ -906,7 +908,9 @@ export class ConflictAnalysisService {
       // Advanced analysis features
       let audienceOverlap;
 
-      // Advanced analysis is enabled by default for best results
+      // Advanced analysis is disabled for performance reasons
+      // Audience overlap analysis causes 70+ second delays due to sequential OpenAI API calls
+      // This feature will be re-enabled in a higher-tier plan with optimized implementation
       if (params.enableAdvancedAnalysis !== false) {
         // Calculate audience overlap analysis
         audienceOverlap = await this.calculateAudienceOverlapAnalysis(

@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       endDate: preferredEnd,
       dateRangeStart: sanitizedBody.dateRange.start,
       dateRangeEnd: sanitizedBody.dateRange.end,
-      enableAdvancedAnalysis: sanitizedBody.enableAdvancedAnalysis ?? true, // Default to true for best results
+      enableAdvancedAnalysis: false, // DISABLED for performance - audience overlap analysis causes 70+ second delays
       useComprehensiveFallback: false, // DISABLED for performance - was causing 5min delays
     });
     
