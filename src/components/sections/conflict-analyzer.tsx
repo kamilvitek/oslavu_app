@@ -314,7 +314,7 @@ export function ConflictAnalyzer() {
                       <div className="flex items-center justify-between">
                         <CardTitle className="flex items-center space-x-2 text-chart-success">
                           <CheckCircle className="h-5 w-5" />
-                          <span>Recommended Dates</span>
+                          <span>All Recommended Dates</span>
                         </CardTitle>
                         <SuccessBadge 
                           label={`${analysisResult.recommendedDates.length} options`}
@@ -379,7 +379,7 @@ export function ConflictAnalyzer() {
                     <CardHeader>
                       <CardTitle className="flex items-center space-x-2 text-red-600">
                         <AlertTriangle className="h-5 w-5" />
-                        <span>High Risk Dates</span>
+                        <span>All High Risk Dates</span>
                       </CardTitle>
                       <CardDescription>
                         {analysisResult.highRiskDates.length} high-risk dates to avoid
@@ -465,7 +465,7 @@ export function ConflictAnalyzer() {
                   </Card>
 
                   {/* User's Preferred Dates Analysis */}
-                  {analysisResult.highRiskDates.length > 0 && (
+                  {analysisResult.userPreferredStartDate && analysisResult.userPreferredEndDate && (
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center space-x-2 text-orange-600">
@@ -478,9 +478,42 @@ export function ConflictAnalyzer() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
-                          {analysisResult.highRiskDates
-                            .filter(rec => rec.startDate === analysisResult.userPreferredStartDate && rec.endDate === analysisResult.userPreferredEndDate)
-                            .map((recommendation, index) => (
+                          {(() => {
+                            // First check if user's preferred date is in high risk dates
+                            const preferredHighRisk = analysisResult.highRiskDates
+                              .filter(rec => rec.startDate === analysisResult.userPreferredStartDate && rec.endDate === analysisResult.userPreferredEndDate);
+                            
+                            // If not in high risk, check if it's in recommended dates (low risk)
+                            const preferredLowRisk = analysisResult.recommendedDates
+                              .filter(rec => rec.startDate === analysisResult.userPreferredStartDate && rec.endDate === analysisResult.userPreferredEndDate);
+                            
+                            // Combine both and show the user's preferred date analysis
+                            let preferredDateAnalysis = [...preferredHighRisk, ...preferredLowRisk];
+                            
+                            // If user's preferred date is not found in either category, create a default analysis
+                            if (preferredDateAnalysis.length === 0) {
+                              // Find competing events for the user's preferred date
+                              const competingEvents = analysisResult.allEvents.filter(event => {
+                                const eventDate = new Date(event.date);
+                                const userStartDate = new Date(analysisResult.userPreferredStartDate!);
+                                const userEndDate = new Date(analysisResult.userPreferredEndDate!);
+                                return eventDate >= userStartDate && eventDate <= userEndDate;
+                              });
+                              
+                              // Create a default analysis for the user's preferred date
+                              const defaultAnalysis = {
+                                startDate: analysisResult.userPreferredStartDate!,
+                                endDate: analysisResult.userPreferredEndDate!,
+                                conflictScore: competingEvents.length > 0 ? Math.min(competingEvents.length * 2, 20) : 0,
+                                riskLevel: competingEvents.length > 0 ? (competingEvents.length > 3 ? 'High' : competingEvents.length > 1 ? 'Medium' : 'Low') : 'Low' as 'Low' | 'Medium' | 'High',
+                                competingEvents: competingEvents,
+                                reasons: competingEvents.length > 0 ? [`${competingEvents.length} competing events found`] : ['No major competing events found']
+                              };
+                              
+                              preferredDateAnalysis = [defaultAnalysis];
+                            }
+                            
+                            return preferredDateAnalysis.map((recommendation, index) => (
                               <div 
                                 key={index}
                                 className={`p-4 border-2 rounded-lg ${getRiskBgColor(recommendation.riskLevel)}`}
@@ -547,7 +580,8 @@ export function ConflictAnalyzer() {
                                   </div>
                                 )}
                               </div>
-                            ))}
+                            ));
+                          })()}
                         </div>
                       </CardContent>
                     </Card>

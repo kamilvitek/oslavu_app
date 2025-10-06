@@ -950,8 +950,16 @@ export class ConflictAnalysisService {
     
     console.log(`📅 Date calculation: preferred ${params.startDate} to ${params.endDate}, duration: ${eventDuration} days`);
 
-    // First, generate dates ±7 days around preferred dates for more comprehensive analysis
+    // ALWAYS include the user's preferred date first, regardless of analysis range
+    dates.push({
+      startDate: params.startDate,
+      endDate: params.endDate
+    });
+
+    // Then generate dates ±7 days around preferred dates for more comprehensive analysis
     for (let i = -7; i <= 7; i++) {
+      if (i === 0) continue; // Skip the user's preferred date (already added above)
+      
       const startDate = new Date(preferredStart);
       startDate.setDate(startDate.getDate() + i);
       
