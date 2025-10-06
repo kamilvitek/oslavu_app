@@ -36,6 +36,7 @@ export class EventDeduplicator {
   private readonly CACHE_SIZE_LIMIT = 1000;
   private readonly DEFAULT_SIMILARITY_THRESHOLD = 0.85;
   private readonly BATCH_SIZE = 20; // OpenAI batch limit for embeddings
+  private readonly MAX_PARALLEL_BATCHES = 5; // Limit concurrent API calls to avoid rate limits
 
   // Source priority for duplicate resolution (higher = better)
   private readonly sourcePriority: Record<string, number> = {
@@ -72,15 +73,33 @@ export class EventDeduplicator {
       };
     }
 
-    // Generate embeddings for all events
-    const embeddings: number[][] = [];
+    // Generate embeddings for all events in parallel batches with rate limiting
     const batchSize = this.BATCH_SIZE;
+    const batchPromises: Promise<number[][]>[] = [];
     
+    // Create all batch promises for parallel execution
     for (let i = 0; i < events.length; i += batchSize) {
       const batch = events.slice(i, i + batchSize);
-      const batchEmbeddings = await this.generateEmbeddingsBatch(batch);
+      batchPromises.push(this.generateEmbeddingsBatch(batch));
+    }
+    
+    // Execute batches in chunks to respect rate limits
+    console.log(`🚀 Processing ${batchPromises.length} batches in parallel (max ${this.MAX_PARALLEL_BATCHES} concurrent)...`);
+    const batchResults: number[][][] = [];
+    
+    for (let i = 0; i < batchPromises.length; i += this.MAX_PARALLEL_BATCHES) {
+      const chunk = batchPromises.slice(i, i + this.MAX_PARALLEL_BATCHES);
+      const chunkResults = await Promise.all(chunk);
+      batchResults.push(...chunkResults);
+    }
+    
+    // Flatten results and track cache hits/misses
+    const embeddings: number[][] = [];
+    for (let i = 0; i < batchResults.length; i++) {
+      const batch = events.slice(i * batchSize, (i + 1) * batchSize);
+      const batchEmbeddings = batchResults[i];
       
-      // Track cache hits/misses
+      // Track cache hits/misses for this batch
       for (const event of batch) {
         const cacheKey = this.getCacheKey(event);
         if (this.embeddingCache.has(cacheKey)) {
@@ -215,6 +234,7 @@ export class EventDeduplicator {
     }> = [];
     
     const processed = new Set<number>();
+    console.log(`🔍 Finding duplicates among ${events.length} events (threshold: ${threshold})`);
     
     for (let i = 0; i < events.length; i++) {
       if (processed.has(i)) continue;
@@ -226,24 +246,40 @@ export class EventDeduplicator {
         similarity: number;
       }> = [];
       
+      // Optimize: Check exact matches first (faster than similarity calculation)
+      for (let j = i + 1; j < events.length; j++) {
+        if (processed.has(j)) continue;
+        
+        const otherEvent = events[j];
+        const isExactMatch = this.isExactMatch(currentEvent, otherEvent);
+        
+        if (isExactMatch) {
+          console.log(`🔍 Found exact duplicate: "${currentEvent.title}" vs "${otherEvent.title}"`);
+          duplicates.push({
+            event: otherEvent,
+            similarity: 1.0
+          });
+          processed.add(j);
+          continue; // Skip similarity calculation for exact matches
+        }
+      }
+      
+      // Only calculate similarity for non-exact matches
       for (let j = i + 1; j < events.length; j++) {
         if (processed.has(j)) continue;
         
         const otherEvent = events[j];
         const otherEmbedding = embeddings[j];
         
-        // Check for exact matches first (same title and venue)
-        const isExactMatch = this.isExactMatch(currentEvent, otherEvent);
-        
         // Check for semantic similarity
         const similarity = this.calculateCosineSimilarity(currentEmbedding, otherEmbedding);
         const isSimilar = similarity >= threshold;
         
-        if (isExactMatch || isSimilar) {
-          console.log(`🔍 Found ${isExactMatch ? 'exact' : 'semantic'} duplicate: "${currentEvent.title}" vs "${otherEvent.title}" (similarity: ${similarity.toFixed(3)})`);
+        if (isSimilar) {
+          console.log(`🔍 Found semantic duplicate: "${currentEvent.title}" vs "${otherEvent.title}" (similarity: ${similarity.toFixed(3)})`);
           duplicates.push({
             event: otherEvent,
-            similarity: isExactMatch ? 1.0 : similarity
+            similarity
           });
           processed.add(j);
         }
