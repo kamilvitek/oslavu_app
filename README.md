@@ -1,30 +1,28 @@
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
-
-# PostHog Analytics
-NEXT_PUBLIC_POSTHOG_KEY=your_posthog_key_here
-NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
-
-# Resend Email
-RESEND_API_KEY=your_resend_api_key_here
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 # External API Keys
-TICKETMASTER_API_KEY=your_ticketmaster_api_key_here
-MEETUP_API_KEY=your_meetup_api_key_here
-PREDICTHQ_API_KEY=your_predicthq_api_key_here
+TICKETMASTER_API_KEY=your_ticketmaster_api_key
+PREDICTHQ_API_KEY=your_predicthq_api_key
 
-# Upstash Redis (optional)
-UPSTASH_REDIS_REST_URL=your_redis_url_here
-UPSTASH_REDIS_REST_TOKEN=your_redis_token_here
+# AI Services
+OPENAI_API_KEY=your_openai_api_key
+FIRECRAWL_API_KEY=your_firecrawl_api_key
 
-# App configuration
-NEXTAUTH_SECRET=your_nextauth_secret_here
-NEXTAUTH_URL=http://localhost:3000
+# Optional Services
+POSTHOG_API_KEY=your_posthog_key
+RESEND_API_KEY=your_resend_api_key
+
+# App Configuration
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+NODE_ENV=development
 ```
 
 4. Set up Supabase:
 ```bash
-# Install Supabase CLI if you haven't already
+# Install Supabase CLI
 npm install -g supabase
 
 # Initialize Supabase (if starting fresh)
@@ -33,7 +31,7 @@ supabase init
 # Start local Supabase (optional for development)
 supabase start
 
-# Run migrations
+# Run database migrations
 supabase db push
 ```
 
@@ -43,6 +41,32 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to see the application.
+
+## Key Features
+
+### 🎯 AI-Powered Conflict Analysis
+- **Multi-Source Data**: Integrates Ticketmaster, PredictHQ, and web scraping
+- **Semantic Deduplication**: Uses OpenAI embeddings for intelligent duplicate detection
+- **Advanced Scoring**: 0-20 conflict score with risk level assessment
+- **Real-time Analysis**: Sub-30 second response times
+
+### 🔍 Web Scraping Infrastructure
+- **Automated Scraping**: Czech event websites (GoOut, TicketPortal, Brno Expat)
+- **AI Content Extraction**: GPT-4 powered event data extraction
+- **Intelligent Processing**: Semantic similarity and deduplication
+- **Rate Limiting**: Respectful scraping with proper delays
+
+### 📊 Advanced Analytics
+- **Audience Overlap**: AI-powered audience overlap prediction
+- **Geographic Filtering**: Smart location-based event filtering
+- **Category Intelligence**: Automatic event categorization
+- **Performance Monitoring**: Comprehensive logging and metrics
+
+### 🎨 Modern UI/UX
+- **Responsive Design**: Mobile-first approach with modern components
+- **Interactive Dashboard**: Real-time analysis with progress indicators
+- **Data Visualization**: Advanced chart components and metrics
+- **Dark Mode**: Complete dark mode support
 
 ## Project Structure
 
