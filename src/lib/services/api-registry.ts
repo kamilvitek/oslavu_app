@@ -6,7 +6,7 @@
 export interface DataSource {
   id: string;
   name: string;
-  type: 'api' | 'local' | 'external';
+  type: 'api' | 'local' | 'external' | 'scraper';
   status: 'active' | 'inactive' | 'maintenance';
   description: string;
   endpoint?: string;
@@ -53,7 +53,7 @@ class APIRegistryService {
       type: 'local',
       status: 'active',
       description: 'Local event data for Brno, Czech Republic',
-      coverage: ['Brno'],
+      coverage: ['Brno, Czech Republic'],
     },
     {
       id: 'local-scraping',
@@ -61,7 +61,7 @@ class APIRegistryService {
       type: 'scraper',
       status: 'active',
       description: 'Tens of local websites scraped for even more accurate predictions and comprehensive event coverage',
-      coverage: ['Multiple Cities'],
+      coverage: ['Multiple Cities, Czech Republic'],
     },
     {
       id: 'eventbrite',

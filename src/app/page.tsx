@@ -3,6 +3,7 @@ import { Hero } from "@/components/sections/hero";
 import { ConflictAnalyzer } from "@/components/sections/conflict-analyzer";
 import { Features } from "@/components/sections/features";
 import { Pricing } from "@/components/sections/pricing";
+import { FAQ } from "@/components/sections/faq";
 import { Footer } from "@/components/layout/footer";
 
 export default function HomePage() {
@@ -14,6 +15,7 @@ export default function HomePage() {
         <ConflictAnalyzer />
         <Pricing />
         <Features />
+        <FAQ />
       </main>
       <Footer />
     </div>
