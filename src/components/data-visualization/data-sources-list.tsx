@@ -11,7 +11,8 @@ import {
   Activity,
   CheckCircle,
   XCircle,
-  Clock
+  Clock,
+  Webhook
 } from "lucide-react";
 
 export function DataSourcesList() {
@@ -19,7 +20,7 @@ export function DataSourcesList() {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {[...Array(6)].map((_, i) => (
           <Card key={i} className="animate-pulse">
             <CardHeader>
@@ -63,6 +64,8 @@ export function DataSourcesList() {
         return <Server className="h-4 w-4" />;
       case 'local':
         return <Database className="h-4 w-4" />;
+      case 'scraper':
+        return <Webhook className="h-4 w-4" />;
       case 'external':
         return <Globe className="h-4 w-4" />;
       default:
@@ -94,7 +97,7 @@ export function DataSourcesList() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {metrics.dataSources.map((source) => (
           <Card key={source.id} className="h-full hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">

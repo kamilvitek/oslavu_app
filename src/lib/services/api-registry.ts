@@ -56,6 +56,14 @@ class APIRegistryService {
       coverage: ['Brno'],
     },
     {
+      id: 'local-scraping',
+      name: 'Local Website Scraping',
+      type: 'scraper',
+      status: 'active',
+      description: 'Tens of local websites scraped for even more accurate predictions and comprehensive event coverage',
+      coverage: ['Multiple Cities'],
+    },
+    {
       id: 'eventbrite',
       name: 'Eventbrite',
       type: 'api',
