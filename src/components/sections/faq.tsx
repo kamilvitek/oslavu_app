@@ -18,7 +18,7 @@ export function FAQ() {
   const faqItems = [
     {
       question: "What's a Conflict Score?",
-      answer: "A Conflict Score is a proprietary algorithm that analyzes potential scheduling conflicts between your event and other events in the same city. It considers factors like audience overlap, event proximity, timing, and event type to give you a score from 0-100, where lower scores indicate higher conflict risk."
+      answer: "A Conflict Score is a proprietary algorithm that analyzes potential scheduling conflicts between your event and other events in the same city. It considers factors like audience overlap, event proximity, timing, and event type to give you a score from 0-20, where lower scores indicate higher conflict risk."
     },
     {
       question: "Which events are covered?",
@@ -30,15 +30,11 @@ export function FAQ() {
     },
     {
       question: "Which geographies?",
-      answer: "Currently, we provide comprehensive coverage for major cities worldwide, with special focus on European and North American markets. We're rapidly expanding to cover more regions. If you need coverage for a specific city, let us know and we can prioritize adding it to our database."
-    },
-    {
-      question: "How accurate is this demo?",
-      answer: "This demo uses real data from our production systems, so the conflict scores and event detection are as accurate as our live service. The only difference is that this is a demonstration environment - the actual service provides more detailed analytics and historical data."
+      answer: "Currently, we provide comprehensive coverage for major cities worldwide, with special focus on Czech Republic. We're rapidly expanding to cover more regions. If you need coverage for a specific city, let us know and we can prioritize adding it to our database."
     },
     {
       question: "Who is behind Oslavu?",
-      answer: "Oslavu is developed by Kamil Vitek, an experienced software engineer and event organizer based in the Czech Republic. With a background in both technology and event management, Kamil understands the pain points of event planning and built Oslavu to solve real-world scheduling conflicts."
+      answer: "Oslavu was founded by Kamil Vítek, a Czech high school student and designer who’s been creating websites and UX design projects since sixteen."
     },
     {
       question: "How does pricing work?",
@@ -46,7 +42,7 @@ export function FAQ() {
     },
     {
       question: "What makes Oslavu different from other tools?",
-      answer: "Unlike generic calendar tools, Oslavu is specifically designed for event organizers. We combine multiple data sources (APIs + web scraping) to provide comprehensive event coverage, use AI-powered audience overlap analysis, and focus specifically on helping you avoid scheduling conflicts that could hurt your attendance."
+      answer: "Unlike generic calendar tools, Oslavu is specifically designed for event organizers. We combine multiple data sources (APIs + web scraping) to provide comprehensive event coverage, use AI-powered audience overlap analysis, and focus specifically on helping you avoid scheduling conflicts that could hurt your attendance and lower your revenue."
     }
   ];
 
