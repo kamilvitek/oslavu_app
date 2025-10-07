@@ -5,6 +5,7 @@ import { USPUpdater } from './usp-updater';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 import { eventDeduplicator, DeduplicationMetrics } from './event-deduplicator';
 import { cityRecognitionService } from './city-recognition';
+import { holidayService, HolidayServiceConfig } from './holiday-service';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -50,6 +51,13 @@ export interface DateRecommendation {
     averageOverlap: number;
     highOverlapEvents: Event[];
     overlapReasoning: string[];
+  };
+  holidayRestrictions?: {
+    holidays: any[];
+    cultural_events: any[];
+    business_impact: 'none' | 'partial' | 'full';
+    venue_closure_expected: boolean;
+    reasons: string[];
   };
 }
 
@@ -796,7 +804,7 @@ export class ConflictAnalysisService {
     const recommendations: DateRecommendation[] = [];
     
     // Generate potential dates around the preferred dates
-    const potentialDates = this.generatePotentialDates(params);
+    const potentialDates = await this.generatePotentialDates(params);
     console.log(`Generated ${potentialDates.length} potential date ranges to analyze`);
     
     // Process dates in parallel for better performance
@@ -820,7 +828,8 @@ export class ConflictAnalysisService {
         params.expectedAttendees,
         params.category,
         params,
-        config
+        config,
+        dateRange.holidayRestrictions
       );
 
       const riskLevel = this.determineRiskLevel(conflictScore);
@@ -851,7 +860,8 @@ export class ConflictAnalysisService {
         riskLevel,
         competingEvents,
         reasons,
-        audienceOverlap
+        audienceOverlap,
+        holidayRestrictions: dateRange.holidayRestrictions
       };
     });
 
@@ -882,7 +892,7 @@ export class ConflictAnalysisService {
     const recommendations: DateRecommendation[] = [];
     
     // Generate potential dates around the preferred dates
-    const potentialDates = this.generatePotentialDates(params);
+    const potentialDates = await this.generatePotentialDates(params);
     console.log(`Generated ${potentialDates.length} potential date ranges to analyze`);
     
     for (let i = 0; i < potentialDates.length; i++) {
@@ -941,20 +951,36 @@ export class ConflictAnalysisService {
 
   /**
    * Generate potential dates around the preferred dates and throughout the analysis range
+   * Now includes holiday and cultural event validation
    */
-  private generatePotentialDates(params: ConflictAnalysisParams): Array<{startDate: string, endDate: string}> {
-    const dates: Array<{startDate: string, endDate: string}> = [];
+  private async generatePotentialDates(params: ConflictAnalysisParams): Promise<Array<{startDate: string, endDate: string, holidayRestrictions?: any}>> {
+    const dates: Array<{startDate: string, endDate: string, holidayRestrictions?: any}> = [];
     const preferredStart = new Date(params.startDate);
     const preferredEnd = new Date(params.endDate);
     const eventDuration = Math.max(1, Math.ceil((preferredEnd.getTime() - preferredStart.getTime()) / (1000 * 60 * 60 * 24)));
     
     console.log(`📅 Date calculation: preferred ${params.startDate} to ${params.endDate}, duration: ${eventDuration} days`);
 
+    // Get holiday configuration based on city
+    const holidayConfig = await this.getHolidayConfigForCity(params.city);
+
     // ALWAYS include the user's preferred date first, regardless of analysis range
-    dates.push({
+    const preferredDateInfo = {
       startDate: params.startDate,
       endDate: params.endDate
-    });
+    };
+    
+    // Check holiday restrictions for preferred date
+    if (holidayConfig) {
+      try {
+        const holidayCheck = await holidayService.checkDateAvailability(params.startDate, holidayConfig);
+        preferredDateInfo.holidayRestrictions = holidayCheck.restrictions;
+      } catch (error) {
+        console.warn('Failed to check holiday restrictions for preferred date:', error);
+      }
+    }
+    
+    dates.push(preferredDateInfo);
 
     // Then generate dates ±7 days around preferred dates for more comprehensive analysis
     for (let i = -7; i <= 7; i++) {
@@ -969,10 +995,23 @@ export class ConflictAnalysisService {
       // Only include dates within the analysis range
       if (startDate >= new Date(params.dateRangeStart) && 
           endDate <= new Date(params.dateRangeEnd)) {
-        dates.push({
+        
+        const dateInfo = {
           startDate: startDate.toISOString().split('T')[0],
           endDate: endDate.toISOString().split('T')[0]
-        });
+        };
+        
+        // Check holiday restrictions for this date
+        if (holidayConfig) {
+          try {
+            const holidayCheck = await holidayService.checkDateAvailability(dateInfo.startDate, holidayConfig);
+            dateInfo.holidayRestrictions = holidayCheck.restrictions;
+          } catch (error) {
+            console.warn(`Failed to check holiday restrictions for ${dateInfo.startDate}:`, error);
+          }
+        }
+        
+        dates.push(dateInfo);
       }
     }
 
@@ -1002,6 +1041,16 @@ export class ConflictAnalysisService {
         );
         
         if (!alreadyExists) {
+          // Check holiday restrictions for this date
+          if (holidayConfig) {
+            try {
+              const holidayCheck = await holidayService.checkDateAvailability(dateStr.startDate, holidayConfig);
+              dateStr.holidayRestrictions = holidayCheck.restrictions;
+            } catch (error) {
+              console.warn(`Failed to check holiday restrictions for ${dateStr.startDate}:`, error);
+            }
+          }
+          
           dates.push(dateStr);
         }
       }
@@ -1009,6 +1058,48 @@ export class ConflictAnalysisService {
 
     console.log(`Generated ${dates.length} potential date ranges for analysis`);
     return dates;
+  }
+
+  /**
+   * Get holiday configuration for a specific city
+   */
+  private async getHolidayConfigForCity(city: string): Promise<HolidayServiceConfig | null> {
+    try {
+      // Map city names to country codes and regions
+      const cityMapping: Record<string, { country: string; region?: string }> = {
+        'Prague': { country: 'CZE', region: 'CZ-PR' },
+        'Praha': { country: 'CZE', region: 'CZ-PR' },
+        'Brno': { country: 'CZE', region: 'CZ-JM' },
+        'Ostrava': { country: 'CZE', region: 'CZ-MO' },
+        'Plzen': { country: 'CZE', region: 'CZ-PL' },
+        'Plzeň': { country: 'CZE', region: 'CZ-PL' },
+        'Liberec': { country: 'CZE', region: 'CZ-LI' },
+        'Olomouc': { country: 'CZE', region: 'CZ-OL' },
+        'České Budějovice': { country: 'CZE', region: 'CZ-SO' },
+        'Hradec Králové': { country: 'CZE', region: 'CZ-KR' },
+        'Pardubice': { country: 'CZE', region: 'CZ-PA' },
+        'Zlín': { country: 'CZE', region: 'CZ-ZL' },
+        'Karlovy Vary': { country: 'CZE', region: 'CZ-KA' },
+        'Ústí nad Labem': { country: 'CZE', region: 'CZ-US' },
+        'Jihlava': { country: 'CZE', region: 'CZ-VY' }
+      };
+
+      const mapping = cityMapping[city];
+      if (!mapping) {
+        console.log(`No holiday configuration found for city: ${city}`);
+        return null;
+      }
+
+      return {
+        country_code: mapping.country,
+        region_code: mapping.region,
+        include_cultural_events: true,
+        business_impact_threshold: 'partial'
+      };
+    } catch (error) {
+      console.error('Error getting holiday configuration for city:', error);
+      return null;
+    }
   }
 
   /**
@@ -1157,7 +1248,8 @@ export class ConflictAnalysisService {
     expectedAttendees: number,
     category: string,
     params: ConflictAnalysisParams,
-    config: ConflictSeverityConfig
+    config: ConflictSeverityConfig,
+    holidayRestrictions?: any
   ): Promise<number> {
     if (competingEvents.length === 0) {
       console.log('No competing events, score = 0');
@@ -1197,7 +1289,7 @@ export class ConflictAnalysisService {
     }
 
     // Fallback to main thread calculation
-    return await this.calculateConflictScoreFallback(competingEvents, expectedAttendees, category, config, params);
+    return await this.calculateConflictScoreFallback(competingEvents, expectedAttendees, category, config, params, holidayRestrictions);
   }
 
   /**
@@ -1208,7 +1300,8 @@ export class ConflictAnalysisService {
     expectedAttendees: number,
     category: string,
     config: ConflictSeverityConfig,
-    params?: ConflictAnalysisParams
+    params?: ConflictAnalysisParams,
+    holidayRestrictions?: any
   ): Promise<number> {
     const startTime = Date.now();
     let score = 0;
@@ -1317,11 +1410,50 @@ export class ConflictAnalysisService {
       console.log(`Medium event (${expectedAttendees} attendees): score *= 1.05 = ${score}`);
     }
 
+    // Apply holiday restrictions penalty
+    if (holidayRestrictions) {
+      const holidayPenalty = this.calculateHolidayPenalty(holidayRestrictions);
+      score += holidayPenalty;
+      console.log(`Holiday restrictions penalty: +${holidayPenalty} -> adjusted score: ${score}`);
+    }
+
     // Cap the score at 20 (adjusted for new scoring system)
     const finalScore = Math.min(score, 20);
     const calculationTime = Date.now() - startTime;
     console.log(`✅ Main thread conflict score calculation completed in ${calculationTime}ms: ${finalScore}`);
     return finalScore;
+  }
+
+  /**
+   * Calculate holiday penalty based on restrictions
+   */
+  private calculateHolidayPenalty(holidayRestrictions: any): number {
+    if (!holidayRestrictions) return 0;
+
+    let penalty = 0;
+
+    // Full business closure penalty
+    if (holidayRestrictions.business_impact === 'full') {
+      penalty += 15; // High penalty for full closure
+    } else if (holidayRestrictions.business_impact === 'partial') {
+      penalty += 8; // Medium penalty for partial impact
+    }
+
+    // Venue closure penalty
+    if (holidayRestrictions.venue_closure_expected) {
+      penalty += 10; // High penalty for venue closure
+    }
+
+    // Holiday count penalty
+    const holidayCount = holidayRestrictions.holidays?.length || 0;
+    const culturalEventCount = holidayRestrictions.cultural_events?.length || 0;
+    
+    penalty += holidayCount * 3; // 3 points per public holiday
+    penalty += culturalEventCount * 1; // 1 point per cultural event
+
+    console.log(`Holiday penalty calculation: business_impact=${holidayRestrictions.business_impact}, venue_closure=${holidayRestrictions.venue_closure_expected}, holidays=${holidayCount}, cultural_events=${culturalEventCount} -> penalty=${penalty}`);
+
+    return penalty;
   }
 
   /**
