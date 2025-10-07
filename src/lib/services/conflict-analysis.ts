@@ -5,7 +5,8 @@ import { USPUpdater } from './usp-updater';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 import { eventDeduplicator, DeduplicationMetrics } from './event-deduplicator';
 import { cityRecognitionService } from './city-recognition';
-import { holidayService, HolidayServiceConfig } from './holiday-service';
+import { holidayService } from './holiday-service';
+import { HolidayServiceConfig } from '@/types/holidays';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -965,7 +966,7 @@ export class ConflictAnalysisService {
     const holidayConfig = await this.getHolidayConfigForCity(params.city);
 
     // ALWAYS include the user's preferred date first, regardless of analysis range
-    const preferredDateInfo = {
+    const preferredDateInfo: {startDate: string, endDate: string, holidayRestrictions?: any} = {
       startDate: params.startDate,
       endDate: params.endDate
     };
@@ -996,7 +997,7 @@ export class ConflictAnalysisService {
       if (startDate >= new Date(params.dateRangeStart) && 
           endDate <= new Date(params.dateRangeEnd)) {
         
-        const dateInfo = {
+        const dateInfo: {startDate: string, endDate: string, holidayRestrictions?: any} = {
           startDate: startDate.toISOString().split('T')[0],
           endDate: endDate.toISOString().split('T')[0]
         };
@@ -1030,7 +1031,7 @@ export class ConflictAnalysisService {
 
       // Only include if within range and not already added
       if (endDate <= analysisEnd) {
-        const dateStr = {
+        const dateStr: {startDate: string, endDate: string, holidayRestrictions?: any} = {
           startDate: startDate.toISOString().split('T')[0],
           endDate: endDate.toISOString().split('T')[0]
         };

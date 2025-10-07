@@ -146,9 +146,9 @@ export class HolidayService {
       available_dates: availableDates,
       restricted_dates: restrictedDates,
       summary: {
-        total_days,
-        available_days,
-        restricted_days,
+        total_days: totalDays,
+        available_days: availableDays,
+        restricted_days: restrictedDays,
         high_impact_days: highImpactDays,
         venue_closure_days: venueClosureDays
       }
