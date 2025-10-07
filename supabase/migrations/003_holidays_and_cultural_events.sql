@@ -208,7 +208,7 @@ BEGIN
     n := (h + l - 7 * m + 114) / 31;
     p := (h + l - 7 * m + 114) % 31;
     
-    easter_date := DATE(year, n, p + 1);
+    easter_date := MAKE_DATE(year, n, p + 1);
     RETURN easter_date;
 END;
 $$ LANGUAGE plpgsql;
