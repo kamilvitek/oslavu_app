@@ -149,20 +149,22 @@ INSERT INTO holidays (name, name_native, description, holiday_type_id, country_i
 ('Easter Monday', 'Velikonoční pondělí', 'Easter Monday', (SELECT id FROM holiday_types WHERE name = 'public_holiday'), (SELECT id FROM countries WHERE code = 'CZE'), 'variable', 1, 'full', true, 1993, NULL);
 
 -- Insert Czech cultural events
-INSERT INTO cultural_events (name, name_native, description, country_id, event_type, date_type, month, day, business_impact, venue_closure_expected, year_start, year_end) VALUES
+INSERT INTO cultural_events (name, name_native, description, country_id, region_id, event_type, date_type, month, day, business_impact, venue_closure_expected, year_start, year_end) VALUES
 -- Prague-specific events
-('Prague Spring International Music Festival', 'Mezinárodní hudební festival Pražské jaro', 'Major classical music festival', (SELECT id FROM countries WHERE code = 'CZE'), 'festival', 'fixed', 5, 12, 'partial', false, 1946, NULL),
-('Prague Fringe Festival', 'Prague Fringe Festival', 'International performing arts festival', (SELECT id FROM countries WHERE code = 'CZE'), 'festival', 'fixed', 5, 20, 'partial', false, 2002, NULL),
-('Prague Pride', 'Prague Pride', 'LGBTQ+ pride festival', (SELECT id FROM countries WHERE code = 'CZE'), 'festival', 'fixed', 8, 1, 'partial', false, 2011, NULL),
-('Prague Autumn International Music Festival', 'Mezinárodní hudební festival Pražský podzim', 'Classical music festival', (SELECT id FROM countries WHERE code = 'CZE'), 'festival', 'fixed', 9, 1, 'partial', false, 1991, NULL);
+('Prague Spring International Music Festival', 'Mezinárodní hudební festival Pražské jaro', 'Major classical music festival', (SELECT id FROM countries WHERE code = 'CZE'), (SELECT id FROM regions WHERE code = 'CZ-PR'), 'festival', 'fixed', 5, 12, 'partial', false, 1946, NULL),
+('Prague Fringe Festival', 'Prague Fringe Festival', 'International performing arts festival', (SELECT id FROM countries WHERE code = 'CZE'), (SELECT id FROM regions WHERE code = 'CZ-PR'), 'festival', 'fixed', 5, 20, 'partial', false, 2002, NULL),
+('Prague Pride', 'Prague Pride', 'LGBTQ+ pride festival', (SELECT id FROM countries WHERE code = 'CZE'), (SELECT id FROM regions WHERE code = 'CZ-PR'), 'festival', 'fixed', 8, 1, 'partial', false, 2011, NULL),
+('Prague Autumn International Music Festival', 'Mezinárodní hudební festival Pražský podzim', 'Classical music festival', (SELECT id FROM countries WHERE code = 'CZE'), (SELECT id FROM regions WHERE code = 'CZ-PR'), 'festival', 'fixed', 9, 1, 'partial', false, 1991, NULL);
 
 -- Moravian cultural events (Fixed: these are actually fixed date traditions, not variable)
-('Ride of the Kings', 'Jízda králů', 'Traditional folk festival in Moravia', (SELECT id FROM countries WHERE code = 'CZE'), 'tradition', 'fixed', 5, 1, 'partial', false, 1800, NULL),
-('Hody', 'Hody', 'Traditional harvest festival in Moravia', (SELECT id FROM countries WHERE code = 'CZE'), 'tradition', 'fixed', 9, 1, 'partial', false, 1800, NULL);
+INSERT INTO cultural_events (name, name_native, description, country_id, region_id, event_type, date_type, month, day, business_impact, venue_closure_expected, year_start, year_end) VALUES
+('Ride of the Kings', 'Jízda králů', 'Traditional folk festival in Moravia', (SELECT id FROM countries WHERE code = 'CZE'), (SELECT id FROM regions WHERE code = 'CZ-JM'), 'tradition', 'fixed', 5, 1, 'partial', false, 1800, NULL),
+('Hody', 'Hody', 'Traditional harvest festival in Moravia', (SELECT id FROM countries WHERE code = 'CZE'), (SELECT id FROM regions WHERE code = 'CZ-JM'), 'tradition', 'fixed', 9, 1, 'partial', false, 1800, NULL);
 
 -- National cultural events
-('Czech Beer Festival', 'Český pivní festival', 'National beer festival', (SELECT id FROM countries WHERE code = 'CZE'), 'festival', 'fixed', 5, 15, 'partial', false, 2008, NULL),
-('Czech Christmas Markets', 'Vánoční trhy', 'Traditional Christmas markets', (SELECT id FROM countries WHERE code = 'CZE'), 'tradition', 'fixed', 11, 25, 'partial', false, 1990, NULL);
+INSERT INTO cultural_events (name, name_native, description, country_id, region_id, event_type, date_type, month, day, business_impact, venue_closure_expected, year_start, year_end) VALUES
+('Czech Beer Festival', 'Český pivní festival', 'National beer festival', (SELECT id FROM countries WHERE code = 'CZE'), NULL, 'festival', 'fixed', 5, 15, 'partial', false, 2008, NULL),
+('Czech Christmas Markets', 'Vánoční trhy', 'Traditional Christmas markets', (SELECT id FROM countries WHERE code = 'CZE'), NULL, 'tradition', 'fixed', 11, 25, 'partial', false, 1990, NULL);
 
 -- Insert specific holiday observances for 2025 and 2026 to ensure system works for current/future years
 INSERT INTO holiday_observances (holiday_id, observed_date, is_observed, notes) VALUES
