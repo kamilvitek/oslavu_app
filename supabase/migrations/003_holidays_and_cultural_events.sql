@@ -242,7 +242,7 @@ BEGIN
             h.easter_offset,
             CASE 
                 WHEN h.date_type = 'fixed' THEN 
-                    DATE(target_date::text || '-' || LPAD(h.month::text, 2, '0') || '-' || LPAD(h.day::text, 2, '0'))
+                    DATE(EXTRACT(YEAR FROM target_date)::TEXT || '-' || LPAD(h.month::text, 2, '0') || '-' || LPAD(h.day::text, 2, '0'))
                 WHEN h.date_type = 'variable' AND h.easter_offset IS NOT NULL THEN
                     calculate_easter_date(EXTRACT(YEAR FROM target_date)::INTEGER) + INTERVAL '1 day' * h.easter_offset
                 ELSE NULL
@@ -300,7 +300,7 @@ BEGIN
             ce.duration_days,
             CASE 
                 WHEN ce.date_type = 'fixed' THEN 
-                    DATE(target_date::text || '-' || LPAD(ce.month::text, 2, '0') || '-' || LPAD(ce.day::text, 2, '0'))
+                    DATE(EXTRACT(YEAR FROM target_date)::TEXT || '-' || LPAD(ce.month::text, 2, '0') || '-' || LPAD(ce.day::text, 2, '0'))
                 WHEN ce.date_type = 'variable' AND ce.easter_offset IS NOT NULL THEN
                     calculate_easter_date(EXTRACT(YEAR FROM target_date)::INTEGER) + INTERVAL '1 day' * ce.easter_offset
                 ELSE NULL
