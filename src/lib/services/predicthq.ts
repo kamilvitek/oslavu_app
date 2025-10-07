@@ -559,11 +559,11 @@ export class PredictHQService {
       text.includes('pražský'); // Czech for "Prague"
     
     // Check if venue name suggests it's in the requested city
-    const venueSuggestsCity = venueName && (
+    const venueSuggestsCity = Boolean(venueName && (
       venueName.includes(normalizedRequestedCity) ||
       venueName.includes('brno') ||
       venueName.includes('prague')
-    );
+    ));
     
     return containsRequestedCity || hasLocalIndicators || venueSuggestsCity;
   }
