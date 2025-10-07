@@ -2,7 +2,6 @@ import { Header } from "@/components/layout/header";
 import { Hero } from "@/components/sections/hero";
 import { ConflictAnalyzer } from "@/components/sections/conflict-analyzer";
 import { Features } from "@/components/sections/features";
-import { Pricing } from "@/components/sections/pricing";
 import { FAQ } from "@/components/sections/faq";
 import { Footer } from "@/components/layout/footer";
 
@@ -13,7 +12,6 @@ export default function HomePage() {
       <main>
         <Hero />
         <ConflictAnalyzer />
-        <Pricing />
         <Features />
         <FAQ />
       </main>

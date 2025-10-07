@@ -37,10 +37,6 @@ export function FAQ() {
       answer: "Oslavu was founded by Kamil Vítek, a Czech high school student and designer who’s been creating websites and UX design projects since sixteen."
     },
     {
-      question: "How does pricing work?",
-      answer: "We offer three simple pricing tiers: Starter ($79/month), Pro ($199/month), and Agency/Enterprise ($299/month). All plans include real-time conflict detection and detailed reports. The main differences are the number of analyses per year and additional features like branded reports and API access."
-    },
-    {
       question: "What makes Oslavu different from other tools?",
       answer: "Unlike generic calendar tools, Oslavu is specifically designed for event organizers. We combine multiple data sources (APIs + web scraping) to provide comprehensive event coverage, use AI-powered audience overlap analysis, and focus specifically on helping you avoid scheduling conflicts that could hurt your attendance and lower your revenue."
     }
