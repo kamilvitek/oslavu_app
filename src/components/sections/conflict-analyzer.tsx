@@ -344,33 +344,78 @@ export function ConflictAnalyzer() {
                                 {recommendation.reasons.join(' • ')}
                               </div>
                               
-                              {/* Holiday Restrictions */}
-                              {recommendation.holidayRestrictions && (
-                                <div className="mt-2 p-2 bg-orange-50 rounded border-l-4 border-orange-400">
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <Calendar className="h-3 w-3 text-orange-600" />
-                                    <span className="text-xs font-medium text-orange-800">
-                                      Holiday Restrictions
+                              {/* Holiday Restrictions - Only show when there are actual restrictions */}
+                              {recommendation.holidayRestrictions && 
+                               (recommendation.holidayRestrictions.holidays?.length > 0 || 
+                                recommendation.holidayRestrictions.cultural_events?.length > 0 ||
+                                recommendation.holidayRestrictions.business_impact !== 'none' ||
+                                recommendation.holidayRestrictions.venue_closure_expected) && (
+                                <div className="mt-2 p-3 bg-orange-50 rounded border-l-4 border-orange-400">
+                                  <div className="flex items-center space-x-2 mb-2">
+                                    <Calendar className="h-4 w-4 text-orange-600" />
+                                    <span className="text-sm font-medium text-orange-800">
+                                      Holiday & Cultural Restrictions
                                     </span>
                                   </div>
+                                  
+                                  {/* Public Holidays */}
                                   {recommendation.holidayRestrictions.holidays?.length > 0 && (
-                                    <div className="text-xs text-orange-700 mb-1">
-                                      <strong>Public Holidays:</strong> {recommendation.holidayRestrictions.holidays.map((h: any) => h.holiday_name).join(', ')}
+                                    <div className="mb-2">
+                                      <div className="text-xs font-semibold text-orange-800 mb-1">
+                                        🏛️ Public Holidays:
+                                      </div>
+                                      {recommendation.holidayRestrictions.holidays.map((h: any, index: number) => (
+                                        <div key={index} className="text-xs text-orange-700 ml-2 mb-1">
+                                          • <strong>{h.holiday_name}</strong>
+                                          {h.holiday_name_native && h.holiday_name_native !== h.holiday_name && (
+                                            <span className="text-orange-600"> ({h.holiday_name_native})</span>
+                                          )}
+                                        </div>
+                                      ))}
                                     </div>
                                   )}
+                                  
+                                  {/* Cultural Events */}
                                   {recommendation.holidayRestrictions.cultural_events?.length > 0 && (
-                                    <div className="text-xs text-orange-700 mb-1">
-                                      <strong>Cultural Events:</strong> {recommendation.holidayRestrictions.cultural_events.map((e: any) => e.event_name).join(', ')}
+                                    <div className="mb-2">
+                                      <div className="text-xs font-semibold text-orange-800 mb-1">
+                                        🎭 Cultural Events:
+                                      </div>
+                                      {recommendation.holidayRestrictions.cultural_events.map((e: any, index: number) => (
+                                        <div key={index} className="text-xs text-orange-700 ml-2 mb-1">
+                                          • <strong>{e.event_name}</strong>
+                                          {e.event_name_native && e.event_name_native !== e.event_name && (
+                                            <span className="text-orange-600"> ({e.event_name_native})</span>
+                                          )}
+                                        </div>
+                                      ))}
                                     </div>
                                   )}
-                                  {recommendation.holidayRestrictions.business_impact === 'full' && (
-                                    <div className="text-xs text-red-700 font-medium">
-                                      ⚠️ Full business closure expected
-                                    </div>
-                                  )}
-                                  {recommendation.holidayRestrictions.venue_closure_expected && (
-                                    <div className="text-xs text-red-700 font-medium">
-                                      ⚠️ Venues may be closed
+                                  
+                                  {/* Impact Warnings */}
+                                  <div className="space-y-1">
+                                    {recommendation.holidayRestrictions.business_impact === 'full' && (
+                                      <div className="text-xs text-red-700 font-medium bg-red-50 p-2 rounded">
+                                        🚫 <strong>Full Business Closure:</strong> All businesses and venues are typically closed on this date
+                                      </div>
+                                    )}
+                                    {recommendation.holidayRestrictions.business_impact === 'partial' && (
+                                      <div className="text-xs text-yellow-700 font-medium bg-yellow-50 p-2 rounded">
+                                        ⚠️ <strong>Partial Business Impact:</strong> Some businesses may have reduced hours or be closed
+                                      </div>
+                                    )}
+                                    {recommendation.holidayRestrictions.venue_closure_expected && (
+                                      <div className="text-xs text-red-700 font-medium bg-red-50 p-2 rounded">
+                                        🏢 <strong>Venue Availability:</strong> Most venues are likely to be closed or have limited availability
+                                      </div>
+                                    )}
+                                  </div>
+                                  
+                                  {/* General Impact Message */}
+                                  {(recommendation.holidayRestrictions.holidays?.length > 0 || 
+                                    recommendation.holidayRestrictions.cultural_events?.length > 0) && (
+                                    <div className="text-xs text-orange-700 mt-2 p-2 bg-orange-100 rounded">
+                                      💡 <strong>Impact on Your Event:</strong> These holidays and cultural events may significantly affect attendance and venue availability. Consider alternative dates for better turnout.
                                     </div>
                                   )}
                                 </div>
@@ -442,33 +487,78 @@ export function ConflictAnalyzer() {
                                 {recommendation.reasons.join(' • ')}
                               </div>
                               
-                              {/* Holiday Restrictions */}
-                              {recommendation.holidayRestrictions && (
-                                <div className="mt-2 p-2 bg-orange-50 rounded border-l-4 border-orange-400">
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <Calendar className="h-3 w-3 text-orange-600" />
-                                    <span className="text-xs font-medium text-orange-800">
-                                      Holiday Restrictions
+                              {/* Holiday Restrictions - Only show when there are actual restrictions */}
+                              {recommendation.holidayRestrictions && 
+                               (recommendation.holidayRestrictions.holidays?.length > 0 || 
+                                recommendation.holidayRestrictions.cultural_events?.length > 0 ||
+                                recommendation.holidayRestrictions.business_impact !== 'none' ||
+                                recommendation.holidayRestrictions.venue_closure_expected) && (
+                                <div className="mt-2 p-3 bg-orange-50 rounded border-l-4 border-orange-400">
+                                  <div className="flex items-center space-x-2 mb-2">
+                                    <Calendar className="h-4 w-4 text-orange-600" />
+                                    <span className="text-sm font-medium text-orange-800">
+                                      Holiday & Cultural Restrictions
                                     </span>
                                   </div>
+                                  
+                                  {/* Public Holidays */}
                                   {recommendation.holidayRestrictions.holidays?.length > 0 && (
-                                    <div className="text-xs text-orange-700 mb-1">
-                                      <strong>Public Holidays:</strong> {recommendation.holidayRestrictions.holidays.map((h: any) => h.holiday_name).join(', ')}
+                                    <div className="mb-2">
+                                      <div className="text-xs font-semibold text-orange-800 mb-1">
+                                        🏛️ Public Holidays:
+                                      </div>
+                                      {recommendation.holidayRestrictions.holidays.map((h: any, index: number) => (
+                                        <div key={index} className="text-xs text-orange-700 ml-2 mb-1">
+                                          • <strong>{h.holiday_name}</strong>
+                                          {h.holiday_name_native && h.holiday_name_native !== h.holiday_name && (
+                                            <span className="text-orange-600"> ({h.holiday_name_native})</span>
+                                          )}
+                                        </div>
+                                      ))}
                                     </div>
                                   )}
+                                  
+                                  {/* Cultural Events */}
                                   {recommendation.holidayRestrictions.cultural_events?.length > 0 && (
-                                    <div className="text-xs text-orange-700 mb-1">
-                                      <strong>Cultural Events:</strong> {recommendation.holidayRestrictions.cultural_events.map((e: any) => e.event_name).join(', ')}
+                                    <div className="mb-2">
+                                      <div className="text-xs font-semibold text-orange-800 mb-1">
+                                        🎭 Cultural Events:
+                                      </div>
+                                      {recommendation.holidayRestrictions.cultural_events.map((e: any, index: number) => (
+                                        <div key={index} className="text-xs text-orange-700 ml-2 mb-1">
+                                          • <strong>{e.event_name}</strong>
+                                          {e.event_name_native && e.event_name_native !== e.event_name && (
+                                            <span className="text-orange-600"> ({e.event_name_native})</span>
+                                          )}
+                                        </div>
+                                      ))}
                                     </div>
                                   )}
-                                  {recommendation.holidayRestrictions.business_impact === 'full' && (
-                                    <div className="text-xs text-red-700 font-medium">
-                                      ⚠️ Full business closure expected
-                                    </div>
-                                  )}
-                                  {recommendation.holidayRestrictions.venue_closure_expected && (
-                                    <div className="text-xs text-red-700 font-medium">
-                                      ⚠️ Venues may be closed
+                                  
+                                  {/* Impact Warnings */}
+                                  <div className="space-y-1">
+                                    {recommendation.holidayRestrictions.business_impact === 'full' && (
+                                      <div className="text-xs text-red-700 font-medium bg-red-50 p-2 rounded">
+                                        🚫 <strong>Full Business Closure:</strong> All businesses and venues are typically closed on this date
+                                      </div>
+                                    )}
+                                    {recommendation.holidayRestrictions.business_impact === 'partial' && (
+                                      <div className="text-xs text-yellow-700 font-medium bg-yellow-50 p-2 rounded">
+                                        ⚠️ <strong>Partial Business Impact:</strong> Some businesses may have reduced hours or be closed
+                                      </div>
+                                    )}
+                                    {recommendation.holidayRestrictions.venue_closure_expected && (
+                                      <div className="text-xs text-red-700 font-medium bg-red-50 p-2 rounded">
+                                        🏢 <strong>Venue Availability:</strong> Most venues are likely to be closed or have limited availability
+                                      </div>
+                                    )}
+                                  </div>
+                                  
+                                  {/* General Impact Message */}
+                                  {(recommendation.holidayRestrictions.holidays?.length > 0 || 
+                                    recommendation.holidayRestrictions.cultural_events?.length > 0) && (
+                                    <div className="text-xs text-orange-700 mt-2 p-2 bg-orange-100 rounded">
+                                      💡 <strong>Impact on Your Event:</strong> These holidays and cultural events may significantly affect attendance and venue availability. Consider alternative dates for better turnout.
                                     </div>
                                   )}
                                 </div>
