@@ -331,15 +331,23 @@ export class PredictHQService {
       if (extractedCity) {
         actualEventCity = extractedCity;
         console.log(`🇨🇿 PredictHQ: Extracted city "${extractedCity}" from Czech event title "${phqEvent.title}"`);
-      } else if (requestedCity) {
-        // If we're searching for a specific Czech city and this is a Czech event,
-        // use the requested city as the most likely location
-        actualEventCity = requestedCity;
-        console.log(`🇨🇿 PredictHQ: Using requested city "${requestedCity}" for Czech event "${phqEvent.title}" (no city info available)`);
       } else {
-        // Last resort: mark as Czech Republic (will be handled by location filter)
-        actualEventCity = 'Czech Republic';
-        console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" has no city info and couldn't extract from title`);
+        // ENHANCED: Check if this looks like an international conference
+        const isInternationalConference = this.isInternationalConference(phqEvent.title, phqEvent.description);
+        
+        if (isInternationalConference) {
+          // For international conferences, be more conservative - don't assume location
+          actualEventCity = 'Czech Republic';
+          console.log(`🌍 PredictHQ: International conference "${phqEvent.title}" detected - marking as Czech Republic (not assigning to requested city)`);
+        } else if (requestedCity && this.isLikelyLocalEvent(phqEvent, requestedCity)) {
+          // Only use requested city for events that are clearly local
+          actualEventCity = requestedCity;
+          console.log(`🇨🇿 PredictHQ: Using requested city "${requestedCity}" for local Czech event "${phqEvent.title}"`);
+        } else {
+          // Conservative fallback: mark as Czech Republic
+          actualEventCity = 'Czech Republic';
+          console.log(`🇨🇿 PredictHQ: Czech event "${phqEvent.title}" has no city info - marking as Czech Republic (not assigning to requested city)`);
+        }
       }
     }
     // Sixth priority: mark foreign events
@@ -494,6 +502,70 @@ export class PredictHQService {
     }
 
     return null;
+  }
+
+  /**
+   * Check if an event is likely an international conference
+   */
+  private isInternationalConference(title: string, description?: string): boolean {
+    const text = `${title} ${description || ''}`.toLowerCase();
+    
+    // International conference indicators
+    const internationalKeywords = [
+      'international', 'global', 'world', 'european', 'europe', 'euro',
+      'conference', 'congress', 'summit', 'forum', 'symposium', 'workshop',
+      'annual conference', 'annual meeting', 'scientific conference',
+      'business forum', 'tech conference', 'industry conference'
+    ];
+    
+    // Check for international keywords
+    const hasInternationalKeywords = internationalKeywords.some(keyword => 
+      text.includes(keyword)
+    );
+    
+    // Check for specific patterns that indicate international events
+    const hasInternationalPatterns = 
+      /international.*conference/i.test(text) ||
+      /global.*forum/i.test(text) ||
+      /european.*summit/i.test(text) ||
+      /world.*congress/i.test(text) ||
+      /annual.*conference/i.test(text);
+    
+    return hasInternationalKeywords || hasInternationalPatterns;
+  }
+
+  /**
+   * Check if an event is likely local to the requested city
+   */
+  private isLikelyLocalEvent(phqEvent: PredictHQEvent, requestedCity: string): boolean {
+    const title = phqEvent.title.toLowerCase();
+    const description = (phqEvent.description || '').toLowerCase();
+    const venueName = (phqEvent.location?.name || phqEvent.place?.name || '').toLowerCase();
+    const text = `${title} ${description} ${venueName}`;
+    
+    const normalizedRequestedCity = requestedCity.toLowerCase();
+    
+    // Check if the event title, description, or venue contains the requested city
+    const containsRequestedCity = text.includes(normalizedRequestedCity) ||
+                                 text.includes('brno') || text.includes('prague') || text.includes('ostrava');
+    
+    // Check for local event indicators
+    const hasLocalIndicators = 
+      text.includes('local') ||
+      text.includes('community') ||
+      text.includes('regional') ||
+      text.includes('městský') || // Czech for "city"
+      text.includes('brněnský') || // Czech for "Brno"
+      text.includes('pražský'); // Czech for "Prague"
+    
+    // Check if venue name suggests it's in the requested city
+    const venueSuggestsCity = venueName && (
+      venueName.includes(normalizedRequestedCity) ||
+      venueName.includes('brno') ||
+      venueName.includes('prague')
+    );
+    
+    return containsRequestedCity || hasLocalIndicators || venueSuggestsCity;
   }
 
   /**

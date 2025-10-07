@@ -1848,6 +1848,36 @@ export class ConflictAnalysisService {
   }
 
   /**
+   * Check if an event is likely an international conference
+   */
+  private isInternationalConference(title: string, description?: string): boolean {
+    const text = `${title} ${description || ''}`.toLowerCase();
+    
+    // International conference indicators
+    const internationalKeywords = [
+      'international', 'global', 'world', 'european', 'europe', 'euro',
+      'conference', 'congress', 'summit', 'forum', 'symposium', 'workshop',
+      'annual conference', 'annual meeting', 'scientific conference',
+      'business forum', 'tech conference', 'industry conference'
+    ];
+    
+    // Check for international keywords
+    const hasInternationalKeywords = internationalKeywords.some(keyword => 
+      text.includes(keyword)
+    );
+    
+    // Check for specific patterns that indicate international events
+    const hasInternationalPatterns = 
+      /international.*conference/i.test(text) ||
+      /global.*forum/i.test(text) ||
+      /european.*summit/i.test(text) ||
+      /world.*congress/i.test(text) ||
+      /annual.*conference/i.test(text);
+    
+    return hasInternationalKeywords || hasInternationalPatterns;
+  }
+
+  /**
    * Filter events by location to remove events from distant cities
    * Uses LLM-based city recognition for intelligent matching
    */
@@ -1969,6 +1999,12 @@ export class ConflictAnalysisService {
             console.log(`✅ Event "${event.title}" from "Czech Republic" matched by ${hasTargetCityInVenue ? 'venue' : hasTargetCityInTitle ? 'title' : 'known venue'} for city "${targetCity}"`);
             return true;
           }
+        }
+        
+        // ENHANCED: Check for international conferences that might be incorrectly assigned
+        if (!isMatchingCity && this.isInternationalConference(event.title, event.description)) {
+          console.log(`🌍 Location filter: International conference "${event.title}" detected - likely not in target city "${normalizedTargetCity}"`);
+          return false;
         }
         
         // Debug: Log foreign events
