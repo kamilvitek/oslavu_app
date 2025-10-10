@@ -133,5 +133,10 @@ INSERT INTO scraper_sources (name, url, type, config) VALUES
   ('Navystavisti Program Page 3', 'https://navystavisti.cz/program/?stranka=3', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('Navystavisti Program Page 4', 'https://navystavisti.cz/program/?stranka=4', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('Navystavisti Program Page 5', 'https://navystavisti.cz/program/?stranka=5', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
-  ('Navystavisti Program Page 6', 'https://navystavisti.cz/program/?stranka=6', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
+  ('Navystavisti Program Page 6', 'https://navystavisti.cz/program/?stranka=6', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Velryba Koncerty', 'https://www.velryba.cz/koncerty', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Pragokoncert', 'https://www.pragokoncert.com/cs/koncerty', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Masters of Rock Cafe', 'https://www.mastersofrockcafe.cz/cs/koncerty/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Reduta Jazz Club', 'https://www.redutajazzclub.cz/program-cs', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Guarant Event Calendar', 'https://guarant.cz/en/event-calendar-2/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
 ON CONFLICT DO NOTHING;
