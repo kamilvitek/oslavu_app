@@ -120,7 +120,9 @@ export function sanitizeCityName(input: unknown): SanitizationResult<string> {
   }
 
   // Additional city-specific validation
-  const cityPattern = /^[a-zA-Z\s\-'\.]+$/;
+  // Updated pattern to support international city names with accented characters
+  // Using Unicode property escapes for better international support
+  const cityPattern = /^[\p{L}\s\-'\.]+$/u;
   if (!cityPattern.test(result.sanitizedValue)) {
     result.errors.push('City name contains invalid characters');
     result.isValid = false;
