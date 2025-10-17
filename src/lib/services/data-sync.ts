@@ -111,7 +111,7 @@ export class DataSyncService {
       this.updateSyncStatus('ticketmaster', 'in_progress', 0, []);
 
       // Get events from major cities for the next 6 months
-      const cities = ['Prague', 'Brno', 'Ostrava', 'Olomouc', 'Plzen'];
+      const cities = ['Prague', 'Brno', 'Ostrava', 'Olomouc', 'Plzen', 'Liberec', 'Hradec Králové'];
       const allEvents: CreateEventData[] = [];
       
       const startDate = new Date().toISOString().split('T')[0];
@@ -199,7 +199,7 @@ export class DataSyncService {
       this.updateSyncStatus('predicthq', 'in_progress', 0, []);
 
       // Get events from major cities for the next 6 months
-      const cities = ['Prague', 'Brno', 'Ostrava', 'Olomouc', 'Plzen'];
+      const cities = ['Prague', 'Brno', 'Ostrava', 'Olomouc', 'Plzen', 'Hradec Králové', 'Liberec', 'Pardubice', 'Zlín', 'Havířov', 'Kladno', 'Most', 'Karlovy Vary', 'Jihlava', 'Třebíč', 'Jablonec nad Nisou', 'Mělník', 'Nový Jičín', 'Frýdek-Místek', 'Opava', 'Děčín', 'Zlín', 'Chrudim', 'Trutnov', 'Mladá Boleslav', 'Příbram', 'Byškovice', 'Jindřichův Hradec', 'Nový Jičín'];
       const allEvents: CreateEventData[] = [];
       
       const startDate = new Date().toISOString().split('T')[0];
