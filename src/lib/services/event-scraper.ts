@@ -42,11 +42,12 @@ export class EventScraperService {
   private openai: OpenAI;
   private db = serverDatabaseService;
   
-  // Rate limiting properties (max 10 requests/minute to Firecrawl)
+  // Enhanced rate limiting properties
   private lastRequestTime = 0;
-  private readonly minRequestInterval = 6000; // 6 seconds = 10 requests per minute
+  private readonly minRequestInterval = 8000; // 8 seconds = 7.5 requests per minute (more conservative)
   private requestCount = 0;
-  private dailyRequestLimit = 100; // Conservative daily limit
+  private dailyRequestLimit = 50; // More conservative daily limit for Czech sources
+  private readonly czechSourceDelay = 12000; // 12 seconds for Czech sources (Kudyznudy)
 
   constructor() {
     const firecrawlApiKey = process.env.FIRECRAWL_API_KEY;
@@ -189,8 +190,8 @@ export class EventScraperService {
     console.log(`🔍 Scraping with Firecrawl: ${source.url}`);
     
     try {
-      // Rate limiting
-      await this.enforceRateLimit();
+      // Rate limiting with source-specific delays
+      await this.enforceRateLimit(source.name);
       
       const scrapeResult: any = await this.firecrawl.scrape(source.url, {
         formats: ['markdown'],
@@ -251,48 +252,53 @@ export class EventScraperService {
   }
 
   /**
-   * Extract events from HTML content using GPT-4
+   * Extract events from HTML content using GPT-4o-mini (cheapest model) with Czech language support
    */
   private async extractEventsWithGPT(content: string, sourceName: string): Promise<ScrapedEvent[]> {
-    console.log(`🤖 Extracting events with GPT-4 from ${sourceName}`);
+    console.log(`🤖 Extracting events with GPT-4o-mini from ${sourceName}`);
     
     try {
       const currentDate = new Date().toISOString().split('T')[0]; // Today's date in YYYY-MM-DD format
+      const isCzechSource = sourceName.toLowerCase().includes('kudyznudy') || sourceName.toLowerCase().includes('czech');
       
       const prompt: string = `Extract event information from the following content. IMPORTANT: Only extract events that are happening on or after ${currentDate} (today is ${currentDate}). Do NOT extract historical events.
 
+${isCzechSource ? 'NOTE: This content is in Czech language. Extract events and translate titles/descriptions to English, but keep Czech city names as they are.' : ''}
+
 Return a JSON array of events with this structure:
 {
-  "title": "Event title",
-  "description": "Event description",
+  "title": "Event title (translate to English if Czech)",
+  "description": "Event description (translate to English if Czech)",
   "date": "YYYY-MM-DD",
   "endDate": "YYYY-MM-DD (optional)",
-  "city": "City name",
-  "venue": "Venue name (optional)",
-  "category": "Event category",
-  "subcategory": "Event subcategory (optional)",
+  "city": "City name (keep original Czech names like Praha, Brno, Ostrava)",
+  "venue": "Venue name (optional, translate to English if Czech)",
+  "category": "Event category (translate to English: festival, koncert->concert, divadlo->theater, sport->sports, kultura->culture)",
+  "subcategory": "Event subcategory (optional, translate to English if Czech)",
   "url": "Event URL (optional)",
   "imageUrl": "Image URL (optional)",
   "expectedAttendees": "Number of expected attendees (optional)"
 }
 
 Content to extract from:
-${content.substring(0, 8000)} // Limit content to avoid token limits
+${content.substring(0, 6000)} // Reduced content limit for cheaper model
 
 IMPORTANT FILTERING RULES:
 - Only extract events with dates >= ${currentDate}
 - Skip any events from previous years or months
 - Focus on current and future events only
 - If an event has no clear date or is clearly historical, skip it
+- For Czech content: translate titles and descriptions to English but keep city names in Czech
+- Map Czech categories: festival->Arts & Culture, koncert->Entertainment, divadlo->Arts & Culture, sport->Sports, kultura->Arts & Culture
 
 Return only valid JSON array. If no current/future events found, return empty array [].`;
 
       const response: any = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o-mini', // Cheapest OpenAI model
         messages: [
           {
             role: 'system',
-            content: 'You are an expert at extracting structured event data from web content. Always return valid JSON arrays.'
+            content: `You are an expert at extracting structured event data from web content in multiple languages. Always return valid JSON arrays. For Czech content, translate titles and descriptions to English but preserve Czech city names.`
           },
           {
             role: 'user',
@@ -300,7 +306,7 @@ Return only valid JSON array. If no current/future events found, return empty ar
           }
         ],
         temperature: 0.1,
-        max_tokens: 4000
+        max_tokens: 3000 // Reduced token limit for cost savings
       });
 
       const responseContent = response.choices[0]?.message?.content;
@@ -603,28 +609,38 @@ Return only valid JSON array. If no current/future events found, return empty ar
   }
 
   /**
-   * Enforce rate limiting
+   * Enforce rate limiting with Czech source support
    */
-  private async enforceRateLimit(): Promise<void> {
+  private async enforceRateLimit(sourceName?: string): Promise<void> {
     // Check daily limit
     if (this.requestCount >= this.dailyRequestLimit) {
       throw new Error(`Daily API request limit of ${this.dailyRequestLimit} exceeded`);
     }
 
+    // Determine delay based on source type
+    const isCzechSource = sourceName && (
+      sourceName.toLowerCase().includes('kudyznudy') || 
+      sourceName.toLowerCase().includes('czech') ||
+      sourceName.toLowerCase().includes('praha') ||
+      sourceName.toLowerCase().includes('brno')
+    );
+    
+    const requiredDelay = isCzechSource ? this.czechSourceDelay : this.minRequestInterval;
+
     // Implement rate limiting
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
     
-    if (timeSinceLastRequest < this.minRequestInterval) {
-      const waitTime = this.minRequestInterval - timeSinceLastRequest;
-      console.log(`🔍 Rate limiting - waiting ${waitTime}ms`);
+    if (timeSinceLastRequest < requiredDelay) {
+      const waitTime = requiredDelay - timeSinceLastRequest;
+      console.log(`🔍 Rate limiting - waiting ${waitTime}ms (${isCzechSource ? 'Czech source' : 'standard'})`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
     
     this.lastRequestTime = Date.now();
     this.requestCount++;
     
-    console.log(`🔍 Making request ${this.requestCount}/${this.dailyRequestLimit}`);
+    console.log(`🔍 Making request ${this.requestCount}/${this.dailyRequestLimit} (${isCzechSource ? 'Czech source' : 'standard'})`);
   }
 
   /**
