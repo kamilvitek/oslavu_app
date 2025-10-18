@@ -781,6 +781,23 @@ INSERT INTO scraper_sources (name, url, type, config) VALUES
   ('Kudyznudy Anniversaries Important Days Page 6', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=6', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('Kudyznudy Anniversaries Important Days Page 7', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=7', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('Kudyznudy Anniversaries Important Days Page 8', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=8', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
-  ('Kudyznudy Anniversaries Important Days Page 9', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=9', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
+  ('Kudyznudy Anniversaries Important Days Page 9', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=9', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 1', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=1', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 2', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=2', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 3', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=3', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 4', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=4', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 5', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=5', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 6', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=6', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 7', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=7', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 8', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=8', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 9', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=9', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 10', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=10', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 11', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=11', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 12', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=12', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 13', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=13', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 14', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=14', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 15', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=15', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 16', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=16', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Exhibitions Long Term Events Page 17', 'https://www.kudyznudy.cz/kalendar-akci/expozice-a-dlouhodobe-akce?stranka=17', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
 ON CONFLICT DO NOTHING;
  
