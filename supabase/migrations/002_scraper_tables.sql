@@ -772,6 +772,15 @@ INSERT INTO scraper_sources (name, url, type, config) VALUES
   ('Kudyznudy Courses Workshops Page 32', 'https://www.kudyznudy.cz/kalendar-akci/kurzy-a-workshopy?stranka=32', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('Kudyznudy Courses Workshops Page 33', 'https://www.kudyznudy.cz/kalendar-akci/kurzy-a-workshopy?stranka=33', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('Kudyznudy Courses Workshops Page 34', 'https://www.kudyznudy.cz/kalendar-akci/kurzy-a-workshopy?stranka=34', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
-  ('Kudyznudy Courses Workshops Page 35', 'https://www.kudyznudy.cz/kalendar-akci/kurzy-a-workshopy?stranka=35', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
+  ('Kudyznudy Courses Workshops Page 35', 'https://www.kudyznudy.cz/kalendar-akci/kurzy-a-workshopy?stranka=35', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Anniversaries Important Days Page 1', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=1', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Anniversaries Important Days Page 2', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=2', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Anniversaries Important Days Page 3', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=3', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Anniversaries Important Days Page 4', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=4', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Anniversaries Important Days Page 5', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=5', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Anniversaries Important Days Page 6', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=6', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Anniversaries Important Days Page 7', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=7', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Anniversaries Important Days Page 8', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=8', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('Kudyznudy Anniversaries Important Days Page 9', 'https://www.kudyznudy.cz/kalendar-akci/vyroci-a-vyznamne-dny?stranka=9', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
 ON CONFLICT DO NOTHING;
  
