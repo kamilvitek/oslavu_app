@@ -1498,10 +1498,9 @@ export class ConflictAnalysisService {
     // Base score for any competing event - increased to catch more events
     eventScore += 5;
     
-    // Higher score for same category - increased to better detect same-category conflicts
-    if (event.category === category) {
-      eventScore += 10;
-    }
+    // Smart category conflict scoring based on audience overlap
+    const categoryConflictScore = this.calculateCategoryConflictScore(event.category, category);
+    eventScore += categoryConflictScore;
     
     // Higher score for events with venues (more significant) - increased
     if (event.venue) {
@@ -1532,6 +1531,64 @@ export class ConflictAnalysisService {
     }
     
     return eventScore;
+  }
+
+  /**
+   * Calculate category conflict score based on audience overlap potential
+   */
+  private calculateCategoryConflictScore(competingCategory: string, plannedCategory: string): number {
+    // Define category relationships and audience overlap potential
+    const categoryRelationships = {
+      // High conflict (same audience, direct competition)
+      'high': {
+        'Entertainment': ['Entertainment', 'Music', 'Arts & Culture'],
+        'Music': ['Entertainment', 'Music'],
+        'Sports': ['Sports'],
+        'Business': ['Business', 'Technology', 'Finance'],
+        'Technology': ['Business', 'Technology'],
+        'Finance': ['Business', 'Finance']
+      },
+      // Medium conflict (some audience overlap, indirect competition)
+      'medium': {
+        'Entertainment': ['Sports'], // Some people attend both
+        'Arts & Culture': ['Entertainment', 'Music'], // Cultural events vs mainstream entertainment
+        'Sports': ['Entertainment'], // Some crossover audience
+        'Business': ['Education'], // Professional development overlap
+        'Technology': ['Education', 'Business'], // Tech education and business events
+        'Education': ['Business', 'Technology'] // Professional development
+      },
+      // Low conflict (minimal audience overlap)
+      'low': {
+        'Entertainment': ['Business', 'Technology', 'Finance', 'Education'],
+        'Sports': ['Business', 'Technology', 'Finance', 'Education'],
+        'Business': ['Entertainment', 'Sports'],
+        'Technology': ['Entertainment', 'Sports'],
+        'Finance': ['Entertainment', 'Sports'],
+        'Education': ['Entertainment', 'Sports']
+      }
+    };
+
+    // Check for exact match (highest conflict)
+    if (competingCategory === plannedCategory) {
+      return 10; // Maximum conflict score
+    }
+
+    // Check for high conflict relationships
+    for (const [conflictLevel, relationships] of Object.entries(categoryRelationships)) {
+      if (relationships[plannedCategory]?.includes(competingCategory)) {
+        switch (conflictLevel) {
+          case 'high':
+            return 8; // High conflict - significant audience overlap
+          case 'medium':
+            return 4; // Medium conflict - some audience overlap
+          case 'low':
+            return 1; // Low conflict - minimal audience overlap
+        }
+      }
+    }
+
+    // No relationship found - minimal conflict
+    return 0;
   }
 
   /**
