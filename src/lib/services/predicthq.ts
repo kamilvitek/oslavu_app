@@ -122,6 +122,9 @@ export class PredictHQService {
 
       const url = `${this.baseUrl}/events/?${searchParams.toString()}`;
       
+      console.log(`🔮 PredictHQ: Making API request to: ${url}`);
+      console.log(`🔮 PredictHQ: Request params:`, Object.fromEntries(searchParams.entries()));
+      
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${this.getApiKey()}`,
@@ -137,6 +140,8 @@ export class PredictHQService {
       }
 
       const data: PredictHQResponse = await response.json();
+      
+      console.log(`🔮 PredictHQ: API Response - Status: ${response.status}, Count: ${data.count}, Results: ${data.results?.length || 0}`);
       
       const events = data.results?.map(event => this.transformEvent(event, params.city, params.category)) || [];
       const total = data.count;
@@ -170,6 +175,11 @@ export class PredictHQService {
     radius: string = '50km',
     category?: string
   ): Promise<Event[]> {
+    // For Entertainment category, use multi-category search
+    if (category === 'Entertainment') {
+      return this.getEntertainmentEventsWithRadius(city, startDate, endDate, radius);
+    }
+    
     const locationParams = this.getCityLocationParams(city);
     
     console.log(`🔮 PredictHQ: Searching ${city} with radius ${radius}`);
@@ -185,6 +195,9 @@ export class PredictHQService {
       // Extract radius value and convert to PredictHQ within format
       const radiusValue = radius.replace('km', '');
       const within = locationParams.place ? `${radiusValue}km@${locationParams.place}` : undefined;
+      
+      console.log(`🔮 PredictHQ: Location params:`, locationParams);
+      console.log(`🔮 PredictHQ: Within parameter: ${within}`);
       
       const { events, total } = await this.getEvents({
         ...locationParams,
@@ -208,6 +221,61 @@ export class PredictHQService {
     
     console.log(`🔮 PredictHQ: Retrieved ${allEvents.length} total events for ${city} with radius ${radius} (${totalAvailable} available)`);
     return allEvents;
+  }
+
+  /**
+   * Get Entertainment events with radius search across multiple PredictHQ categories
+   */
+  private async getEntertainmentEventsWithRadius(
+    city: string,
+    startDate: string,
+    endDate: string,
+    radius: string = '50km'
+  ): Promise<Event[]> {
+    console.log(`🔮 PredictHQ: Searching Entertainment events for ${city} with radius ${radius} across multiple categories`);
+    
+    const entertainmentCategories = ['concerts', 'festivals', 'performing-arts', 'nightlife'];
+    const allEvents: Event[] = [];
+    
+    // Search each category in parallel
+    const searchPromises = entertainmentCategories.map(async (phqCategory) => {
+      try {
+        const locationParams = this.getCityLocationParams(city);
+        const radiusValue = radius.replace('km', '');
+        const within = locationParams.place ? `${radiusValue}km@${locationParams.place}` : undefined;
+        
+        console.log(`🔮 PredictHQ: Searching ${phqCategory} for ${city} with radius ${radius}`);
+        
+        const { events } = await this.getEvents({
+          ...locationParams,
+          within,
+          'start.gte': `${startDate}T00:00:00`,
+          'start.lte': `${endDate}T23:59:59`,
+          category: phqCategory,
+          limit: 200, // Reduced limit per category to avoid overwhelming
+        });
+        
+        console.log(`🔮 PredictHQ: Found ${events.length} ${phqCategory} events`);
+        return events;
+      } catch (error) {
+        console.error(`🔮 PredictHQ: Error searching ${phqCategory}:`, error);
+        return [];
+      }
+    });
+    
+    const results = await Promise.allSettled(searchPromises);
+    
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        allEvents.push(...result.value);
+      }
+    });
+    
+    // Deduplicate events
+    const uniqueEvents = this.deduplicateEvents(allEvents);
+    
+    console.log(`🔮 PredictHQ: Retrieved ${uniqueEvents.length} unique Entertainment events for ${city} with radius ${radius}`);
+    return uniqueEvents;
   }
 
   /**
@@ -606,7 +674,7 @@ export class PredictHQService {
       'Academic': 'academic', // Direct mapping
       
       // Entertainment and culture
-      'Entertainment': 'concerts', // Music and entertainment events
+      'Entertainment': undefined, // Use broader search to include concerts, festivals, performing-arts, nightlife
       'Music': 'concerts', // Direct mapping
       'Arts & Culture': 'festivals', // Cultural festivals and events
       'Film': 'performing-arts', // Film events and screenings
@@ -1236,6 +1304,16 @@ export class PredictHQService {
       parallelStrategies.push(
         this.runStrategy(`Keyword search for "${category}"`, () => this.searchEvents(category, city, startDate, endDate))
       );
+      
+      // For Entertainment category, add specific PredictHQ category searches
+      if (category === 'Entertainment') {
+        parallelStrategies.push(
+          this.runStrategy('Entertainment: Concerts search', () => this.getEventsForCityPaginated(city, startDate, endDate, 'concerts')),
+          this.runStrategy('Entertainment: Festivals search', () => this.getEventsForCityPaginated(city, startDate, endDate, 'festivals')),
+          this.runStrategy('Entertainment: Performing Arts search', () => this.getEventsForCityPaginated(city, startDate, endDate, 'performing-arts')),
+          this.runStrategy('Entertainment: Nightlife search', () => this.getEventsForCityPaginated(city, startDate, endDate, 'nightlife'))
+        );
+      }
     }
     
     const results = await Promise.allSettled(parallelStrategies);
@@ -1249,7 +1327,9 @@ export class PredictHQService {
         strategyResults.push({ strategy, events: events.length, time });
         console.log(`🔮 PredictHQ: ${strategy} found ${events.length} events in ${time}ms`);
       } else {
-        const strategyNames = ['City-based search', 'High attendance events (1000+ attendees)', 'High local rank events (rank 50+)', `Keyword search for "${category}"`];
+        const strategyNames = category === 'Entertainment' 
+          ? ['City-based search', 'High attendance events (1000+ attendees)', 'High local rank events (rank 50+)', `Keyword search for "${category}"`, 'Entertainment: Concerts search', 'Entertainment: Festivals search', 'Entertainment: Performing Arts search', 'Entertainment: Nightlife search']
+          : ['City-based search', 'High attendance events (1000+ attendees)', 'High local rank events (rank 50+)', `Keyword search for "${category}"`];
         console.error(`🔮 PredictHQ: ${strategyNames[index]} failed:`, result.reason);
         strategyResults.push({ strategy: strategyNames[index], events: 0, time: 0 });
       }
