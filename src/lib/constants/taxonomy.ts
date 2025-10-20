@@ -117,7 +117,7 @@ export function getCategorySynonyms(category: string): string[] {
   ) as TaxonomyCategory;
   
   if (normalizedCategory) {
-    return UNIFIED_TAXONOMY[normalizedCategory].synonyms;
+    return [...UNIFIED_TAXONOMY[normalizedCategory].synonyms];
   }
   
   return [category]; // Return original if not found
@@ -142,7 +142,7 @@ export function getProviderCategories(category: string, provider: 'ticketmaster'
   const config = UNIFIED_TAXONOMY[normalizedCategory as TaxonomyCategory];
   
   if (config && config.providerMappings[provider]) {
-    return config.providerMappings[provider];
+    return [...config.providerMappings[provider]];
   }
   
   return [category]; // Fallback to original

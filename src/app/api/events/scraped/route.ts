@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
     // Apply AI normalization
     const normalizedEvents = await aiNormalizationService.normalizeEvents(rawEvents);
     
-    // Transform to expected format
+    // Transform to expected format with backward compatibility
     const transformedEvents = normalizedEvents.map(event => ({
       id: event.id,
       title: event.title,
@@ -159,11 +159,11 @@ export async function GET(request: NextRequest) {
       sourceId: event.sourceId,
       url: event.url,
       imageUrl: event.imageUrl,
-      createdAt: event.rawData.createdAt || new Date().toISOString(),
-      updatedAt: event.rawData.updatedAt || new Date().toISOString(),
-      // Add AI metadata
-      confidence: event.confidence,
-      normalized: true
+      createdAt: (event.rawData as any).createdAt || new Date().toISOString(),
+      updatedAt: (event.rawData as any).updatedAt || new Date().toISOString(),
+      // Add AI metadata (optional for backward compatibility)
+      ...(event.confidence && { confidence: event.confidence }),
+      ...(event.confidence && { normalized: true })
     }));
     
     const response = {

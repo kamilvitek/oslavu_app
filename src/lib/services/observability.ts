@@ -38,38 +38,12 @@ export class ObservabilityService {
     try {
       const client = serverDatabaseService.getClient();
       
-      // Get basic counts by source
-      const { data: sourceCounts, error: countError } = await client
+      // Get all events to calculate metrics manually
+      const { data: allEvents, error: eventsError } = await client
         .from('events')
-        .select('source, count(*)')
-        .group('source');
+        .select('source, normalized_category, normalized_city, confidence_score, normalization_method');
       
-      if (countError) throw countError;
-      
-      // Get normalization stats
-      const { data: normalizationStats, error: normError } = await client
-        .from('events')
-        .select('source, confidence_score, normalization_method')
-        .not('confidence_score', 'is', null);
-      
-      if (normError) throw normError;
-      
-      // Get category and city distributions
-      const { data: categoryStats, error: catError } = await client
-        .from('events')
-        .select('source, normalized_category, count(*)')
-        .not('normalized_category', 'is', null)
-        .group('source, normalized_category');
-      
-      if (catError) throw catError;
-      
-      const { data: cityStats, error: cityError } = await client
-        .from('events')
-        .select('source, normalized_city, count(*)')
-        .not('normalized_city', 'is', null)
-        .group('source, normalized_city');
-      
-      if (cityError) throw cityError;
+      if (eventsError) throw eventsError;
       
       // Get last sync times
       const { data: syncStats, error: syncError } = await client
@@ -81,14 +55,14 @@ export class ObservabilityService {
       if (syncError) throw syncError;
       
       // Process and aggregate data
-      const metrics: SourceMetrics[] = [];
       const sourceMap = new Map<string, SourceMetrics>();
       
       // Initialize metrics for each source
-      sourceCounts?.forEach(({ source, count }) => {
+      const sources = [...new Set(allEvents?.map(e => e.source) || [])];
+      sources.forEach(source => {
         sourceMap.set(source, {
           source,
-          totalEvents: parseInt(count as string),
+          totalEvents: 0,
           normalizedEvents: 0,
           avgConfidence: 0,
           lastSync: null,
@@ -98,12 +72,24 @@ export class ObservabilityService {
         });
       });
       
-      // Add normalization data
-      normalizationStats?.forEach(({ source, confidence_score, normalization_method }) => {
-        const metric = sourceMap.get(source);
+      // Process events
+      allEvents?.forEach(event => {
+        const metric = sourceMap.get(event.source);
         if (metric) {
-          metric.normalizedEvents++;
-          metric.avgConfidence += confidence_score || 0;
+          metric.totalEvents++;
+          
+          if (event.confidence_score) {
+            metric.normalizedEvents++;
+            metric.avgConfidence += event.confidence_score;
+          }
+          
+          if (event.normalized_category) {
+            metric.categories[event.normalized_category] = (metric.categories[event.normalized_category] || 0) + 1;
+          }
+          
+          if (event.normalized_city) {
+            metric.cities[event.normalized_city] = (metric.cities[event.normalized_city] || 0) + 1;
+          }
         }
       });
       
@@ -111,22 +97,6 @@ export class ObservabilityService {
       sourceMap.forEach(metric => {
         if (metric.normalizedEvents > 0) {
           metric.avgConfidence = metric.avgConfidence / metric.normalizedEvents;
-        }
-      });
-      
-      // Add category distributions
-      categoryStats?.forEach(({ source, normalized_category, count }) => {
-        const metric = sourceMap.get(source);
-        if (metric) {
-          metric.categories[normalized_category] = parseInt(count as string);
-        }
-      });
-      
-      // Add city distributions
-      cityStats?.forEach(({ source, normalized_city, count }) => {
-        const metric = sourceMap.get(source);
-        if (metric) {
-          metric.cities[normalized_city] = parseInt(count as string);
         }
       });
       

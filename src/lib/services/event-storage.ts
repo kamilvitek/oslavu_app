@@ -283,7 +283,7 @@ export class EventStorageService {
   }
 
   /**
-   * Get events by city with optional date filtering
+   * Get events by city with AI normalization support
    */
   async getEventsByCity(
     city: string,
@@ -291,15 +291,22 @@ export class EventStorageService {
     endDate?: string,
     category?: string,
     limit: number = 50,
-    offset: number = 0
+    offset: number = 0,
+    useNormalized: boolean = true
   ): Promise<DatabaseEvent[]> {
     try {
       let query = this.db.getClient()
         .from('events')
         .select('*')
-        .eq('city', city)
         .order('date', { ascending: true })
         .range(offset, offset + limit - 1);
+
+      // Use normalized city if available, fallback to original
+      if (useNormalized) {
+        query = query.or(`normalized_city.ilike.%${city}%,city.ilike.%${city}%`);
+      } else {
+        query = query.eq('city', city);
+      }
 
       if (startDate) {
         query = query.gte('date', startDate);
@@ -310,7 +317,12 @@ export class EventStorageService {
       }
 
       if (category) {
-        query = query.eq('category', category);
+        // Use normalized category if available, fallback to original
+        if (useNormalized) {
+          query = query.or(`normalized_category.eq.${category},category.eq.${category}`);
+        } else {
+          query = query.eq('category', category);
+        }
       }
 
       const { data, error } = await this.db.executeWithRetry(async () => {
@@ -330,7 +342,7 @@ export class EventStorageService {
   }
 
   /**
-   * Get events by category
+   * Get events by category with AI normalization support
    */
   async getEventsByCategory(
     category: string,
@@ -338,18 +350,30 @@ export class EventStorageService {
     startDate?: string,
     endDate?: string,
     limit: number = 50,
-    offset: number = 0
+    offset: number = 0,
+    useNormalized: boolean = true
   ): Promise<DatabaseEvent[]> {
     try {
       let query = this.db.getClient()
         .from('events')
         .select('*')
-        .eq('category', category)
         .order('date', { ascending: true })
         .range(offset, offset + limit - 1);
 
+      // Use normalized category if available, fallback to original
+      if (useNormalized) {
+        query = query.or(`normalized_category.eq.${category},category.eq.${category}`);
+      } else {
+        query = query.eq('category', category);
+      }
+
       if (city) {
-        query = query.eq('city', city);
+        // Use normalized city if available, fallback to original
+        if (useNormalized) {
+          query = query.or(`normalized_city.ilike.%${city}%,city.ilike.%${city}%`);
+        } else {
+          query = query.ilike('city', `%${city}%`);
+        }
       }
 
       if (startDate) {
