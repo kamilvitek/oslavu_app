@@ -254,7 +254,7 @@ function calculateCategoryConflictScore(competingCategory: string, plannedCatego
 
   // Check for high conflict relationships
   for (const [conflictLevel, relationships] of Object.entries(categoryRelationships)) {
-    if (relationships[plannedCategory]?.includes(competingCategory)) {
+    if ((relationships as Record<string, string[]>)[plannedCategory]?.includes(competingCategory)) {
       switch (conflictLevel) {
         case 'high':
           return 8; // High conflict - significant audience overlap
