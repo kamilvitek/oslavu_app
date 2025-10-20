@@ -508,7 +508,7 @@ export class ConflictAnalysisService {
       endDate: params.dateRangeEnd,
       category: params.category,
       size: '25', // Reduced from 50 for faster responses
-      useComprehensiveFallback: params.useComprehensiveFallback !== false ? 'true' : 'false' // Default to true for better event discovery
+      useComprehensiveFallback: 'true' // Always use comprehensive fallback for better event discovery
     });
 
     // Add radius only for PredictHQ (Ticketmaster city variations work better without radius)

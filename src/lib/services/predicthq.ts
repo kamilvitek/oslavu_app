@@ -66,6 +66,7 @@ interface PredictHQSearchParams {
   city?: string;
   place?: string;
   'place.scope'?: string;
+  within?: string;
   'start.gte'?: string;
   'start.lte'?: string;
   'end.gte'?: string;
@@ -181,9 +182,13 @@ export class PredictHQService {
     while (true) {
       console.log(`🔮 PredictHQ: Fetching offset ${offset} for ${city} (radius: ${radius})`);
       
+      // Extract radius value and convert to PredictHQ within format
+      const radiusValue = radius.replace('km', '');
+      const within = locationParams.place ? `${radiusValue}km@${locationParams.place}` : undefined;
+      
       const { events, total } = await this.getEvents({
         ...locationParams,
-        city: city, // Pass the city parameter for proper transformation
+        within, // Add proper radius constraint
         'start.gte': `${startDate}T00:00:00`,
         'start.lte': `${endDate}T23:59:59`,
         category: category ? this.mapCategoryToPredictHQ(category) : undefined,

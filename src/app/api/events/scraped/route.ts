@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { serverDatabaseService } from '@/lib/supabase';
 import { sanitizeApiParameters } from '@/lib/utils/input-sanitization';
+import { getCategorySynonyms, normalizeCategory } from '@/lib/constants/taxonomy';
+import { aiNormalizationService } from '@/lib/services/ai-normalization';
 
 // Helper function to create responses with proper headers
 function createResponse(data: any, options: { status?: number } = {}) {
@@ -82,7 +84,15 @@ export async function GET(request: NextRequest) {
     }
     
     if (category) {
-      query = query.eq('category', category);
+      // Use AI-first category matching with synonyms
+      const normalizedCategory = normalizeCategory(category);
+      const synonyms = getCategorySynonyms(normalizedCategory);
+      
+      // Build OR condition for category matching
+      const categoryConditions = synonyms.map(syn => `category.ilike.%${syn}%`).join(',');
+      query = query.or(categoryConditions);
+      
+      console.log(`🔍 Using AI-normalized category matching: ${category} -> ${normalizedCategory} (${synonyms.length} synonyms)`);
     }
     
     if (search) {
@@ -112,8 +122,8 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    // Transform events to match expected format
-    const transformedEvents = (events || []).map(event => ({
+    // Transform and normalize events using AI
+    const rawEvents = (events || []).map(event => ({
       id: event.id,
       title: event.title,
       description: event.description,
@@ -127,9 +137,33 @@ export async function GET(request: NextRequest) {
       source: event.source,
       sourceId: event.source_id,
       url: event.url,
-      imageUrl: event.image_url,
-      createdAt: event.created_at,
-      updatedAt: event.updated_at
+      imageUrl: event.image_url
+    }));
+
+    // Apply AI normalization
+    const normalizedEvents = await aiNormalizationService.normalizeEvents(rawEvents);
+    
+    // Transform to expected format
+    const transformedEvents = normalizedEvents.map(event => ({
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      date: event.date,
+      endDate: event.endDate,
+      city: event.city,
+      venue: event.venue,
+      category: event.category,
+      subcategory: event.subcategory,
+      expectedAttendees: event.expectedAttendees,
+      source: event.source,
+      sourceId: event.sourceId,
+      url: event.url,
+      imageUrl: event.imageUrl,
+      createdAt: event.rawData.createdAt || new Date().toISOString(),
+      updatedAt: event.rawData.updatedAt || new Date().toISOString(),
+      // Add AI metadata
+      confidence: event.confidence,
+      normalized: true
     }));
     
     const response = {
