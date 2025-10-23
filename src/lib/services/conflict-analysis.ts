@@ -815,7 +815,7 @@ export class ConflictAnalysisService {
       console.log(`Analyzing date range ${index + 1}/${potentialDates.length}: ${dateRange.startDate} to ${dateRange.endDate}`);
       
       // Use optimized conflict detection
-      const competingEvents = this.findCompetingEventsOptimized(
+      const competingEvents = await this.findCompetingEventsOptimized(
         dateRange.startDate,
         dateRange.endDate,
         params
@@ -901,7 +901,7 @@ export class ConflictAnalysisService {
       const dateRange = potentialDates[i];
       const dateStartTime = Date.now();
       console.log(`Analyzing date range ${i + 1}/${potentialDates.length}: ${dateRange.startDate} to ${dateRange.endDate}`);
-      const competingEvents = this.findCompetingEvents(
+      const competingEvents = await this.findCompetingEvents(
         dateRange.startDate,
         dateRange.endDate,
         events,
@@ -1107,11 +1107,11 @@ export class ConflictAnalysisService {
   /**
    * Find competing events using optimized data structures
    */
-  private findCompetingEventsOptimized(
+  private async findCompetingEventsOptimized(
     startDate: string,
     endDate: string,
     params: ConflictAnalysisParams
-  ): Event[] {
+  ): Promise<Event[]> {
     if (!this.eventIndex) {
       console.warn('Event index not available, falling back to legacy method');
       return [];
@@ -1138,8 +1138,7 @@ export class ConflictAnalysisService {
       }
     }
     
-    // For conflict analysis, be more lenient - consider all events in the city during the date range
-    // as potential competitors, not just same category
+    // For conflict analysis, use audience overlap to determine significance
     const filteredEventIds = new Set<string>();
     for (const eventId of competingEventIds) {
       const event = this.eventIndex.events.get(eventId);
@@ -1149,16 +1148,16 @@ export class ConflictAnalysisService {
       const sameCategory = event.category === params.category || 
                           this.isRelatedCategory(event.category, params.category);
       
-      // Check if it's a significant event (has venue, good attendance potential)
-      const isSignificant = event.venue && event.venue.length > 0;
+      // Use audience overlap analysis to determine if event is significant
+      const isSignificant = await this.isEventSignificant(event, params);
       
       // Check if it has substantial expected attendance
       const hasAttendance = event.expectedAttendees && event.expectedAttendees > 50;
       
       // More restrictive matching - only include events that are:
       // 1. Same/related category (primary criteria), OR
-      // 2. Significant events in related categories (secondary criteria)
-      // This prevents sports events from conflicting with business events
+      // 2. Significant events based on audience overlap (secondary criteria)
+      // This prevents irrelevant events like school balls from conflicting with rock concerts
       const isCompeting = sameCategory || (isSignificant && this.isRelatedCategory(event.category, params.category));      
       if (isCompeting) {
         filteredEventIds.add(eventId);
@@ -1203,12 +1202,12 @@ export class ConflictAnalysisService {
   /**
    * Find events that compete with the proposed date range (legacy method)
    */
-  private findCompetingEvents(
+  private async findCompetingEvents(
     startDate: string,
     endDate: string,
     events: Event[],
     params: ConflictAnalysisParams
-  ): Event[] {
+  ): Promise<Event[]> {
     const start = new Date(startDate);
     const end = new Date(endDate);
 
@@ -1977,6 +1976,56 @@ export class ConflictAnalysisService {
     };
 
     return ticketmasterExpansions[primaryCategory] || [primaryCategory];
+  }
+
+  /**
+   * Check if an event is significant for conflict analysis using audience overlap
+   */
+  private async isEventSignificant(event: Event, params: ConflictAnalysisParams): Promise<boolean> {
+    // Create a mock planned event for comparison
+    const plannedEvent: Event = {
+      id: 'planned_event',
+      title: 'Planned Event',
+      date: params.startDate,
+      city: params.city,
+      category: params.category,
+      subcategory: params.subcategory,
+      expectedAttendees: params.expectedAttendees,
+      source: 'manual',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      // Quick audience overlap check with timeout
+      const overlap = await Promise.race([
+        audienceOverlapService.predictAudienceOverlap(plannedEvent, event),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Overlap analysis timeout')), 3000) // 3 second timeout
+        )
+      ]) as any;
+
+      // Event is significant if audience overlap is > 20%
+      const isSignificant = overlap.overlapScore > 0.2;
+      
+      if (isSignificant) {
+        console.log(`🎯 Event "${event.title}" is significant: ${(overlap.overlapScore * 100).toFixed(1)}% audience overlap`);
+      } else {
+        console.log(`🚫 Event "${event.title}" is not significant: ${(overlap.overlapScore * 100).toFixed(1)}% audience overlap (too low)`);
+      }
+      
+      return isSignificant;
+    } catch (error) {
+      // Fallback to basic criteria if overlap analysis fails
+      console.log(`⚠️ Audience overlap analysis failed for "${event.title}", using fallback criteria`);
+      
+      // Fallback: Use venue + size + category criteria
+      const hasVenue = Boolean(event.venue && event.venue.length > 0);
+      const hasSize = Boolean(event.expectedAttendees && event.expectedAttendees > 100);
+      const isSameCategory = event.category === params.category;
+      
+      return hasVenue && (hasSize || isSameCategory);
+    }
   }
 
   /**
