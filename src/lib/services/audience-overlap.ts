@@ -1,25 +1,58 @@
 // src/lib/services/audience-overlap.ts
 import { Event } from '@/types';
 import { AudienceProfile, AudienceOverlapPrediction, EventAudienceProfile } from '@/types/audience';
+import { calculateSubcategoryOverlap } from '@/lib/constants/subcategory-taxonomy';
+import { audienceOverlapCacheService, OverlapCacheKey } from './audience-overlap-cache';
 
 export class AudienceOverlapService {
   private readonly baseUrl = '/api/audience';
 
   /**
-   * Predict audience overlap between two events
+   * Predict audience overlap between two events with subcategory awareness
    */
   async predictAudienceOverlap(
     event1: Event,
     event2: Event
   ): Promise<AudienceOverlapPrediction> {
     try {
+      // Check cache first
+      const cacheKey: OverlapCacheKey = {
+        category1: event1.category,
+        subcategory1: event1.subcategory || null,
+        category2: event2.category,
+        subcategory2: event2.subcategory || null
+      };
+
+      const cachedResult = await audienceOverlapCacheService.getCachedOverlap(cacheKey);
+      if (cachedResult) {
+        return {
+          overlapScore: cachedResult.overlapScore,
+          confidence: cachedResult.confidence,
+          factors: {
+            demographicSimilarity: cachedResult.overlapScore * 0.3,
+            interestAlignment: cachedResult.overlapScore * 0.4,
+            behaviorPatterns: cachedResult.overlapScore * 0.2,
+            historicalPreference: cachedResult.overlapScore * 0.1
+          },
+          reasoning: cachedResult.reasoning
+        };
+      }
+
+      // Calculate subcategory-based overlap first
+      const subcategoryOverlap = calculateSubcategoryOverlap(
+        event1.category,
+        event1.subcategory || null,
+        event2.category,
+        event2.subcategory || null
+      );
+
       // Get audience profiles for both events
       const [profile1, profile2] = await Promise.all([
         this.getEventAudienceProfile(event1),
         this.getEventAudienceProfile(event2)
       ]);
 
-      // Calculate overlap factors
+      // Calculate traditional overlap factors
       const demographicSimilarity = this.calculateDemographicSimilarity(
         profile1.expectedAudience,
         profile2.expectedAudience
@@ -40,27 +73,35 @@ export class AudienceOverlapService {
         profile2.expectedAudience
       );
 
-      // Calculate weighted overlap score
-      const overlapScore = this.calculateWeightedOverlap({
+      // Combine subcategory overlap with traditional factors
+      const traditionalOverlap = this.calculateWeightedOverlap({
         demographicSimilarity,
         interestAlignment,
         behaviorPatterns,
         historicalPreference
       });
+
+      // Weight subcategory overlap more heavily (70%) than traditional factors (30%)
+      const finalOverlapScore = (subcategoryOverlap * 0.7) + (traditionalOverlap * 0.3);
 
       // Generate reasoning
-      const reasoning = this.generateOverlapReasoning({
-        demographicSimilarity,
-        interestAlignment,
-        behaviorPatterns,
-        historicalPreference
-      });
+      const reasoning = this.generateSubcategoryAwareReasoning(
+        subcategoryOverlap,
+        {
+          demographicSimilarity,
+          interestAlignment,
+          behaviorPatterns,
+          historicalPreference
+        },
+        event1,
+        event2
+      );
 
-      // Calculate confidence based on data quality
-      const confidence = this.calculateConfidence(profile1, profile2);
+      // Calculate confidence based on data quality and subcategory availability
+      const confidence = this.calculateEnhancedConfidence(profile1, profile2, event1, event2);
 
-      return {
-        overlapScore,
+      const result = {
+        overlapScore: finalOverlapScore,
         confidence,
         factors: {
           demographicSimilarity,
@@ -70,6 +111,17 @@ export class AudienceOverlapService {
         },
         reasoning
       };
+
+      // Cache the result
+      await audienceOverlapCacheService.cacheOverlapResult(
+        cacheKey,
+        finalOverlapScore,
+        confidence,
+        reasoning,
+        'rule_based'
+      );
+
+      return result;
     } catch (error) {
       console.error('Error predicting audience overlap:', error);
       // Return default low overlap if error occurs
@@ -415,7 +467,71 @@ export class AudienceOverlapService {
   }
 
   /**
-   * Generate human-readable reasoning for overlap prediction
+   * Generate subcategory-aware reasoning for overlap prediction
+   */
+  private generateSubcategoryAwareReasoning(
+    subcategoryOverlap: number,
+    factors: {
+      demographicSimilarity: number;
+      interestAlignment: number;
+      behaviorPatterns: number;
+      historicalPreference: number;
+    },
+    event1: Event,
+    event2: Event
+  ): string[] {
+    const reasoning: string[] = [];
+
+    // Subcategory-based reasoning
+    if (event1.subcategory && event2.subcategory) {
+      if (event1.subcategory === event2.subcategory) {
+        reasoning.push(`Both events are ${event1.subcategory} - very high audience overlap expected`);
+      } else if (subcategoryOverlap > 0.7) {
+        reasoning.push(`${event1.subcategory} and ${event2.subcategory} have strong audience overlap`);
+      } else if (subcategoryOverlap > 0.4) {
+        reasoning.push(`Moderate overlap between ${event1.subcategory} and ${event2.subcategory} audiences`);
+      } else if (subcategoryOverlap > 0.1) {
+        reasoning.push(`Limited overlap between ${event1.subcategory} and ${event2.subcategory} audiences`);
+      } else {
+        reasoning.push(`${event1.subcategory} and ${event2.subcategory} have very different target audiences`);
+      }
+    } else if (event1.subcategory || event2.subcategory) {
+      const subcategory = event1.subcategory || event2.subcategory;
+      reasoning.push(`One event is ${subcategory} - moderate audience overlap expected`);
+    } else {
+      reasoning.push('No subcategory information available - using general category analysis');
+    }
+
+    // Traditional factor reasoning
+    if (factors.demographicSimilarity > 0.7) {
+      reasoning.push('High demographic similarity between target audiences');
+    } else if (factors.demographicSimilarity > 0.4) {
+      reasoning.push('Moderate demographic overlap');
+    } else if (factors.demographicSimilarity > 0.1) {
+      reasoning.push('Minimal demographic overlap');
+    }
+
+    if (factors.interestAlignment > 0.6) {
+      reasoning.push('Strong interest alignment in event topics');
+    } else if (factors.interestAlignment > 0.3) {
+      reasoning.push('Some shared interests between audiences');
+    } else if (factors.interestAlignment > 0.1) {
+      reasoning.push('Minimal interest overlap');
+    }
+
+    if (factors.behaviorPatterns > 0.6) {
+      reasoning.push('Similar spending and attendance patterns');
+    } else if (factors.behaviorPatterns > 0.3) {
+      reasoning.push('Some behavioral similarities');
+    } else if (factors.behaviorPatterns > 0.1) {
+      reasoning.push('Minimal behavioral overlap');
+    }
+
+    return reasoning;
+  }
+
+  /**
+   * Generate human-readable reasoning for overlap prediction (legacy method)
    */
   private generateOverlapReasoning(factors: {
     demographicSimilarity: number;
@@ -459,7 +575,40 @@ export class AudienceOverlapService {
   }
 
   /**
-   * Calculate confidence in the prediction
+   * Calculate enhanced confidence with subcategory awareness
+   */
+  private calculateEnhancedConfidence(
+    profile1: EventAudienceProfile, 
+    profile2: EventAudienceProfile,
+    event1: Event,
+    event2: Event
+  ): number {
+    let confidence = 0.5; // Base confidence
+
+    // Increase confidence if we have historical data
+    if (profile1.expectedAudience.pastEvents.length > 0) confidence += 0.2;
+    if (profile2.expectedAudience.pastEvents.length > 0) confidence += 0.2;
+
+    // Increase confidence if events have subcategory information
+    if (event1.subcategory) confidence += 0.15;
+    if (event2.subcategory) confidence += 0.15;
+
+    // Increase confidence if both events have subcategories
+    if (event1.subcategory && event2.subcategory) confidence += 0.1;
+
+    // Increase confidence if we have venue information
+    if (profile1.expectedAudience.preferences.venueTypes.length > 1) confidence += 0.05;
+    if (profile2.expectedAudience.preferences.venueTypes.length > 1) confidence += 0.05;
+
+    // Increase confidence if events have detailed descriptions
+    if (event1.description && event1.description.length > 100) confidence += 0.05;
+    if (event2.description && event2.description.length > 100) confidence += 0.05;
+
+    return Math.min(confidence, 1.0);
+  }
+
+  /**
+   * Calculate confidence in the prediction (legacy method)
    */
   private calculateConfidence(profile1: EventAudienceProfile, profile2: EventAudienceProfile): number {
     let confidence = 0.5; // Base confidence

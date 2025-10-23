@@ -15,6 +15,9 @@ export interface Event {
   imageUrl?: string;
   createdAt: string;
   updatedAt: string;
+  // Audience overlap properties
+  audienceOverlapPercentage?: number;
+  overlapReasoning?: string[];
 }
 
 export interface ConflictAnalysis {
@@ -41,13 +44,18 @@ export interface ConflictingEvent {
   title: string;
   date: string;
   category: string;
+  subcategory?: string;
   expectedAttendees?: number;
   impact: number; // 0-100, contribution to conflict score
-  reason: string;}
+  audienceOverlapPercentage: number; // NEW: 0-100
+  overlapReasoning?: string[]; // NEW: AI-generated reasons
+  reason: string;
+}
 
 export interface AnalysisRequest {
   city: string;
   category: string;
+  subcategory?: string;
   preferredDates: string[];
   expectedAttendees: number;
   dateRange: {

@@ -1,6 +1,7 @@
 // src/lib/services/openai-audience-overlap.ts
 import { Event } from '@/types';
 import { AudienceOverlapPrediction } from '@/types/audience';
+import { audienceOverlapCacheService, OverlapCacheKey } from './audience-overlap-cache';
 
 export class OpenAIAudienceOverlapService {
   private readonly apiKey: string;
@@ -14,7 +15,7 @@ export class OpenAIAudienceOverlapService {
   }
 
   /**
-   * AI-powered audience overlap prediction using OpenAI
+   * AI-powered audience overlap prediction with subcategory awareness and caching
    */
   async predictAudienceOverlap(event1: Event, event2: Event): Promise<AudienceOverlapPrediction> {
     if (!this.apiKey) {
@@ -24,21 +25,55 @@ export class OpenAIAudienceOverlapService {
     }
 
     try {
-      // Step 1: Analyze events with OpenAI
+      // Check cache first
+      const cacheKey: OverlapCacheKey = {
+        category1: event1.category,
+        subcategory1: event1.subcategory || null,
+        category2: event2.category,
+        subcategory2: event2.subcategory || null
+      };
+
+      const cachedResult = await audienceOverlapCacheService.getCachedOverlap(cacheKey);
+      if (cachedResult) {
+        return {
+          overlapScore: cachedResult.overlapScore,
+          confidence: cachedResult.confidence,
+          factors: {
+            demographicSimilarity: cachedResult.overlapScore * 0.3,
+            interestAlignment: cachedResult.overlapScore * 0.4,
+            behaviorPatterns: cachedResult.overlapScore * 0.2,
+            historicalPreference: cachedResult.overlapScore * 0.1
+          },
+          reasoning: cachedResult.reasoning
+        };
+      }
+
+      // Step 1: Analyze events with OpenAI (enhanced with subcategory context)
       const eventAnalysis = await this.analyzeEventsWithAI(event1, event2);
       
-      // Step 2: Predict audience overlap
+      // Step 2: Predict audience overlap with subcategory awareness
       const overlapPrediction = await this.predictOverlapWithAI(event1, event2, eventAnalysis);
       
-      // Step 3: Generate reasoning
+      // Step 3: Generate reasoning with subcategory insights
       const reasoning = await this.generateReasoningWithAI(event1, event2, overlapPrediction);
 
-      return {
+      const result = {
         overlapScore: overlapPrediction.overlapScore,
         confidence: overlapPrediction.confidence,
         factors: overlapPrediction.factors,
         reasoning
       };
+
+      // Cache the result
+      await audienceOverlapCacheService.cacheOverlapResult(
+        cacheKey,
+        overlapPrediction.overlapScore,
+        overlapPrediction.confidence,
+        reasoning,
+        'ai_powered'
+      );
+
+      return result;
     } catch (error) {
       console.error('OpenAI analysis failed, falling back to rule-based:', error);
       // Fallback to rule-based system
@@ -52,7 +87,7 @@ export class OpenAIAudienceOverlapService {
    */
   private async analyzeEventsWithAI(event1: Event, event2: Event): Promise<any> {
     const prompt = `
-    Analyze these two events and extract key features for audience overlap prediction:
+    Analyze these two events for audience overlap prediction, considering their subcategories and genres:
 
     Event 1: "${event1.title}"
     Category: ${event1.category}
@@ -68,15 +103,23 @@ export class OpenAIAudienceOverlapService {
     Venue: ${event2.venue || 'Not specified'}
     Expected Attendees: ${event2.expectedAttendees || 'Not specified'}
 
+    Consider subcategory relationships:
+    - Same subcategory: Very high overlap (80-95%)
+    - Related subcategories (e.g., Rock/Metal): High overlap (60-75%)
+    - Different subcategories in same category (e.g., Rock/Jazz): Moderate overlap (20-40%)
+    - Different categories: Low overlap (5-15%)
+
     Please analyze and return a JSON object with:
-    1. targetAudience1: Who would attend event 1 (demographics, interests, profession)
-    2. targetAudience2: Who would attend event 2 (demographics, interests, profession)
-    3. eventType1: What type of event is this (conference, workshop, networking, etc.)
-    4. eventType2: What type of event is this (conference, workshop, networking, etc.)
-    5. keyTopics1: Main topics/themes of event 1
-    6. keyTopics2: Main topics/themes of event 2
-    7. audienceMotivation1: Why would people attend event 1
-    8. audienceMotivation2: Why would people attend event 2
+    1. targetAudience1: Who would attend event 1 (demographics, interests, profession, subcategory traits)
+    2. targetAudience2: Who would attend event 2 (demographics, interests, profession, subcategory traits)
+    3. subcategoryOverlap: overlap based on subcategory relationship (0-1)
+    4. eventType1: What type of event is this (conference, workshop, networking, etc.)
+    5. eventType2: What type of event is this (conference, workshop, networking, etc.)
+    6. keyTopics1: Main topics/themes of event 1
+    7. keyTopics2: Main topics/themes of event 2
+    8. audienceMotivation1: Why would people attend event 1
+    9. audienceMotivation2: Why would people attend event 2
+    10. subcategoryReasoning: explanation of subcategory-based overlap
     9. eventFormat1: Format and style of event 1
     10. eventFormat2: Format and style of event 2
 

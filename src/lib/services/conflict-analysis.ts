@@ -65,6 +65,7 @@ export interface DateRecommendation {
 export interface ConflictAnalysisParams {
   city: string;
   category: string;
+  subcategory?: string;
   expectedAttendees: number;
   startDate: string; // preferred start date
   endDate: string; // preferred end date
@@ -1348,6 +1349,7 @@ export class ConflictAnalysisService {
             date: params.startDate,
             city: params.city,
             category: params.category,
+            subcategory: params.subcategory,
             expectedAttendees: params.expectedAttendees,
             source: 'manual',
             createdAt: new Date().toISOString(),
@@ -1781,8 +1783,8 @@ export class ConflictAnalysisService {
         console.log(`  "${event.title}": has description +5`);
       }
 
-      // Advanced analysis: Audience overlap prediction (with timeout) - DISABLED FOR PERFORMANCE
-      if (false && params.enableAdvancedAnalysis) {
+      // Advanced analysis: Audience overlap prediction with subcategory awareness
+      if (params.enableAdvancedAnalysis) {
         try {
           // Create a mock event for the user's planned event
           const plannedEvent: Event = {
@@ -1791,51 +1793,35 @@ export class ConflictAnalysisService {
             date: params.startDate,
             city: params.city,
             category: params.category,
+            subcategory: params.subcategory,
             expectedAttendees: params.expectedAttendees,
             source: 'manual',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
 
-          // Use OpenAI-powered analysis with timeout (5 seconds max)
+          // Use enhanced audience overlap analysis with subcategory awareness
           const audienceOverlap = await Promise.race([
-            openaiAudienceOverlapService.isAvailable()
-              ? openaiAudienceOverlapService.predictAudienceOverlap(plannedEvent, event)
-              : audienceOverlapService.predictAudienceOverlap(plannedEvent, event),
+            audienceOverlapService.predictAudienceOverlap(plannedEvent, event),
             new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Audience overlap analysis timeout')), 2000)
+              setTimeout(() => reject(new Error('Audience overlap analysis timeout')), 3000)
             )
           ]) as any;
           
-          // Increase score based on audience overlap
-          const overlapMultiplier = 1 + (audienceOverlap.overlapScore * 0.5); // Up to 50% increase
-          eventScore *= overlapMultiplier;
-          console.log(`  "${event.title}": audience overlap multiplier ${overlapMultiplier.toFixed(2)} (${openaiAudienceOverlapService.isAvailable() ? 'AI-powered' : 'rule-based'})`);
+          // Scale overlap score to 0-50 points for conflict scoring
+          const overlapPoints = audienceOverlap.overlapScore * 50;
+          eventScore += overlapPoints;
+          
+          // Store overlap data for frontend display
+          event.audienceOverlapPercentage = Math.round(audienceOverlap.overlapScore * 100);
+          event.overlapReasoning = audienceOverlap.reasoning;
+          
+          console.log(`  "${event.title}": audience overlap ${event.audienceOverlapPercentage}% (+${overlapPoints.toFixed(1)} points)`);
         } catch (error) {
-          console.error('Error calculating audience overlap (using fallback):', error);
-          // Fallback: use rule-based analysis without timeout
-          try {
-            const { audienceOverlapService } = await import('./audience-overlap');
-            const fallbackOverlap = await audienceOverlapService.predictAudienceOverlap(
-              {
-                id: 'planned_event',
-                title: 'Planned Event',
-                date: params.startDate,
-                city: params.city,
-                category: params.category,
-                expectedAttendees: params.expectedAttendees,
-                source: 'manual',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-              },
-              event
-            );
-            const overlapMultiplier = 1 + (fallbackOverlap.overlapScore * 0.3); // Reduced multiplier for fallback
-            eventScore *= overlapMultiplier;
-            console.log(`  "${event.title}": fallback audience overlap multiplier ${overlapMultiplier.toFixed(2)}`);
-          } catch (fallbackError) {
-            console.error('Fallback audience overlap also failed:', fallbackError);
-          }
+          console.error('Error calculating audience overlap:', error);
+          // Set default overlap values
+          event.audienceOverlapPercentage = 10; // Default low overlap
+          event.overlapReasoning = ['Unable to calculate audience overlap'];
         }
       }
 

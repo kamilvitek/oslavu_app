@@ -26,6 +26,7 @@ interface ConflictCalculationTask {
     competingEvents: Event[];
     expectedAttendees: number;
     category: string;
+    plannedSubcategory?: string;
     config: {
       depth: 'shallow' | 'medium' | 'deep';
       maxComparisons: number;
@@ -112,7 +113,7 @@ function calculateConflictScoreInWorker(data: ConflictCalculationTask['data']): 
 
   // Process events with optimized algorithms
   for (const { event } of sortedEvents) {
-    const eventScore = calculateEventConflictScore(event, category, config);
+    const eventScore = calculateEventConflictScore(event, category, config, data.plannedSubcategory);
     score += eventScore;
   }
 
@@ -176,14 +177,19 @@ function calculateEventSignificance(event: Event): number {
 /**
  * Calculate conflict score for a single event using optimized algorithm
  */
-function calculateEventConflictScore(event: Event, category: string, config: ConflictCalculationTask['data']['config']): number {
+function calculateEventConflictScore(event: Event, category: string, config: ConflictCalculationTask['data']['config'], plannedSubcategory?: string): number {
   let eventScore = 0;
   
   // Base score for any competing event (reduced from 20 to 3)
   eventScore += 3;
   
-  // Smart category conflict scoring based on audience overlap
-  const categoryConflictScore = calculateCategoryConflictScore(event.category, category);
+  // Smart category conflict scoring based on audience overlap with subcategory awareness
+  const categoryConflictScore = calculateCategoryConflictScore(
+    event.category, 
+    category, 
+    event.subcategory, 
+    plannedSubcategory
+  );
   eventScore += categoryConflictScore;
   
   // Higher score for events with venues (more significant) (reduced from 15 to 4)
@@ -214,9 +220,23 @@ function calculateEventConflictScore(event: Event, category: string, config: Con
 
 /**
  * Calculate category conflict score based on audience overlap potential
+ * Enhanced with subcategory awareness
  */
-function calculateCategoryConflictScore(competingCategory: string, plannedCategory: string): number {
-  // Define category relationships and audience overlap potential
+function calculateCategoryConflictScore(competingCategory: string, plannedCategory: string, competingSubcategory?: string, plannedSubcategory?: string): number {
+  // If we have subcategory information, use more precise scoring
+  if (competingSubcategory && plannedSubcategory) {
+    // Same subcategory: maximum conflict
+    if (competingSubcategory === plannedSubcategory) {
+      return 15; // Higher score for exact subcategory match
+    }
+    
+    // Different subcategories in same category: moderate conflict
+    if (competingCategory === plannedCategory) {
+      return 8; // Moderate conflict for different subcategories
+    }
+  }
+
+  // Fallback to category-based scoring
   const categoryRelationships = {
     // High conflict (same audience, direct competition)
     'high': {

@@ -1,18 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MapPin, Users, Tag, Calendar } from "lucide-react";
+import { MapPin, Users, Tag, Calendar, Music } from "lucide-react";
 import { EVENT_CATEGORIES } from "@/types";
+import { SUBCATEGORY_TAXONOMY, getAllSubcategoriesForCategory } from "@/lib/constants/subcategory-taxonomy";
 
 const analysisSchema = z.object({
   city: z.string().min(2, "City is required"),
   category: z.string().min(1, "Category is required"),
+  subcategory: z.string().optional(),
   expectedAttendees: z.number().min(1, "Expected attendees is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
@@ -26,6 +28,7 @@ interface ConflictAnalysisFormProps {
 
 export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFormProps) {
   const [loading, setLoading] = useState(false);
+  const [availableSubcategories, setAvailableSubcategories] = useState<string[]>([]);
 
   const {
     register,
@@ -37,6 +40,22 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
     resolver: zodResolver(analysisSchema),
     defaultValues: {},
   });
+
+  const selectedCategory = watch("category");
+
+  // Update available subcategories when category changes
+  useEffect(() => {
+    if (selectedCategory) {
+      const subcategories = getAllSubcategoriesForCategory(selectedCategory);
+      setAvailableSubcategories(subcategories);
+      
+      // Clear subcategory when category changes
+      setValue("subcategory", "");
+    } else {
+      setAvailableSubcategories([]);
+      setValue("subcategory", "");
+    }
+  }, [selectedCategory, setValue]);
 
 
   // Calculate automatic analysis range based on preferred dates, attendees, and category
@@ -170,6 +189,35 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
           <p className="text-sm text-red-600">{errors.category.message}</p>
         )}
       </div>
+
+      {selectedCategory && availableSubcategories.length > 0 && (
+        <div className="space-y-2">
+          <Label htmlFor="subcategory" className="flex items-center space-x-2">
+            <Music className="h-4 w-4" />
+            <span>Event Subcategory/Genre</span>
+            <span className="text-xs text-muted-foreground">(Optional - for more accurate analysis)</span>
+          </Label>
+          <select
+            id="subcategory"
+            className="flex h-10 w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200 focus:shadow-lg focus:shadow-primary/25"
+            {...register("subcategory")}
+          >
+            <option value="">Select subcategory (optional)</option>
+            {availableSubcategories.map((subcategory) => (
+              <option key={subcategory} value={subcategory}>
+                {subcategory}
+              </option>
+            ))}
+          </select>
+          {errors.subcategory && (
+            <p className="text-sm text-red-600">{errors.subcategory.message}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            💡 Selecting a subcategory helps us provide more accurate audience overlap analysis. 
+            For example, "Rock" vs "Jazz" concerts have different audiences even within Entertainment.
+          </p>
+        </div>
+      )}
 
 
       <div className="space-y-2">

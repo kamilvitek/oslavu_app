@@ -70,12 +70,13 @@ export async function POST(request: NextRequest) {
     const analysis = await conflictAnalysisService.analyzeConflicts({
       city: sanitizedBody.city,
       category: sanitizedBody.category,
+      subcategory: sanitizedBody.subcategory,
       expectedAttendees: sanitizedBody.expectedAttendees,
       startDate: preferredStart,
       endDate: preferredEnd,
       dateRangeStart: sanitizedBody.dateRange.start,
       dateRangeEnd: sanitizedBody.dateRange.end,
-      enableAdvancedAnalysis: false, // DISABLED for performance - audience overlap analysis causes 70+ second delays
+      enableAdvancedAnalysis: true, // ENABLED for audience overlap analysis
       useComprehensiveFallback: false, // DISABLED for performance - was causing 5min delays
     });
     

@@ -95,6 +95,7 @@ export function ConflictAnalyzer() {
         body: JSON.stringify({
           city: formData.city,
           category: formData.category,
+          subcategory: formData.subcategory,
           expectedAttendees: formData.expectedAttendees,
           dateRange: {
             start: formData.dateRangeStart,
@@ -702,10 +703,28 @@ export function ConflictAnalyzer() {
                                         <div key={eventIndex} className="text-sm text-red-700 flex items-center justify-between p-2 bg-white rounded border">
                                           <div className="flex-1">
                                             <div className="font-medium">{event.title}</div>
-                                            <div className="text-xs text-gray-600">{event.venue || 'TBA'} • {new Date(event.date).toLocaleDateString()}</div>
+                                            <div className="text-xs text-gray-600">
+                                              {event.venue || 'TBA'} • {event.subcategory && `${event.subcategory} • `}{new Date(event.date).toLocaleDateString()}
+                                            </div>
                                           </div>
-                                          <div className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded ml-2">
-                                            {event.category}
+                                          <div className="flex items-center gap-2">
+                                            {event.audienceOverlapPercentage !== undefined && (
+                                              <div 
+                                                className="text-xs px-2 py-1 rounded"
+                                                style={{
+                                                  backgroundColor: event.audienceOverlapPercentage > 70 ? '#fef2f2' : 
+                                                                  event.audienceOverlapPercentage > 40 ? '#fef3c7' : '#f0f9ff',
+                                                  color: event.audienceOverlapPercentage > 70 ? '#dc2626' : 
+                                                         event.audienceOverlapPercentage > 40 ? '#d97706' : '#2563eb'
+                                                }}
+                                                title={event.overlapReasoning?.join(', ')}
+                                              >
+                                                {event.audienceOverlapPercentage}% overlap
+                                              </div>
+                                            )}
+                                            <div className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                                              {event.category}
+                                            </div>
                                           </div>
                                         </div>
                                       ))}
