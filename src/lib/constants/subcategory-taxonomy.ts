@@ -351,6 +351,29 @@ export const SUBCATEGORY_TAXONOMY: CategorySubcategories = {
             eventFrequency: 2.2
           }
         }
+      },
+      'Cycling': {
+        name: 'Cycling',
+        keywords: ['cycling', 'bike', 'bicycle', 'tour de france', 'mountain biking', 'road cycling', 'gravel', 'velodrome'],
+        relatedSubcategories: ['Individual Sports'],
+        audienceOverlapCoefficients: {
+          'Individual Sports': 0.70,
+          'Running': 0.45,
+          'Tennis': 0.30,
+          'Extreme Sports': 0.25,
+          'Basketball': 0.15,
+          'Football': 0.10
+        },
+        audienceCharacteristics: {
+          ageRange: [20, 60],
+          interests: ['fitness', 'endurance', 'outdoor', 'competition', 'health'],
+          behavior: {
+            ticketPrice: 40,
+            travelDistance: 200,
+            socialMedia: ['strava', 'instagram', 'facebook'],
+            eventFrequency: 2.8
+          }
+        }
       }
     }
   },
@@ -469,6 +492,121 @@ export const SUBCATEGORY_TAXONOMY: CategorySubcategories = {
             eventFrequency: 1.2
           }
         }
+      },
+      'Crypto': {
+        name: 'Crypto',
+        keywords: ['crypto', 'cryptocurrency', 'bitcoin', 'ethereum', 'blockchain', 'defi', 'nft', 'web3', 'metaverse'],
+        relatedSubcategories: ['Blockchain', 'Web3'],
+        audienceOverlapCoefficients: {
+          'Blockchain': 0.90,
+          'Web3': 0.85,
+          'AI/ML': 0.40,
+          'Web Development': 0.35,
+          'Security': 0.30,
+          'Mobile': 0.20
+        },
+        audienceCharacteristics: {
+          ageRange: [22, 45],
+          interests: ['crypto', 'blockchain', 'finance', 'technology', 'innovation'],
+          behavior: {
+            ticketPrice: 300,
+            travelDistance: 500,
+            socialMedia: ['twitter', 'discord', 'telegram'],
+            eventFrequency: 2.0
+          }
+        }
+      },
+      'Fintech': {
+        name: 'Fintech',
+        keywords: ['fintech', 'financial technology', 'digital banking', 'payments', 'neobank', 'insurtech', 'wealthtech'],
+        relatedSubcategories: ['Financial Technology'],
+        audienceOverlapCoefficients: {
+          'Financial Technology': 0.95,
+          'Crypto': 0.60,
+          'Web Development': 0.50,
+          'AI/ML': 0.45,
+          'Security': 0.40,
+          'Mobile': 0.35
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 50],
+          interests: ['finance', 'technology', 'banking', 'payments', 'innovation'],
+          behavior: {
+            ticketPrice: 280,
+            travelDistance: 400,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.8
+          }
+        }
+      },
+      'Healthtech': {
+        name: 'Healthtech',
+        keywords: ['healthtech', 'digital health', 'telemedicine', 'healthcare technology', 'medtech', 'health apps', 'wearables'],
+        relatedSubcategories: ['Digital Health'],
+        audienceOverlapCoefficients: {
+          'Digital Health': 0.95,
+          'AI/ML': 0.60,
+          'Mobile': 0.50,
+          'Web Development': 0.40,
+          'Security': 0.35,
+          'Crypto': 0.20
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 55],
+          interests: ['healthcare', 'technology', 'medicine', 'wellness', 'innovation'],
+          behavior: {
+            ticketPrice: 320,
+            travelDistance: 450,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.5
+          }
+        }
+      },
+      'Space Tech': {
+        name: 'Space Tech',
+        keywords: ['space tech', 'aerospace', 'satellite', 'space exploration', 'rocket', 'spacex', 'nasa', 'space industry'],
+        relatedSubcategories: ['Aerospace'],
+        audienceOverlapCoefficients: {
+          'Aerospace': 0.90,
+          'AI/ML': 0.50,
+          'Security': 0.40,
+          'Web Development': 0.30,
+          'Mobile': 0.20,
+          'Crypto': 0.15
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 60],
+          interests: ['space', 'technology', 'engineering', 'innovation', 'science'],
+          behavior: {
+            ticketPrice: 400,
+            travelDistance: 600,
+            socialMedia: ['linkedin', 'twitter', 'youtube'],
+            eventFrequency: 1.0
+          }
+        }
+      },
+      'Climate Tech': {
+        name: 'Climate Tech',
+        keywords: ['climate tech', 'green tech', 'sustainability', 'carbon', 'renewable energy', 'clean tech', 'environmental'],
+        relatedSubcategories: ['Green Tech'],
+        audienceOverlapCoefficients: {
+          'Green Tech': 0.95,
+          'AI/ML': 0.45,
+          'Web Development': 0.35,
+          'Security': 0.30,
+          'Mobile': 0.25,
+          'Crypto': 0.20
+        },
+        audienceCharacteristics: {
+          ageRange: [22, 50],
+          interests: ['sustainability', 'environment', 'technology', 'climate', 'innovation'],
+          behavior: {
+            ticketPrice: 250,
+            travelDistance: 400,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.8
+          }
+        }
       }
     }
   },
@@ -585,6 +723,476 @@ export const SUBCATEGORY_TAXONOMY: CategorySubcategories = {
             travelDistance: 350,
             socialMedia: ['linkedin', 'twitter'],
             eventFrequency: 1.8
+          }
+        }
+      },
+      'Startups': {
+        name: 'Startups',
+        keywords: ['startup', 'entrepreneurship', 'venture capital', 'vc', 'funding', 'pitch', 'incubator', 'accelerator'],
+        relatedSubcategories: ['Entrepreneurship'],
+        audienceOverlapCoefficients: {
+          'Entrepreneurship': 0.95,
+          'Innovation': 0.80,
+          'Leadership': 0.60,
+          'Marketing': 0.50,
+          'Finance': 0.45,
+          'Sales': 0.40
+        },
+        audienceCharacteristics: {
+          ageRange: [22, 45],
+          interests: ['entrepreneurship', 'innovation', 'technology', 'business', 'growth'],
+          behavior: {
+            ticketPrice: 200,
+            travelDistance: 400,
+            socialMedia: ['linkedin', 'twitter', 'instagram'],
+            eventFrequency: 2.5
+          }
+        }
+      },
+      'Sustainability': {
+        name: 'Sustainability',
+        keywords: ['sustainability', 'esg', 'green business', 'carbon neutral', 'sustainable', 'environmental', 'csr'],
+        relatedSubcategories: ['ESG'],
+        audienceOverlapCoefficients: {
+          'ESG': 0.90,
+          'Innovation': 0.60,
+          'Leadership': 0.50,
+          'Marketing': 0.40,
+          'Finance': 0.35,
+          'HR': 0.30
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 55],
+          interests: ['sustainability', 'environment', 'social responsibility', 'business', 'innovation'],
+          behavior: {
+            ticketPrice: 220,
+            travelDistance: 350,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.8
+          }
+        }
+      },
+      'Data Analytics': {
+        name: 'Data Analytics',
+        keywords: ['data analytics', 'business intelligence', 'data science', 'big data', 'analytics', 'insights', 'metrics'],
+        relatedSubcategories: ['Business Intelligence'],
+        audienceOverlapCoefficients: {
+          'Business Intelligence': 0.95,
+          'Innovation': 0.70,
+          'Leadership': 0.60,
+          'Marketing': 0.55,
+          'Finance': 0.50,
+          'Sales': 0.45
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 50],
+          interests: ['data', 'analytics', 'technology', 'business', 'insights'],
+          behavior: {
+            ticketPrice: 280,
+            travelDistance: 400,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 2.0
+          }
+        }
+      },
+      'Customer Experience': {
+        name: 'Customer Experience',
+        keywords: ['customer experience', 'cx', 'user experience', 'ux', 'customer journey', 'customer success', 'retention'],
+        relatedSubcategories: ['UX'],
+        audienceOverlapCoefficients: {
+          'UX': 0.85,
+          'Marketing': 0.70,
+          'Innovation': 0.60,
+          'Leadership': 0.50,
+          'Sales': 0.45,
+          'HR': 0.30
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 50],
+          interests: ['customer', 'experience', 'design', 'business', 'innovation'],
+          behavior: {
+            ticketPrice: 250,
+            travelDistance: 350,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 2.2
+          }
+        }
+      },
+      'Branding': {
+        name: 'Branding',
+        keywords: ['branding', 'brand', 'brand strategy', 'brand identity', 'brand management', 'brand awareness', 'reputation'],
+        relatedSubcategories: ['Brand Strategy'],
+        audienceOverlapCoefficients: {
+          'Brand Strategy': 0.90,
+          'Marketing': 0.80,
+          'Customer Experience': 0.60,
+          'Innovation': 0.50,
+          'Leadership': 0.40,
+          'Sales': 0.35
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 50],
+          interests: ['branding', 'marketing', 'design', 'creativity', 'business'],
+          behavior: {
+            ticketPrice: 200,
+            travelDistance: 300,
+            socialMedia: ['linkedin', 'twitter', 'instagram'],
+            eventFrequency: 2.0
+          }
+        }
+      },
+      'Innovation': {
+        name: 'Innovation',
+        keywords: ['innovation', 'disruption', 'digital transformation', 'change management', 'agile', 'design thinking'],
+        relatedSubcategories: ['Digital Transformation'],
+        audienceOverlapCoefficients: {
+          'Digital Transformation': 0.85,
+          'Startups': 0.80,
+          'Leadership': 0.70,
+          'Data Analytics': 0.70,
+          'Customer Experience': 0.60,
+          'Sustainability': 0.60
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 55],
+          interests: ['innovation', 'technology', 'business', 'change', 'growth'],
+          behavior: {
+            ticketPrice: 300,
+            travelDistance: 500,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.5
+          }
+        }
+      }
+    }
+  },
+  'Finance': {
+    defaultOverlap: 0.30,
+    subcategories: {
+      'Investment': {
+        name: 'Investment',
+        keywords: ['investment', 'investing', 'portfolio', 'stocks', 'bonds', 'mutual funds', 'wealth management'],
+        relatedSubcategories: ['Wealth Management'],
+        audienceOverlapCoefficients: {
+          'Wealth Management': 0.85,
+          'Private Equity & Hedge Funds': 0.70,
+          'Real Estate': 0.60,
+          'ESG Investing': 0.50,
+          'Crypto & Bitcoin': 0.40,
+          'Fintech': 0.35
+        },
+        audienceCharacteristics: {
+          ageRange: [30, 65],
+          interests: ['finance', 'investment', 'money', 'wealth', 'retirement'],
+          behavior: {
+            ticketPrice: 400,
+            travelDistance: 600,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.2
+          }
+        }
+      },
+      'Banking': {
+        name: 'Banking',
+        keywords: ['banking', 'bank', 'financial services', 'credit', 'loans', 'mortgage', 'retail banking'],
+        relatedSubcategories: ['Financial Services'],
+        audienceOverlapCoefficients: {
+          'Financial Services': 0.90,
+          'Fintech': 0.70,
+          'Investment': 0.60,
+          'Real Estate': 0.50,
+          'Crypto & Bitcoin': 0.30,
+          'ESG Investing': 0.25
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 60],
+          interests: ['banking', 'finance', 'financial services', 'business', 'compliance'],
+          behavior: {
+            ticketPrice: 350,
+            travelDistance: 500,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.5
+          }
+        }
+      },
+      'Crypto & Bitcoin': {
+        name: 'Crypto & Bitcoin',
+        keywords: ['crypto', 'bitcoin', 'cryptocurrency', 'blockchain', 'defi', 'nft', 'digital assets', 'web3'],
+        relatedSubcategories: ['Digital Assets'],
+        audienceOverlapCoefficients: {
+          'Digital Assets': 0.95,
+          'Fintech': 0.70,
+          'Investment': 0.40,
+          'Real Estate': 0.20,
+          'ESG Investing': 0.15,
+          'Banking': 0.30
+        },
+        audienceCharacteristics: {
+          ageRange: [22, 50],
+          interests: ['crypto', 'blockchain', 'technology', 'investment', 'innovation'],
+          behavior: {
+            ticketPrice: 300,
+            travelDistance: 500,
+            socialMedia: ['twitter', 'discord', 'telegram'],
+            eventFrequency: 2.5
+          }
+        }
+      },
+      'Fintech': {
+        name: 'Fintech',
+        keywords: ['fintech', 'financial technology', 'digital banking', 'payments', 'neobank', 'insurtech', 'wealthtech'],
+        relatedSubcategories: ['Financial Technology'],
+        audienceOverlapCoefficients: {
+          'Financial Technology': 0.95,
+          'Crypto & Bitcoin': 0.70,
+          'Banking': 0.70,
+          'Investment': 0.35,
+          'Real Estate': 0.30,
+          'ESG Investing': 0.25
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 50],
+          interests: ['fintech', 'technology', 'finance', 'innovation', 'digital'],
+          behavior: {
+            ticketPrice: 350,
+            travelDistance: 500,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 2.0
+          }
+        }
+      },
+      'Real Estate': {
+        name: 'Real Estate',
+        keywords: ['real estate', 'property', 'real estate investment', 'reits', 'commercial real estate', 'residential'],
+        relatedSubcategories: ['Property Investment'],
+        audienceOverlapCoefficients: {
+          'Property Investment': 0.90,
+          'Investment': 0.60,
+          'Banking': 0.50,
+          'ESG Investing': 0.40,
+          'Fintech': 0.30,
+          'Crypto & Bitcoin': 0.20
+        },
+        audienceCharacteristics: {
+          ageRange: [28, 65],
+          interests: ['real estate', 'property', 'investment', 'business', 'development'],
+          behavior: {
+            ticketPrice: 300,
+            travelDistance: 400,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.8
+          }
+        }
+      },
+      'Private Equity & Hedge Funds': {
+        name: 'Private Equity & Hedge Funds',
+        keywords: ['private equity', 'hedge funds', 'venture capital', 'vc', 'pe', 'alternative investments', 'fund management'],
+        relatedSubcategories: ['Alternative Investments'],
+        audienceOverlapCoefficients: {
+          'Alternative Investments': 0.95,
+          'Investment': 0.70,
+          'Real Estate': 0.50,
+          'ESG Investing': 0.40,
+          'Banking': 0.35,
+          'Fintech': 0.30
+        },
+        audienceCharacteristics: {
+          ageRange: [30, 65],
+          interests: ['private equity', 'hedge funds', 'investment', 'finance', 'wealth'],
+          behavior: {
+            ticketPrice: 500,
+            travelDistance: 700,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.0
+          }
+        }
+      },
+      'ESG Investing': {
+        name: 'ESG Investing',
+        keywords: ['esg', 'sustainable investing', 'impact investing', 'green finance', 'socially responsible', 'sri'],
+        relatedSubcategories: ['Sustainable Investing'],
+        audienceOverlapCoefficients: {
+          'Sustainable Investing': 0.95,
+          'Real Estate': 0.40,
+          'Investment': 0.50,
+          'Private Equity & Hedge Funds': 0.40,
+          'Banking': 0.25,
+          'Crypto & Bitcoin': 0.15
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 60],
+          interests: ['esg', 'sustainability', 'impact', 'finance', 'environment'],
+          behavior: {
+            ticketPrice: 350,
+            travelDistance: 500,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.5
+          }
+        }
+      },
+      'Taxes': {
+        name: 'Taxes',
+        keywords: ['tax', 'taxes', 'taxation', 'tax planning', 'tax strategy', 'tax optimization', 'tax compliance'],
+        relatedSubcategories: ['Tax Planning'],
+        audienceOverlapCoefficients: {
+          'Tax Planning': 0.95,
+          'Investment': 0.60,
+          'Real Estate': 0.50,
+          'Banking': 0.40,
+          'Private Equity & Hedge Funds': 0.45,
+          'ESG Investing': 0.30
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 65],
+          interests: ['tax', 'finance', 'planning', 'compliance', 'strategy'],
+          behavior: {
+            ticketPrice: 250,
+            travelDistance: 300,
+            socialMedia: ['linkedin', 'twitter'],
+            eventFrequency: 1.8
+          }
+        }
+      }
+    }
+  },
+  'Arts & Culture': {
+    defaultOverlap: 0.25,
+    subcategories: {
+      'Digital Art': {
+        name: 'Digital Art',
+        keywords: ['digital art', 'nft', 'digital gallery', 'virtual art', 'digital artist', 'crypto art', 'digital creativity'],
+        relatedSubcategories: ['NFT Art'],
+        audienceOverlapCoefficients: {
+          'NFT Art': 0.85,
+          'Photography': 0.60,
+          'Museums & Galleries': 0.50,
+          'Fashion': 0.40,
+          'Dance': 0.20,
+          'Cultural Heritage': 0.15
+        },
+        audienceCharacteristics: {
+          ageRange: [18, 45],
+          interests: ['digital art', 'technology', 'creativity', 'nft', 'innovation'],
+          behavior: {
+            ticketPrice: 100,
+            travelDistance: 200,
+            socialMedia: ['instagram', 'twitter', 'discord'],
+            eventFrequency: 2.5
+          }
+        }
+      },
+      'Photography': {
+        name: 'Photography',
+        keywords: ['photography', 'photo', 'photographer', 'camera', 'photography workshop', 'photo exhibition', 'visual arts'],
+        relatedSubcategories: ['Visual Arts'],
+        audienceOverlapCoefficients: {
+          'Visual Arts': 0.80,
+          'Digital Art': 0.60,
+          'Museums & Galleries': 0.70,
+          'Fashion': 0.50,
+          'Dance': 0.30,
+          'Cultural Heritage': 0.40
+        },
+        audienceCharacteristics: {
+          ageRange: [20, 55],
+          interests: ['photography', 'visual arts', 'creativity', 'art', 'design'],
+          behavior: {
+            ticketPrice: 80,
+            travelDistance: 150,
+            socialMedia: ['instagram', 'facebook', 'pinterest'],
+            eventFrequency: 2.0
+          }
+        }
+      },
+      'Museums & Galleries': {
+        name: 'Museums & Galleries',
+        keywords: ['museum', 'gallery', 'exhibition', 'art museum', 'cultural center', 'art gallery', 'cultural institution'],
+        relatedSubcategories: ['Cultural Institutions'],
+        audienceOverlapCoefficients: {
+          'Cultural Institutions': 0.90,
+          'Photography': 0.70,
+          'Cultural Heritage': 0.80,
+          'Digital Art': 0.50,
+          'Fashion': 0.40,
+          'Dance': 0.30
+        },
+        audienceCharacteristics: {
+          ageRange: [25, 70],
+          interests: ['art', 'culture', 'history', 'education', 'museums'],
+          behavior: {
+            ticketPrice: 60,
+            travelDistance: 100,
+            socialMedia: ['facebook', 'instagram', 'twitter'],
+            eventFrequency: 1.5
+          }
+        }
+      },
+      'Fashion': {
+        name: 'Fashion',
+        keywords: ['fashion', 'fashion show', 'designer', 'fashion week', 'style', 'clothing', 'fashion design', 'runway'],
+        relatedSubcategories: ['Fashion Design'],
+        audienceOverlapCoefficients: {
+          'Fashion Design': 0.90,
+          'Photography': 0.50,
+          'Digital Art': 0.40,
+          'Dance': 0.60,
+          'Museums & Galleries': 0.40,
+          'Cultural Heritage': 0.30
+        },
+        audienceCharacteristics: {
+          ageRange: [18, 50],
+          interests: ['fashion', 'style', 'design', 'creativity', 'beauty'],
+          behavior: {
+            ticketPrice: 120,
+            travelDistance: 300,
+            socialMedia: ['instagram', 'tiktok', 'twitter'],
+            eventFrequency: 2.8
+          }
+        }
+      },
+      'Dance': {
+        name: 'Dance',
+        keywords: ['dance', 'dancing', 'ballet', 'contemporary dance', 'hip hop dance', 'dance performance', 'choreography'],
+        relatedSubcategories: ['Dance Performance'],
+        audienceOverlapCoefficients: {
+          'Dance Performance': 0.95,
+          'Fashion': 0.60,
+          'Photography': 0.30,
+          'Museums & Galleries': 0.30,
+          'Digital Art': 0.20,
+          'Cultural Heritage': 0.40
+        },
+        audienceCharacteristics: {
+          ageRange: [16, 45],
+          interests: ['dance', 'performance', 'music', 'fitness', 'creativity'],
+          behavior: {
+            ticketPrice: 70,
+            travelDistance: 200,
+            socialMedia: ['instagram', 'tiktok', 'youtube'],
+            eventFrequency: 2.2
+          }
+        }
+      },
+      'Cultural Heritage': {
+        name: 'Cultural Heritage',
+        keywords: ['cultural heritage', 'traditional', 'folklore', 'cultural preservation', 'heritage', 'tradition', 'cultural identity'],
+        relatedSubcategories: ['Traditional Culture'],
+        audienceOverlapCoefficients: {
+          'Traditional Culture': 0.90,
+          'Museums & Galleries': 0.80,
+          'Photography': 0.40,
+          'Dance': 0.40,
+          'Fashion': 0.30,
+          'Digital Art': 0.15
+        },
+        audienceCharacteristics: {
+          ageRange: [30, 70],
+          interests: ['culture', 'heritage', 'tradition', 'history', 'community'],
+          behavior: {
+            ticketPrice: 50,
+            travelDistance: 100,
+            socialMedia: ['facebook', 'instagram'],
+            eventFrequency: 1.2
           }
         }
       }
