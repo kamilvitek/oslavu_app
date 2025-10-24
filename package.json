@@ -14,7 +14,9 @@
     "test:coverage": "jest --coverage",
     "scrape": "tsx scripts/test-scraper.ts",
     "scrape:test": "tsx scripts/test-scraper.ts test",
-    "scrape:run": "tsx scripts/test-scraper.ts sync"
+    "scrape:run": "tsx scripts/test-scraper.ts sync",
+    "backfill-attendees": "tsx scripts/backfill-attendees.ts",
+    "test-attendees": "tsx scripts/test-attendee-implementation.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

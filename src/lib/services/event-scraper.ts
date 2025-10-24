@@ -277,8 +277,17 @@ Return a JSON array of events with this structure:
   "subcategory": "Event subcategory (optional, translate to English if Czech)",
   "url": "Event URL (optional)",
   "imageUrl": "Image URL (optional)",
-  "expectedAttendees": "Number of expected attendees (optional)"
+  "expectedAttendees": "Number of expected attendees (CRITICAL: Try to extract this information)"
 }
+
+ATTENDANCE EXTRACTION GUIDELINES:
+- Look for explicit numbers: "Expected attendance: 500", "Capacity: 1000", "X people expected"
+- Look for venue capacity mentions: "Stadium capacity 15,000", "Arena holds 8,000"
+- Look for sold-out indicators: "Sold out (2,000 tickets)", "Fully booked (500 seats)"
+- Look for venue size indicators in names: "Stadium", "Arena", "Convention Center", "Hotel"
+- If venue name suggests size (e.g., "Prague Stadium", "O2 Arena"), estimate based on venue type
+- If no explicit numbers, provide your best estimate based on venue type and event category
+- For Czech content: look for "kapacita", "míst", "návštěvníků", "účastníků"
 
 Content to extract from:
 ${content.substring(0, 6000)} // Reduced content limit for cheaper model
@@ -290,6 +299,7 @@ IMPORTANT FILTERING RULES:
 - If an event has no clear date or is clearly historical, skip it
 - For Czech content: translate titles and descriptions to English but keep city names in Czech
 - Map Czech categories: festival->Arts & Culture, koncert->Entertainment, divadlo->Arts & Culture, sport->Sports, kultura->Arts & Culture
+- ALWAYS provide expectedAttendees - use venue-based estimation if no explicit data found
 
 Return only valid JSON array. If no current/future events found, return empty array [].`;
 

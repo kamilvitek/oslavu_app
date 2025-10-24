@@ -13,6 +13,7 @@ import {
   EventSearchSchema
 } from '@/lib/types/events';
 import { dataTransformer } from './data-transformer';
+import { venueCapacityService } from './venue-capacity';
 
 /**
  * Event storage service for managing events in the database
@@ -221,7 +222,7 @@ export class EventStorageService {
             country: 'Czech Republic', // Default country
             category: event.category,
             subcategory: event.subcategory,
-            expected_attendees: event.expected_attendees,
+            expected_attendees: event.expected_attendees || this.estimateAttendeesFromVenue(event.venue, event.category),
             source: event.source,
             source_id: event.source_id,
             url: event.url,
@@ -677,6 +678,21 @@ export class EventStorageService {
     } catch (error) {
       console.error('Error deleting event:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Estimate expected attendees from venue name and category
+   */
+  private estimateAttendeesFromVenue(venue?: string, category?: string): number | undefined {
+    if (!venue) return undefined;
+    
+    try {
+      const estimate = venueCapacityService.estimateAttendees(venue, category);
+      return estimate;
+    } catch (error) {
+      console.warn(`Failed to estimate attendees for venue "${venue}":`, error);
+      return undefined;
     }
   }
 

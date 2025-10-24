@@ -1,6 +1,7 @@
 import { CreateEventData, DataValidationResult, EventTransformer } from '@/lib/types/events';
 import { CreateEventSchema } from '@/lib/types/events';
 import { z } from 'zod';
+import { venueCapacityService } from './venue-capacity';
 
 /**
  * Data transformation service for converting API responses to standardized event format
@@ -195,7 +196,7 @@ export class DataTransformer {
       venue: venueName,
       category: this.mapTicketmasterCategory(segment || 'Other'),
       subcategory: genre,
-      expected_attendees: undefined, // Ticketmaster doesn't provide attendance data
+      expected_attendees: this.estimateAttendeesFromVenue(venueName, segment),
       source: 'ticketmaster',
       source_id: tmEvent.id,
       url: tmEvent.url,
@@ -292,12 +293,28 @@ export class DataTransformer {
       venue: scrapedEvent.venue,
       category: this.normalizeCategory(scrapedEvent.category || 'Other'),
       subcategory: scrapedEvent.subcategory,
-      expected_attendees: scrapedEvent.expectedAttendees || scrapedEvent.expected_attendees,
+      expected_attendees: scrapedEvent.expectedAttendees || scrapedEvent.expected_attendees || 
+                         this.estimateAttendeesFromVenue(scrapedEvent.venue, scrapedEvent.category),
       source: 'scraper',
       source_id: scrapedEvent.source_id,
       url: scrapedEvent.url,
       image_url: scrapedEvent.imageUrl || scrapedEvent.image_url,
     };
+  }
+
+  /**
+   * Estimate expected attendees from venue name and category
+   */
+  private estimateAttendeesFromVenue(venueName?: string, category?: string): number | undefined {
+    if (!venueName) return undefined;
+    
+    try {
+      const estimate = venueCapacityService.estimateAttendees(venueName, category);
+      return estimate;
+    } catch (error) {
+      console.warn(`Failed to estimate attendees for venue "${venueName}":`, error);
+      return undefined;
+    }
   }
 
   /**
