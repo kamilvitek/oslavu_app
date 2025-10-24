@@ -689,7 +689,7 @@ export class EventStorageService {
     
     try {
       const estimate = venueCapacityService.estimateAttendees(venue, category);
-      return estimate;
+      return estimate.capacity;
     } catch (error) {
       console.warn(`Failed to estimate attendees for venue "${venue}":`, error);
       return undefined;

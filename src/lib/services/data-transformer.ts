@@ -310,7 +310,7 @@ export class DataTransformer {
     
     try {
       const estimate = venueCapacityService.estimateAttendees(venueName, category);
-      return estimate;
+      return estimate.capacity;
     } catch (error) {
       console.warn(`Failed to estimate attendees for venue "${venueName}":`, error);
       return undefined;

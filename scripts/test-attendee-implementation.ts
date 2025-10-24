@@ -128,7 +128,7 @@ async function testDataTransformer() {
     console.log(`Title: ${transformed.title}`);
     console.log(`Venue: ${transformed.venue}`);
     console.log(`Category: ${transformed.category}`);
-    console.log(`Expected Attendees: ${typeof transformed.expected_attendees === 'object' ? transformed.expected_attendees.capacity : transformed.expected_attendees || 'Not estimated'}`);
+    console.log(`Expected Attendees: ${typeof transformed.expected_attendees === 'object' && transformed.expected_attendees !== null ? (transformed.expected_attendees as any).capacity : transformed.expected_attendees || 'Not estimated'}`);
     console.log(`Source: ${transformed.source}`);
     
   } catch (error) {
