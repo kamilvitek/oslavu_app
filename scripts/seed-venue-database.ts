@@ -350,7 +350,16 @@ async function seedVenueDatabase() {
 
   for (const venue of czechVenues) {
     try {
-      console.log(`📍 Adding venue: ${venue.name} (${venue.city})`);
+      console.log(`📍 Processing venue: ${venue.name} (${venue.city})`);
+      
+      // Check if venue already exists
+      const existingVenue = await venueDatabaseService.lookupVenue(venue.name, venue.city);
+      
+      if (existingVenue) {
+        console.log(`   ⚠️  Venue already exists, skipping: ${venue.name}`);
+        successCount++; // Count as success since venue exists
+        continue;
+      }
       
       const result = await venueDatabaseService.addVenue(venue);
       console.log(`   ✅ Added with ID: ${result.id}`);
@@ -388,7 +397,7 @@ async function seedVenueDatabase() {
     // Show some examples
     if (pragueVenues.length > 0) {
       console.log('\n🏟️  Sample Prague venues:');
-      pragueVenues.slice(0, 3).forEach(venue => {
+      pragueVenues.slice(0, 3).forEach((venue: any) => {
         console.log(`   - ${venue.name}: ${venue.capacity} capacity (${venue.venue_type})`);
       });
     }
