@@ -12,6 +12,10 @@ export interface DatabaseEvent {
   category: string;
   subcategory?: string;
   expected_attendees?: number;
+  attendee_source?: 'explicit' | 'phq_api' | 'venue_capacity' | 'ai_extraction' | 'category_default' | 'user_verified';
+  attendee_confidence?: number;
+  attendee_reasoning?: string[];
+  attendee_verified?: boolean;
   source: 'ticketmaster' | 'predicthq' | 'meetup' | 'manual' | 'brno' | 'scraper';
   source_id?: string;
   url?: string;
@@ -39,6 +43,10 @@ export interface CreateEventData {
   category: string;
   subcategory?: string;
   expected_attendees?: number;
+  attendee_source?: 'explicit' | 'phq_api' | 'venue_capacity' | 'ai_extraction' | 'category_default' | 'user_verified';
+  attendee_confidence?: number;
+  attendee_reasoning?: string[];
+  attendee_verified?: boolean;
   source: 'ticketmaster' | 'predicthq' | 'meetup' | 'manual' | 'brno' | 'scraper';
   source_id?: string;
   url?: string;

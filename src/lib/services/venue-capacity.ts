@@ -3,7 +3,8 @@ import { venueCityMappingService } from './venue-city-mapping';
 
 export interface VenueCapacityEstimate {
   capacity: number;
-  confidence: 'high' | 'medium' | 'low';
+  confidence: number; // 0.0 to 1.0
+  source: 'explicit' | 'venue_capacity' | 'category_default';
   method: 'pattern_match' | 'category_default' | 'venue_database' | 'fallback';
   reasoning: string[];
 }
@@ -136,7 +137,8 @@ export class VenueCapacityService {
 
       return {
         capacity: adjustedCapacity,
-        confidence: 'high',
+        confidence: 0.7, // Pattern match confidence
+        source: 'venue_capacity',
         method: 'pattern_match',
         reasoning
       };
@@ -225,7 +227,8 @@ export class VenueCapacityService {
 
     return {
       capacity: defaultCapacity,
-      confidence: 'low',
+      confidence: 0.3, // Category default confidence
+      source: 'category_default',
       method: 'category_default',
       reasoning: [...baseReasoning, `Using default capacity for ${category || 'unknown'} category`]
     };
@@ -257,7 +260,8 @@ export class VenueCapacityService {
         const adjustedCapacity = this.applyCategoryScaling(baseCapacity, category);
         return {
           capacity: adjustedCapacity,
-          confidence: 'medium',
+          confidence: 0.6, // City context confidence
+          source: 'venue_capacity',
           method: 'venue_database',
           reasoning: [`Major city (${city}) context: ${baseCapacity} base capacity`]
         };

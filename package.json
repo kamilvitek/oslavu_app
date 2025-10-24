@@ -16,7 +16,8 @@
     "scrape:test": "tsx scripts/test-scraper.ts test",
     "scrape:run": "tsx scripts/test-scraper.ts sync",
     "backfill-attendees": "tsx scripts/backfill-attendees.ts",
-    "test-attendees": "tsx scripts/test-attendee-implementation.ts"
+    "test-attendees": "tsx scripts/test-attendee-implementation.ts",
+    "seed-venues": "tsx scripts/seed-venue-database.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
