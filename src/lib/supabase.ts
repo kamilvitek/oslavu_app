@@ -1,16 +1,33 @@
 import { createClient as createSupabaseClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Lazy initialization to allow environment variables to be loaded first
+let _supabase: SupabaseClient | null = null;
 
-// Export the createClient function for use in other modules
 export const createClient = createSupabaseClient;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = (() => {
+  if (!_supabase) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error('Supabase environment variables not found. Make sure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.');
+    }
+    
+    _supabase = createClient(supabaseUrl, supabaseAnonKey);
+  }
+  return _supabase;
+})();
 
 // For server-side operations
 export const createServerClient = () => {
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase environment variables not found. Make sure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.');
+  }
+  
   return createClient(supabaseUrl, supabaseServiceKey);
 };
 
@@ -149,4 +166,12 @@ export class DatabaseService {
 
 // Export singleton instances
 export const databaseService = new DatabaseService();
-export const serverDatabaseService = new DatabaseService(true);
+
+// Lazy initialization for server database service
+let _serverDatabaseService: DatabaseService | null = null;
+export const serverDatabaseService = (() => {
+  if (!_serverDatabaseService) {
+    _serverDatabaseService = new DatabaseService(true);
+  }
+  return _serverDatabaseService;
+})();

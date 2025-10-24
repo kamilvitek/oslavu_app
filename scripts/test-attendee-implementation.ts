@@ -1,7 +1,14 @@
 #!/usr/bin/env tsx
 // scripts/test-attendee-implementation.ts
-import { venueCapacityService } from '../src/lib/services/venue-capacity';
-import { attendeeBackfillService } from '../src/lib/services/attendee-backfill';
+import { config } from 'dotenv';
+import path from 'path';
+
+// Load environment variables from .env.local FIRST
+config({ path: path.resolve(process.cwd(), '.env.local') });
+
+// Now import the services after environment variables are loaded
+const { venueCapacityService } = require('../src/lib/services/venue-capacity');
+const { attendeeBackfillService } = require('../src/lib/services/attendee-backfill');
 
 async function testVenueCapacityService() {
   console.log('🧪 Testing Venue Capacity Service');

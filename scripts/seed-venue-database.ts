@@ -1,6 +1,15 @@
 #!/usr/bin/env tsx
 // scripts/seed-venue-database.ts
-import { venueDatabaseService } from '../src/lib/services/venue-database';
+import { config } from 'dotenv';
+import path from 'path';
+
+// Load environment variables from .env.local FIRST
+config({ path: path.resolve(process.cwd(), '.env.local') });
+
+// Environment variables are now loaded
+
+// Now import the service after environment variables are loaded
+const { venueDatabaseService } = require('../src/lib/services/venue-database');
 
 interface CzechVenue {
   name: string;

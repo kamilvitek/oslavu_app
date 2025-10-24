@@ -1,6 +1,13 @@
 #!/usr/bin/env tsx
 // scripts/backfill-attendees.ts
-import { attendeeBackfillService } from '../src/lib/services/attendee-backfill';
+import { config } from 'dotenv';
+import path from 'path';
+
+// Load environment variables from .env.local FIRST
+config({ path: path.resolve(process.cwd(), '.env.local') });
+
+// Now import the service after environment variables are loaded
+const { attendeeBackfillService } = require('../src/lib/services/attendee-backfill');
 
 interface ScriptOptions {
   dryRun: boolean;

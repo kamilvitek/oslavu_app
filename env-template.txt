@@ -1,0 +1,18 @@
+# Copy this to .env.local and fill in your actual values
+
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url_here
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
+
+# OpenAI Configuration (for AI scraping)
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Firecrawl Configuration (for web scraping)
+FIRECRAWL_API_KEY=your_firecrawl_api_key_here
+
+# PredictHQ Configuration (for event data)
+PREDICTHQ_API_KEY=your_predicthq_api_key_here
+
+# Ticketmaster Configuration (for event data)
+TICKETMASTER_API_KEY=your_ticketmaster_api_key_here
