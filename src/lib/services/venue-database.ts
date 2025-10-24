@@ -206,7 +206,7 @@ export class VenueDatabaseService {
       const { data: venueData, error: venueError } = await this.db.executeWithRetry(async () => {
         const result = await this.db.getClient()
           .from('venues')
-          .select('capacity, average_attendance, typical_utilization')
+          .select('name, capacity, average_attendance, typical_utilization')
           .eq('id', venueId)
           .single();
         return result;

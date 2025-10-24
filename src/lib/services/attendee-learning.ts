@@ -380,7 +380,7 @@ export class AttendeeLearningService {
         typicalCapacity: Math.max(...attendances),
         eventCount: attendances.length,
         lastEvent: stats.dates.sort().pop(),
-        averageAttendance: Math.round(attendances.reduce((a, b) => a + b, 0) / attendances.length)
+        averageAttendance: Math.round(attendances.reduce((a: number, b: number) => a + b, 0) / attendances.length)
       };
     }
 
@@ -422,11 +422,11 @@ export class AttendeeLearningService {
 
     const insights: Record<string, any> = {};
     for (const [category, stats] of Object.entries(categoryStats)) {
-      const attendances = stats.attendances.sort((a, b) => a - b);
+      const attendances = stats.attendances.sort((a: number, b: number) => a - b);
       const dates = stats.dates.sort();
       
       insights[category] = {
-        averageAttendance: Math.round(attendances.reduce((a, b) => a + b, 0) / attendances.length),
+        averageAttendance: Math.round(attendances.reduce((a: number, b: number) => a + b, 0) / attendances.length),
         medianAttendance: attendances[Math.floor(attendances.length / 2)],
         eventCount: attendances.length,
         growthTrend: this.calculateGrowthTrend(attendances, dates)
@@ -461,10 +461,10 @@ export class AttendeeLearningService {
     for (const [season, stats] of Object.entries(seasonalStats)) {
       const attendances = stats.attendances;
       const months = Array.from(stats.months);
-      const peakMonth = this.getMonthName(months[Math.floor(months.length / 2)]);
+      const peakMonth = this.getMonthName(months[Math.floor(months.length / 2)] as number);
       
       insights[season] = {
-        averageAttendance: Math.round(attendances.reduce((a, b) => a + b, 0) / attendances.length),
+        averageAttendance: Math.round(attendances.reduce((a: number, b: number) => a + b, 0) / attendances.length),
         eventCount: attendances.length,
         peakMonth
       };
@@ -499,7 +499,7 @@ export class AttendeeLearningService {
       const venues = Array.from(stats.venues);
       
       insights[city] = {
-        averageAttendance: Math.round(attendances.reduce((a, b) => a + b, 0) / attendances.length),
+        averageAttendance: Math.round(attendances.reduce((a: number, b: number) => a + b, 0) / attendances.length),
         eventCount: attendances.length,
         topVenues: venues.slice(0, 3) // Top 3 venues
       };

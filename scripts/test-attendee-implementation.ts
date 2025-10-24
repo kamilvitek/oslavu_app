@@ -77,7 +77,7 @@ async function testBackfillService() {
 
     if (result.errors.length > 0) {
       console.log(`\n⚠️  Errors (${result.errors.length}):`);
-      result.errors.slice(0, 3).forEach((error, index) => {
+      result.errors.slice(0, 3).forEach((error: any, index: number) => {
         console.log(`  ${index + 1}. ${error}`);
       });
     }
