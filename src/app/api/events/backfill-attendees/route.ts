@@ -1,96 +1,112 @@
-// src/app/api/events/backfill-attendees/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { attendeeBackfillService } from '@/lib/services/attendee-backfill';
 
+function createResponse(data: any, options: { status?: number } = {}) {
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/json');
+  headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  return new NextResponse(JSON.stringify(data), {
+    status: options.status || 200,
+    headers 
+  });
+}
+
+// Helper function to verify authorization
+function verifyAuthorization(request: NextRequest): boolean {
+  const authHeader = request.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+  
+  if (!cronSecret) {
+    console.error('❌ CRON_SECRET not configured');
+    return false;
+  }
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.error('❌ Missing or invalid authorization header');
+    return false;
+  }
+  
+  const token = authHeader.substring(7);
+  return token === cronSecret;
+}
+
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    // Parse query parameters
-    const { searchParams } = new URL(request.url);
-    const dryRun = searchParams.get('dryRun') === 'true';
-    const limit = parseInt(searchParams.get('limit') || '1000');
-    const batchSize = parseInt(searchParams.get('batchSize') || '100');
-    const verbose = searchParams.get('verbose') === 'true';
-
-    // Validate parameters
-    if (isNaN(limit) || limit <= 0) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Invalid limit parameter. Must be a positive number.' 
+    console.log('🔄 Attendee backfill request received');
+    
+    // Verify authorization
+    if (!verifyAuthorization(request)) {
+      console.error('❌ Unauthorized backfill request');
+      return createResponse(
+        {
+          success: false,
+          error: 'Unauthorized',
+          message: 'Invalid or missing authorization token'
         },
-        { status: 400 }
+        { status: 401 }
       );
     }
-
-    if (isNaN(batchSize) || batchSize <= 0) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Invalid batchSize parameter. Must be a positive number.' 
-        },
-        { status: 400 }
-      );
+    
+    console.log('✅ Authorization verified, starting attendee backfill');
+    
+    // Get current statistics
+    const stats = await attendeeBackfillService.getBackfillStats();
+    console.log('📊 Current statistics:', stats);
+    
+    // Only run if there are events without attendee data
+    if (stats.eventsWithoutAttendees === 0) {
+      console.log('✅ All events already have attendee data');
+      return createResponse({
+        success: true,
+        message: 'All events already have attendee data',
+        data: stats
+      });
     }
-
-    // Get current statistics before backfill
-    const statsBefore = await attendeeBackfillService.getBackfillStats();
-
-    console.log(`🔄 Starting attendee backfill via API (dryRun: ${dryRun}, limit: ${limit})`);
-
-    // Run the backfill
+    
+    // Run backfill with reasonable limits for cron
     const result = await attendeeBackfillService.backfillMissingAttendees({
-      dryRun,
-      limit,
-      batchSize,
-      verbose
+      limit: 500, // Process up to 500 events per cron run
+      batchSize: 50,
+      verbose: false
     });
-
-    // Get updated statistics
-    const statsAfter = await attendeeBackfillService.getBackfillStats();
-
+    
+    // Calculate duration
+    const duration = Date.now() - startTime;
+    
     const response = {
       success: true,
-      dryRun,
-      parameters: {
-        limit,
-        batchSize,
-        verbose
+      data: {
+        ...result,
+        duration_ms: duration,
+        processed_at: new Date().toISOString()
       },
-      statistics: {
-        before: statsBefore,
-        after: statsAfter,
-        improvement: {
-          eventsUpdated: result.updatedEvents,
-          percentageIncrease: statsBefore.totalEvents > 0 ? 
-            ((statsAfter.eventsWithAttendees - statsBefore.eventsWithAttendees) / statsBefore.totalEvents) * 100 : 0
-        }
-      },
-      result: {
-        totalEvents: result.totalEvents,
-        processedEvents: result.processedEvents,
-        updatedEvents: result.updatedEvents,
-        skippedEvents: result.skippedEvents,
-        failedEvents: result.failedEvents,
-        duration: result.duration,
-        startTime: result.startTime,
-        endTime: result.endTime
-      },
-      errors: result.errors.length > 0 ? result.errors.slice(0, 10) : [], // Limit errors in response
-      errorCount: result.errors.length
+      timestamp: new Date().toISOString()
     };
-
-    console.log(`✅ Attendee backfill completed: ${result.updatedEvents} events updated`);
-
-    return NextResponse.json(response);
-
-  } catch (error) {
-    console.error('❌ Attendee backfill API error:', error);
     
-    return NextResponse.json(
+    console.log('✅ Attendee backfill completed:', {
+      totalEvents: result.totalEvents,
+      processedEvents: result.processedEvents,
+      updatedEvents: result.updatedEvents,
+      duration: `${duration}ms`
+    });
+    
+    return createResponse(response);
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('❌ Attendee backfill failed:', error);
+    
+    return createResponse(
       {
         success: false,
-        error: 'Backfill operation failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Backfill failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        duration_ms: duration
       },
       { status: 500 }
     );
@@ -99,23 +115,24 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Get current statistics
-    const stats = await attendeeBackfillService.getBackfillStats();
-
-    return NextResponse.json({
-      success: true,
-      statistics: stats,
-      message: 'Current attendee data statistics'
-    });
-
-  } catch (error) {
-    console.error('❌ Failed to get attendee statistics:', error);
+    console.log('📊 Getting attendee backfill statistics');
     
-    return NextResponse.json(
+    const stats = await attendeeBackfillService.getBackfillStats();
+    
+    return createResponse({
+      success: true,
+      data: stats,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Failed to get backfill statistics:', error);
+    
+    return createResponse(
       {
         success: false,
-        error: 'Failed to get statistics',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Statistics failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     );

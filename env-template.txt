@@ -16,3 +16,6 @@ PREDICTHQ_API_KEY=your_predicthq_api_key_here
 
 # Ticketmaster Configuration (for event data)
 TICKETMASTER_API_KEY=your_ticketmaster_api_key_here
+
+# Cron Job Security (for automated scraping and backfill)
+CRON_SECRET=your_secure_random_string_here

@@ -18,7 +18,8 @@
     "backfill-attendees": "tsx scripts/backfill-attendees.ts",
     "test-attendees": "tsx scripts/test-attendee-implementation.ts",
     "seed-venues": "tsx scripts/seed-venue-database.ts",
-    "check-db": "tsx scripts/check-database-structure.ts"
+    "check-db": "tsx scripts/check-database-structure.ts",
+    "setup-cron": "tsx scripts/setup-cron-automation.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
