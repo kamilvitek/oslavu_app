@@ -183,9 +183,8 @@ export class VenueCapacityService {
     venueName: string, 
     category?: string, 
     city?: string
-  ): number {
-    const estimate = this.estimateCapacity(venueName, city, category);
-    return estimate.capacity;
+  ): VenueCapacityEstimate {
+    return this.estimateCapacity(venueName, city, category);
   }
 
   /**
@@ -317,14 +316,14 @@ export class VenueCapacityService {
   /**
    * Validate capacity estimate
    */
-  validateCapacity(capacity: number, venueName: string, category?: string): boolean {
+  validateCapacity(estimate: VenueCapacityEstimate, venueName: string, category?: string): boolean {
     // Basic sanity checks
-    if (capacity < 10) return false; // Too small
-    if (capacity > 100000) return false; // Too large
+    if (estimate.capacity < 10) return false; // Too small
+    if (estimate.capacity > 100000) return false; // Too large
     
     // Category-specific validation
-    if (category === 'Sports' && capacity < 100) return false;
-    if (category === 'Business' && capacity > 5000) return false;
+    if (category === 'Sports' && estimate.capacity < 100) return false;
+    if (category === 'Business' && estimate.capacity > 5000) return false;
     
     return true;
   }

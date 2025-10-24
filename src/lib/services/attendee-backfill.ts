@@ -1,6 +1,6 @@
 // src/lib/services/attendee-backfill.ts
 import { serverDatabaseService } from '@/lib/supabase';
-import { venueCapacityService } from './venue-capacity';
+import { venueCapacityService, VenueCapacityEstimate } from './venue-capacity';
 
 export interface BackfillResult {
   totalEvents: number;
@@ -110,8 +110,8 @@ export class AttendeeBackfillService {
       const { data, error } = await this.db.executeWithRetry(async () => {
         const result = await this.db.getClient()
           .from('events')
-          .select('id, title, venue, city, category, subcategory, source, created_at')
-          .is('expected_attendees', null)
+          .select('id, title, venue, city, category, subcategory, source, created_at, expected_attendees, attendee_source, attendee_confidence')
+          .or('expected_attendees.is.null,attendee_source.is.null,attendee_confidence.is.null')
           .not('venue', 'is', null) // Only events with venue names
           .order('created_at', { ascending: false })
           .limit(limit);
@@ -156,9 +156,9 @@ export class AttendeeBackfillService {
         result.processed++;
         
         // Estimate attendees using venue capacity service
-        const estimatedAttendees = this.estimateAttendeesForEvent(event);
+        const estimate = this.estimateAttendeesForEvent(event);
         
-        if (estimatedAttendees === null) {
+        if (estimate === null) {
           result.skipped++;
           if (verbose) {
             console.log(`   ⏭️  Skipped ${event.title} - no venue or unable to estimate`);
@@ -169,14 +169,14 @@ export class AttendeeBackfillService {
         if (dryRun) {
           result.updated++;
           if (verbose) {
-            console.log(`   🔍 [DRY RUN] Would update ${event.title}: ${estimatedAttendees} attendees`);
+            console.log(`   🔍 [DRY RUN] Would update ${event.title}: ${estimate.capacity} attendees (${estimate.source}, confidence: ${estimate.confidence})`);
           }
         } else {
-          // Update the event with estimated attendees
-          await this.updateEventAttendees(event.id, estimatedAttendees);
+          // Update the event with estimated attendees and confidence tracking
+          await this.updateEventAttendees(event.id, estimate);
           result.updated++;
           if (verbose) {
-            console.log(`   ✅ Updated ${event.title}: ${estimatedAttendees} attendees`);
+            console.log(`   ✅ Updated ${event.title}: ${estimate.capacity} attendees (${estimate.source}, confidence: ${estimate.confidence})`);
           }
         }
       } catch (error) {
@@ -193,21 +193,26 @@ export class AttendeeBackfillService {
   /**
    * Estimate attendees for a specific event
    */
-  private estimateAttendeesForEvent(event: EventWithoutAttendees): number | null {
+  private estimateAttendeesForEvent(event: EventWithoutAttendees): VenueCapacityEstimate | null {
     if (!event.venue) return null;
 
     try {
+      console.log(`🏟️ Estimating for: "${event.title}" at "${event.venue}" (${event.category}, ${event.city})`);
       const estimate = venueCapacityService.estimateAttendees(
         event.venue, 
         event.category, 
         event.city
       );
       
+      console.log(`   📊 Estimate result:`, estimate);
+      
       // Validate the estimate
       if (venueCapacityService.validateCapacity(estimate, event.venue, event.category)) {
+        console.log(`   ✅ Valid estimate: ${estimate.capacity} attendees`);
         return estimate;
       }
       
+      console.log(`   ❌ Invalid estimate, returning null`);
       return null;
     } catch (error) {
       console.warn(`Failed to estimate attendees for event "${event.title}":`, error);
@@ -216,15 +221,18 @@ export class AttendeeBackfillService {
   }
 
   /**
-   * Update event with estimated attendees
+   * Update event with estimated attendees and confidence tracking
    */
-  private async updateEventAttendees(eventId: string, expectedAttendees: number): Promise<void> {
+  private async updateEventAttendees(eventId: string, estimate: VenueCapacityEstimate): Promise<void> {
     try {
       const { error } = await this.db.executeWithRetry(async () => {
         const result = await this.db.getClient()
           .from('events')
           .update({ 
-            expected_attendees: expectedAttendees,
+            expected_attendees: estimate.capacity,
+            attendee_source: estimate.source,
+            attendee_confidence: estimate.confidence,
+            attendee_reasoning: estimate.reasoning,
             updated_at: new Date().toISOString()
           })
           .eq('id', eventId);
