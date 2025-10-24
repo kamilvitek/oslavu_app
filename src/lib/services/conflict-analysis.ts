@@ -2493,7 +2493,7 @@ export class ConflictAnalysisService {
   }
 
   /**
-   * Calculate audience overlap analysis for competing events
+   * OPTIMIZED: Calculate audience overlap analysis for competing events using batch processing
    */
   private async calculateAudienceOverlapAnalysis(
     competingEvents: Event[],
@@ -2518,48 +2518,124 @@ export class ConflictAnalysisService {
       date: params.startDate,
       city: params.city,
       category: params.category,
+      subcategory: params.subcategory,
       expectedAttendees: params.expectedAttendees,
       source: 'manual',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    const overlapScores: number[] = [];
-    const highOverlapEvents: Event[] = [];
-    const allReasoning: string[] = [];
+    try {
+      console.log(`🚀 Starting optimized batch audience overlap analysis for ${competingEvents.length} events`);
+      const startTime = Date.now();
 
-    for (const event of competingEvents) {
-      try {
-        // Use OpenAI-powered analysis if available, otherwise fallback to rule-based
-        const overlap = openaiAudienceOverlapService.isAvailable()
-          ? await openaiAudienceOverlapService.predictAudienceOverlap(plannedEvent, event)
-          : await audienceOverlapService.predictAudienceOverlap(plannedEvent, event);
-        
-        overlapScores.push(overlap.overlapScore);
-        allReasoning.push(...overlap.reasoning);
+      // Use optimized batch processing
+      const { optimizedOpenAIAudienceOverlapService } = await import('./optimized-openai-audience-overlap');
+      const { batchAudienceOverlapService } = await import('./batch-audience-overlap');
 
-        // Only consider events with significant overlap (>30%) as high overlap
-        if (overlap.overlapScore > 0.3) {
-          highOverlapEvents.push(event);
-        }
-      } catch (error) {
-        console.error(`Error calculating overlap for event ${event.title}:`, error);
-        overlapScores.push(0);
+      let overlapResults: Map<string, any>;
+
+      // Choose the best available service
+      if (optimizedOpenAIAudienceOverlapService.isAvailable()) {
+        console.log('🤖 Using optimized OpenAI batch processing');
+        overlapResults = await optimizedOpenAIAudienceOverlapService.predictBatchAudienceOverlap(
+          plannedEvent, 
+          competingEvents
+        );
+      } else {
+        console.log('📦 Using batch processing with rule-based analysis');
+        const batchResult = await batchAudienceOverlapService.processBatchOverlap({
+          plannedEvent,
+          competingEvents
+        });
+        overlapResults = batchResult.results;
       }
+
+      const processingTime = Date.now() - startTime;
+      console.log(`✅ Batch audience overlap analysis completed in ${processingTime}ms`);
+
+      // Process results
+      const overlapScores: number[] = [];
+      const highOverlapEvents: Event[] = [];
+      const allReasoning: string[] = [];
+
+      for (const event of competingEvents) {
+        const overlap = overlapResults.get(event.id);
+        if (overlap) {
+          overlapScores.push(overlap.overlapScore);
+          allReasoning.push(...overlap.reasoning);
+
+          // Store overlap data for frontend display
+          event.audienceOverlapPercentage = Math.round(overlap.overlapScore * 100);
+          event.overlapReasoning = overlap.reasoning;
+
+          // Only consider events with significant overlap (>30%) as high overlap
+          if (overlap.overlapScore > 0.3) {
+            highOverlapEvents.push(event);
+          }
+        } else {
+          console.warn(`No overlap result found for event ${event.id}`);
+          overlapScores.push(0);
+        }
+      }
+
+      const averageOverlap = overlapScores.length > 0 
+        ? overlapScores.reduce((sum, score) => sum + score, 0) / overlapScores.length 
+        : 0;
+
+      // Remove duplicate reasoning
+      const uniqueReasoning = [...new Set(allReasoning)];
+
+      console.log(`📊 Batch analysis results: ${overlapScores.length} events, ${highOverlapEvents.length} high overlap, avg: ${(averageOverlap * 100).toFixed(1)}%`);
+
+      return {
+        averageOverlap,
+        highOverlapEvents,
+        overlapReasoning: uniqueReasoning.slice(0, 3) // Limit to top 3 reasons
+      };
+
+    } catch (error) {
+      console.error('Optimized batch analysis failed, falling back to individual analysis:', error);
+      
+      // Fallback to individual analysis
+      const overlapScores: number[] = [];
+      const highOverlapEvents: Event[] = [];
+      const allReasoning: string[] = [];
+
+      for (const event of competingEvents) {
+        try {
+          const overlap = openaiAudienceOverlapService.isAvailable()
+            ? await openaiAudienceOverlapService.predictAudienceOverlap(plannedEvent, event)
+            : await audienceOverlapService.predictAudienceOverlap(plannedEvent, event);
+          
+          overlapScores.push(overlap.overlapScore);
+          allReasoning.push(...overlap.reasoning);
+
+          // Store overlap data for frontend display
+          event.audienceOverlapPercentage = Math.round(overlap.overlapScore * 100);
+          event.overlapReasoning = overlap.reasoning;
+
+          if (overlap.overlapScore > 0.3) {
+            highOverlapEvents.push(event);
+          }
+        } catch (individualError) {
+          console.error(`Error calculating overlap for event ${event.title}:`, individualError);
+          overlapScores.push(0);
+        }
+      }
+
+      const averageOverlap = overlapScores.length > 0 
+        ? overlapScores.reduce((sum, score) => sum + score, 0) / overlapScores.length 
+        : 0;
+
+      const uniqueReasoning = [...new Set(allReasoning)];
+
+      return {
+        averageOverlap,
+        highOverlapEvents,
+        overlapReasoning: uniqueReasoning.slice(0, 3)
+      };
     }
-
-    const averageOverlap = overlapScores.length > 0 
-      ? overlapScores.reduce((sum, score) => sum + score, 0) / overlapScores.length 
-      : 0;
-
-    // Remove duplicate reasoning
-    const uniqueReasoning = [...new Set(allReasoning)];
-
-    return {
-      averageOverlap,
-      highOverlapEvents,
-      overlapReasoning: uniqueReasoning.slice(0, 3) // Limit to top 3 reasons
-    };
   }
 
 
