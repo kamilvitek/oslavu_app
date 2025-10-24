@@ -1018,12 +1018,13 @@ export class ConflictAnalysisService {
     }
 
     // Additionally, sample dates throughout the entire analysis range to catch high-risk periods
+    // OPTIMIZATION: Reduce sampling frequency to avoid too many overlapping ranges
     const analysisStart = new Date(params.dateRangeStart);
     const analysisEnd = new Date(params.dateRangeEnd);
     const totalDays = Math.ceil((analysisEnd.getTime() - analysisStart.getTime()) / (1000 * 60 * 60 * 24));
     
-    // Sample every 3 days throughout the range to find high-risk dates
-    for (let dayOffset = 0; dayOffset < totalDays; dayOffset += 3) {
+    // Sample every 7 days throughout the range (reduced from 3 days to minimize overlaps)
+    for (let dayOffset = 0; dayOffset < totalDays; dayOffset += 7) {
       const startDate = new Date(analysisStart);
       startDate.setDate(startDate.getDate() + dayOffset);
       
@@ -1143,6 +1144,13 @@ export class ConflictAnalysisService {
     for (const eventId of competingEventIds) {
       const event = this.eventIndex.events.get(eventId);
       if (!event) continue;
+      
+      // CRITICAL FIX: Check if the event actually occurs within the specific date range
+      const eventDate = new Date(event.date);
+      if (eventDate < start || eventDate > end) {
+        console.log(`🚫 Event "${event.title}" on ${event.date} is outside date range ${startDate} to ${endDate}, skipping`);
+        continue;
+      }
       
       // Check if event is in the same category or related categories
       const sameCategory = event.category === params.category || 
