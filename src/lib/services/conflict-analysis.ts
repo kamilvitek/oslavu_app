@@ -9,6 +9,7 @@ import { holidayService } from './holiday-service';
 import { HolidayServiceConfig } from '@/types/holidays';
 import { seasonalityEngine } from './seasonality-engine';
 import { holidayConflictDetector } from './holiday-conflict-detector';
+import { aiCategoryMatcher } from './ai-category-matcher';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -41,6 +42,14 @@ export interface ConflictAnalysisResult {
   userPreferredStartDate?: string;
   userPreferredEndDate?: string;
   deduplicationMetrics?: DeduplicationMetrics;
+  seasonalIntelligence?: {
+    hasSeasonalRisk: boolean;
+    riskLevel: 'low' | 'medium' | 'high';
+    seasonalFactors: string[];
+    recommendations: string[];
+    confidence: number;
+    dataCoverageWarning?: string;
+  };
 }
 
 export interface DateRecommendation {
@@ -473,6 +482,36 @@ export class ConflictAnalysisService {
       console.log(`User's preferred dates (${params.startDate} to ${params.endDate}) included: ${filteredHighRiskDates.some(d => d.startDate === params.startDate && d.endDate === params.endDate)}`);
       console.log(`High-risk dates scores:`, filteredHighRiskDates.map(d => `${d.startDate}: ${d.conflictScore} (${d.riskLevel})`));
 
+      // Analyze seasonal intelligence when no events are found or low coverage
+      let seasonalIntelligence;
+      if (filteredEvents.length === 0 || filteredEvents.length < 3) {
+        console.log('🔍 No events found or low coverage - analyzing seasonal intelligence...');
+        
+        try {
+          const targetDate = new Date(params.startDate);
+          const month = targetDate.getMonth() + 1;
+          
+          seasonalIntelligence = await aiCategoryMatcher.analyzeSeasonalIntelligence(
+            params.category,
+            params.subcategory,
+            month,
+            params.city,
+            'CZ'
+          );
+          
+          if (seasonalIntelligence.hasSeasonalRisk) {
+            console.log(`⚠️  Seasonal risk detected: ${seasonalIntelligence.riskLevel} - ${seasonalIntelligence.seasonalFactors.join(', ')}`);
+          }
+          
+          // Add data coverage warning if no events found
+          if (filteredEvents.length === 0) {
+            seasonalIntelligence.dataCoverageWarning = `No competing events found in our databases for ${params.category} events in ${params.city} during ${targetDate.toLocaleDateString('en', { month: 'long', year: 'numeric' })}. This could indicate limited data coverage or a genuinely low-competition period.`;
+          }
+        } catch (error) {
+          console.warn('Seasonal intelligence analysis failed:', error);
+        }
+      }
+
       const totalTime = Date.now() - startTime;
       console.log(`🎯 Conflict analysis completed in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`);
 
@@ -483,7 +522,8 @@ export class ConflictAnalysisService {
         analysisDate: new Date().toISOString(),
         userPreferredStartDate: params.startDate,
         userPreferredEndDate: params.endDate,
-        deduplicationMetrics: deduplicationResult ? eventDeduplicator.getMetrics(deduplicationResult) : undefined
+        deduplicationMetrics: deduplicationResult ? eventDeduplicator.getMetrics(deduplicationResult) : undefined,
+        seasonalIntelligence
       };
     } catch (error) {
       const totalTime = Date.now() - startTime;
@@ -796,7 +836,7 @@ export class ConflictAnalysisService {
 
     // For UI display, show category-filtered events to show only relevant events
     // This ensures users see events that are actually relevant to their event type
-    const categoryFilteredEvents = this.filterEventsByCategory(uniqueEvents, params.category);
+    const categoryFilteredEvents = await this.filterEventsByCategory(uniqueEvents, params.category);
     console.log(`📂 UI display events (category-filtered): ${categoryFilteredEvents.length}`);
     console.log(`📂 All location-filtered events: ${uniqueEvents.length}`);
     
@@ -2393,8 +2433,9 @@ export class ConflictAnalysisService {
 
   /**
    * Filter events by category to show only relevant events in "Found Events"
+   * Enhanced with AI-powered category matching for international events
    */
-  private filterEventsByCategory(events: Event[], targetCategory?: string): Event[] {
+  private async filterEventsByCategory(events: Event[], targetCategory?: string): Promise<Event[]> {
     if (!targetCategory) {
       return events; // No category filter, return all events
     }
@@ -2402,19 +2443,83 @@ export class ConflictAnalysisService {
     const normalizedTargetCategory = targetCategory.toLowerCase().trim();
     const expandedCategories = this.getExpandedCategories(targetCategory).map(cat => cat.toLowerCase().trim());
     
-    return events.filter(event => {
+    const filteredEvents: Event[] = [];
+    const aiMatchedEvents: Event[] = [];
+    
+    for (const event of events) {
       const eventCategory = event.category?.toLowerCase().trim() || '';
       
-      // For UI display, use expanded category matching to show related events
-      // This ensures users see events that are relevant to their selected category
+      // First try standard expanded category matching
       const isMatchingCategory = expandedCategories.includes(eventCategory);
       
-      if (!isMatchingCategory) {
-        console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - category not in expanded list`);
+      if (isMatchingCategory) {
+        filteredEvents.push(event);
+        console.log(`✅ Matched event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - standard match`);
+      } else {
+        // Try AI-powered category matching for international events
+        try {
+          const matchResult = await aiCategoryMatcher.matchCategory({
+            eventCategory: event.category || '',
+            targetCategory: targetCategory,
+            eventTitle: event.title,
+            eventDescription: event.description,
+            eventLanguage: this.detectEventLanguage(event)
+          });
+          
+          if (matchResult.isMatch && matchResult.confidence > 0.6) {
+            aiMatchedEvents.push(event);
+            console.log(`🤖 AI Matched event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - confidence: ${matchResult.confidence.toFixed(2)} - ${matchResult.reasoning}`);
+          } else {
+            console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - AI confidence: ${matchResult.confidence.toFixed(2)}`);
+          }
+        } catch (error) {
+          console.warn(`AI category matching failed for "${event.title}":`, error);
+          console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - AI matching failed`);
+        }
       }
-      
-      return isMatchingCategory;
-    });
+    }
+    
+    // Combine standard matches and AI matches
+    const allMatchedEvents = [...filteredEvents, ...aiMatchedEvents];
+    
+    if (aiMatchedEvents.length > 0) {
+      console.log(`🤖 AI-powered matching found ${aiMatchedEvents.length} additional events that standard matching missed`);
+    }
+    
+    return allMatchedEvents;
+  }
+
+  /**
+   * Detect event language from title and description
+   */
+  private detectEventLanguage(event: Event): string {
+    const text = `${event.title} ${event.description || ''}`.toLowerCase();
+    
+    // Czech indicators
+    if (text.includes('divadlo') || text.includes('hudba') || text.includes('kultura') || 
+        text.includes('sport') || text.includes('obchod') || text.includes('vzdělání')) {
+      return 'cs';
+    }
+    
+    // German indicators
+    if (text.includes('theater') || text.includes('musik') || text.includes('kultur') || 
+        text.includes('geschäft')) {
+      return 'de';
+    }
+    
+    // French indicators
+    if (text.includes('théâtre') || text.includes('musique') || text.includes('culture') || 
+        text.includes('affaires')) {
+      return 'fr';
+    }
+    
+    // Spanish indicators
+    if (text.includes('teatro') || text.includes('música') || text.includes('cultura') || 
+        text.includes('deporte')) {
+      return 'es';
+    }
+    
+    return 'en'; // Default to English
   }
 
   /**
