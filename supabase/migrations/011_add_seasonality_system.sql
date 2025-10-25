@@ -98,9 +98,7 @@ CREATE TABLE IF NOT EXISTS seasonal_insights_cache (
   calculation_method VARCHAR(50) NOT NULL DEFAULT 'seasonal_rules',
   confidence DECIMAL(3,2) NOT NULL,
   calculated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  
-  -- No inline indexes - will be created separately below
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
 -- =============================================================================
