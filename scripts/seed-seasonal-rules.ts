@@ -15,7 +15,11 @@
  * @fileoverview Comprehensive seasonal rules seeding for enhanced conflict analysis
  */
 
-import { createClient } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+import * as dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config({ path: '.env.local' });
 
 interface SeasonalRuleData {
   category: string;
@@ -29,6 +33,23 @@ interface SeasonalRuleData {
   dataSource: string;
   reasoning: string;
   expertSource: string;
+}
+
+// Helper function to convert camelCase to snake_case for database
+function toSnakeCase(data: SeasonalRuleData) {
+  return {
+    category: data.category,
+    subcategory: data.subcategory,
+    region: data.region,
+    month: data.month,
+    demand_multiplier: data.demandMultiplier,
+    conflict_weight: data.conflictWeight,
+    venue_availability: data.venueAvailability,
+    confidence: data.confidence,
+    data_source: data.dataSource,
+    reasoning: data.reasoning,
+    expert_source: data.expertSource
+  };
 }
 
 /**
@@ -154,12 +175,15 @@ const CZECH_SPECIFIC_RULES: SeasonalRuleData[] = [
  * Main seeding function
  */
 async function seedSeasonalRules(): Promise<void> {
-  const supabase = createClient();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
   
   console.log('🌱 Starting seasonal rules seeding...');
   
   try {
-    // Combine all rule sets
+    // Combine all rule sets and deduplicate
     const allRules = [
       ...TECHNOLOGY_RULES,
       ...ENTERTAINMENT_RULES,
@@ -167,14 +191,24 @@ async function seedSeasonalRules(): Promise<void> {
       ...CZECH_SPECIFIC_RULES
     ];
 
-    console.log(`📊 Total rules to seed: ${allRules.length}`);
+    // Deduplicate rules based on unique key
+    const uniqueRules = allRules.filter((rule, index, self) => 
+      index === self.findIndex(r => 
+        r.category === rule.category && 
+        r.subcategory === rule.subcategory && 
+        r.region === rule.region && 
+        r.month === rule.month
+      )
+    );
+
+    console.log(`📊 Total rules to seed: ${uniqueRules.length} (${allRules.length - uniqueRules.length} duplicates removed)`);
 
     // Insert rules in batches for better performance
     const batchSize = 50;
     let insertedCount = 0;
 
-    for (let i = 0; i < allRules.length; i += batchSize) {
-      const batch = allRules.slice(i, i + batchSize);
+    for (let i = 0; i < uniqueRules.length; i += batchSize) {
+      const batch = uniqueRules.slice(i, i + batchSize).map(toSnakeCase);
       
       const { error } = await supabase
         .from('seasonal_rules')
@@ -228,7 +262,10 @@ async function seedSeasonalRules(): Promise<void> {
  * Validate seeded data
  */
 async function validateSeededData(): Promise<void> {
-  const supabase = createClient();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
   
   console.log('🔍 Validating seeded seasonal rules...');
   
@@ -245,7 +282,7 @@ async function validateSeededData(): Promise<void> {
     }
 
     const uniqueCategories = Array.from(
-      new Set(categories?.map(c => `${c.category}${c.subcategory ? `|${c.subcategory}` : ''}|${c.region}`) || [])
+      new Set(categories?.map((c: any) => `${c.category}${c.subcategory ? `|${c.subcategory}` : ''}|${c.region}`) || [])
     );
 
     for (const categoryKey of uniqueCategories) {
@@ -263,7 +300,7 @@ async function validateSeededData(): Promise<void> {
         continue;
       }
 
-      const months = rules?.map(r => r.month).sort() || [];
+      const months = rules?.map((r: any) => r.month).sort() || [];
       const missingMonths = Array.from({ length: 12 }, (_, i) => i + 1)
         .filter(month => !months.includes(month));
 
@@ -285,7 +322,7 @@ async function validateSeededData(): Promise<void> {
 export { seedSeasonalRules, validateSeededData };
 
 // Run seeding if this script is executed directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   seedSeasonalRules()
     .then(() => validateSeededData())
     .then(() => {

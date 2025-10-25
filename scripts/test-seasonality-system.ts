@@ -7,9 +7,13 @@
  * @fileoverview Comprehensive testing for seasonality system functionality
  */
 
-import { createClient } from '@/lib/supabase';
-import { seasonalityEngine } from '@/lib/services/seasonality-engine';
-import { holidayConflictDetector } from '@/lib/services/holiday-conflict-detector';
+import { createClient } from '@supabase/supabase-js';
+import * as dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config({ path: '.env.local' });
+import { seasonalityEngine } from '../src/lib/services/seasonality-engine';
+import { holidayConflictDetector } from '../src/lib/services/holiday-conflict-detector';
 
 /**
  * Test database connectivity and table existence
@@ -18,7 +22,10 @@ async function testDatabaseConnection(): Promise<boolean> {
   console.log('🔍 Testing database connection...');
   
   try {
-    const supabase = createClient();
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
     
     // Test seasonal_rules table
     const { data: seasonalRules, error: seasonalError } = await supabase

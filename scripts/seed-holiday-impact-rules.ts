@@ -16,7 +16,11 @@
  * @fileoverview Holiday impact rules seeding for enhanced conflict analysis
  */
 
-import { createClient } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+import * as dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config({ path: '.env.local' });
 
 interface HolidayImpactRuleData {
   holidayType: string;
@@ -27,12 +31,32 @@ interface HolidayImpactRuleData {
   impactMultiplier: number;
   impactType: 'conflict' | 'demand' | 'availability' | 'combined';
   region: string;
-  yearStart?: number;
-  yearEnd?: number;
+  yearStart?: number | null;
+  yearEnd?: number | null;
   confidence: number;
   dataSource: string;
   reasoning: string;
   expertSource: string;
+}
+
+// Helper function to convert camelCase to snake_case for database
+function toSnakeCase(data: HolidayImpactRuleData) {
+  return {
+    holiday_type: data.holidayType,
+    event_category: data.eventCategory,
+    event_subcategory: data.eventSubcategory,
+    days_before: data.daysBefore,
+    days_after: data.daysAfter,
+    impact_multiplier: data.impactMultiplier,
+    impact_type: data.impactType,
+    region: data.region,
+    year_start: data.yearStart,
+    year_end: data.yearEnd,
+    confidence: data.confidence,
+    data_source: data.dataSource,
+    reasoning: data.reasoning,
+    expert_source: data.expertSource
+  };
 }
 
 /**
@@ -173,7 +197,7 @@ const BUSINESS_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'public_holiday',
     eventCategory: 'Business',
-    subcategory: 'Conferences',
+    eventSubcategory: 'Conferences',
     daysBefore: 1,
     daysAfter: 1,
     impactMultiplier: 2.0,
@@ -187,7 +211,7 @@ const BUSINESS_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'public_holiday',
     eventCategory: 'Business',
-    subcategory: 'Networking',
+    eventSubcategory: 'Networking',
     daysBefore: 1,
     daysAfter: 1,
     impactMultiplier: 1.8,
@@ -268,7 +292,7 @@ const ENTERTAINMENT_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'public_holiday',
     eventCategory: 'Entertainment',
-    subcategory: 'Music',
+    eventSubcategory: 'Music',
     daysBefore: 7,
     daysAfter: 3,
     impactMultiplier: 2.2,
@@ -282,7 +306,7 @@ const ENTERTAINMENT_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'public_holiday',
     eventCategory: 'Entertainment',
-    subcategory: 'Theater',
+    eventSubcategory: 'Theater',
     daysBefore: 5,
     daysAfter: 2,
     impactMultiplier: 1.8,
@@ -298,7 +322,7 @@ const ENTERTAINMENT_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'public_holiday',
     eventCategory: 'Entertainment',
-    subcategory: 'Music',
+    eventSubcategory: 'Music',
     daysBefore: 3,
     daysAfter: 2,
     impactMultiplier: 1.6,
@@ -314,7 +338,7 @@ const ENTERTAINMENT_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'public_holiday',
     eventCategory: 'Entertainment',
-    subcategory: 'Cultural',
+    eventSubcategory: 'Cultural',
     daysBefore: 2,
     daysAfter: 2,
     impactMultiplier: 1.4,
@@ -335,7 +359,7 @@ const TECHNOLOGY_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'public_holiday',
     eventCategory: 'Technology',
-    subcategory: 'AI/ML',
+    eventSubcategory: 'AI/ML',
     daysBefore: 7,
     daysAfter: 3,
     impactMultiplier: 3.0,
@@ -349,7 +373,7 @@ const TECHNOLOGY_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'public_holiday',
     eventCategory: 'Technology',
-    subcategory: 'Web Development',
+    eventSubcategory: 'Web Development',
     daysBefore: 5,
     daysAfter: 2,
     impactMultiplier: 2.5,
@@ -363,7 +387,7 @@ const TECHNOLOGY_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'public_holiday',
     eventCategory: 'Technology',
-    subcategory: 'Startups',
+    eventSubcategory: 'Startups',
     daysBefore: 5,
     daysAfter: 2,
     impactMultiplier: 2.8,
@@ -385,7 +409,7 @@ const TECHNOLOGY_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
     impactType: 'availability',
     region: 'CZ',
     yearStart: 2024,
-    yearEnd: null,
+    yearEnd: undefined,
     confidence: 0.85,
     dataSource: 'expert_rules',
     reasoning: 'Czech summer vacation period (July-August) reduces tech conference attendance',
@@ -401,7 +425,7 @@ const REGIONAL_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'cultural_event',
     eventCategory: 'Entertainment',
-    subcategory: 'Classical',
+    eventSubcategory: 'Classical',
     daysBefore: 3,
     daysAfter: 3,
     impactMultiplier: 2.5,
@@ -415,7 +439,7 @@ const REGIONAL_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'cultural_event',
     eventCategory: 'Entertainment',
-    subcategory: 'Music',
+    eventSubcategory: 'Music',
     daysBefore: 2,
     daysAfter: 2,
     impactMultiplier: 1.8,
@@ -431,7 +455,7 @@ const REGIONAL_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
   {
     holidayType: 'cultural_event',
     eventCategory: 'Entertainment',
-    subcategory: 'Cultural',
+    eventSubcategory: 'Cultural',
     daysBefore: 2,
     daysAfter: 2,
     impactMultiplier: 1.6,
@@ -483,12 +507,15 @@ const SPORTS_HOLIDAY_IMPACTS: HolidayImpactRuleData[] = [
  * Main seeding function
  */
 async function seedHolidayImpactRules(): Promise<void> {
-  const supabase = createClient();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
   
   console.log('🎭 Starting holiday impact rules seeding...');
   
   try {
-    // Combine all rule sets
+    // Combine all rule sets and deduplicate
     const allRules = [
       ...MAJOR_HOLIDAYS_IMPACT,
       ...BUSINESS_HOLIDAY_IMPACTS,
@@ -498,14 +525,24 @@ async function seedHolidayImpactRules(): Promise<void> {
       ...SPORTS_HOLIDAY_IMPACTS
     ];
 
-    console.log(`📊 Total holiday impact rules to seed: ${allRules.length}`);
+    // Deduplicate rules based on unique key
+    const uniqueRules = allRules.filter((rule, index, self) => 
+      index === self.findIndex(r => 
+        r.holidayType === rule.holidayType && 
+        r.eventCategory === rule.eventCategory && 
+        r.eventSubcategory === rule.eventSubcategory && 
+        r.region === rule.region
+      )
+    );
+
+    console.log(`📊 Total holiday impact rules to seed: ${uniqueRules.length} (${allRules.length - uniqueRules.length} duplicates removed)`);
 
     // Insert rules in batches for better performance
     const batchSize = 50;
     let insertedCount = 0;
 
-    for (let i = 0; i < allRules.length; i += batchSize) {
-      const batch = allRules.slice(i, i + batchSize);
+    for (let i = 0; i < uniqueRules.length; i += batchSize) {
+      const batch = uniqueRules.slice(i, i + batchSize).map(toSnakeCase);
       
       const { error } = await supabase
         .from('holiday_impact_rules')
@@ -569,7 +606,10 @@ async function seedHolidayImpactRules(): Promise<void> {
  * Validate seeded data
  */
 async function validateSeededData(): Promise<void> {
-  const supabase = createClient();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
   
   console.log('🔍 Validating seeded holiday impact rules...');
   
@@ -621,7 +661,10 @@ async function validateSeededData(): Promise<void> {
  * Test holiday impact calculation
  */
 async function testHolidayImpactCalculation(): Promise<void> {
-  const supabase = createClient();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
   
   console.log('🧪 Testing holiday impact calculation...');
   
@@ -667,7 +710,7 @@ async function testHolidayImpactCalculation(): Promise<void> {
 export { seedHolidayImpactRules, validateSeededData, testHolidayImpactCalculation };
 
 // Run seeding if this script is executed directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   seedHolidayImpactRules()
     .then(() => validateSeededData())
     .then(() => testHolidayImpactCalculation())
