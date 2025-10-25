@@ -336,8 +336,7 @@ ORDER BY hir.holiday_type, hir.event_category, hir.event_subcategory;
 -- MAINTENANCE AND EXPANSION GUIDELINES
 -- =============================================================================
 
-/*
-SEASONAL RULES MAINTENANCE:
+-- SEASONAL RULES MAINTENANCE:
 
 1. ADDING NEW CATEGORIES:
    - Create rules for all 12 months
@@ -423,4 +422,3 @@ FUTURE EXPANSIONS:
    - Bulk rule import/export functionality
    - Rule versioning and rollback capabilities
    - Integration with external calendar systems
-*/
