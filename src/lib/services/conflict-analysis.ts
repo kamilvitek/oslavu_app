@@ -7,6 +7,8 @@ import { eventDeduplicator, DeduplicationMetrics } from './event-deduplicator';
 import { cityRecognitionService } from './city-recognition';
 import { holidayService } from './holiday-service';
 import { HolidayServiceConfig } from '@/types/holidays';
+import { seasonalityEngine } from './seasonality-engine';
+import { holidayConflictDetector } from './holiday-conflict-detector';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -59,6 +61,15 @@ export interface DateRecommendation {
     business_impact: 'none' | 'partial' | 'full';
     venue_closure_expected: boolean;
     reasons: string[];
+  };
+  seasonalFactors?: {
+    demandLevel: string;
+    seasonalMultiplier: number;
+    holidayMultiplier: number;
+    seasonalReasoning: string[];
+    holidayReasoning: string[];
+    optimalityScore: number; // 0-1 score for how optimal this date is
+    venueAvailability: number;
   };
 }
 
@@ -839,6 +850,46 @@ export class ConflictAnalysisService {
 
       // Advanced analysis features
       let audienceOverlap;
+      let seasonalFactors;
+
+      // Calculate seasonal insights for this date range
+      try {
+        const seasonalMultiplier = await seasonalityEngine.getSeasonalMultiplier(
+          dateRange.startDate,
+          params.category,
+          params.subcategory,
+          'CZ'
+        );
+        
+        const holidayImpact = await holidayConflictDetector.getHolidayImpact(
+          dateRange.startDate,
+          params.category,
+          params.subcategory,
+          'CZ'
+        );
+        
+        seasonalFactors = {
+          demandLevel: seasonalMultiplier.demandLevel,
+          seasonalMultiplier: seasonalMultiplier.multiplier,
+          holidayMultiplier: holidayImpact.multiplier,
+          seasonalReasoning: seasonalMultiplier.reasoning,
+          holidayReasoning: holidayImpact.reasoning,
+          optimalityScore: Math.min(seasonalMultiplier.multiplier / 2.0, 1.0), // Normalize to 0-1
+          venueAvailability: 0.8 // Default, could be enhanced with venue-specific data
+        };
+      } catch (seasonalityError) {
+        console.warn(`Seasonal analysis failed for ${dateRange.startDate}:`, seasonalityError);
+        // Provide default seasonal factors
+        seasonalFactors = {
+          demandLevel: 'medium',
+          seasonalMultiplier: 1.0,
+          holidayMultiplier: 1.0,
+          seasonalReasoning: ['Seasonal analysis unavailable'],
+          holidayReasoning: ['Holiday analysis unavailable'],
+          optimalityScore: 0.5,
+          venueAvailability: 0.8
+        };
+      }
 
       // Advanced analysis is disabled for performance reasons
       // Audience overlap analysis causes 70+ second delays due to sequential OpenAI API calls
@@ -863,7 +914,8 @@ export class ConflictAnalysisService {
         competingEvents,
         reasons,
         audienceOverlap,
-        holidayRestrictions: dateRange.holidayRestrictions
+        holidayRestrictions: dateRange.holidayRestrictions,
+        seasonalFactors
       };
     });
 
@@ -1346,6 +1398,31 @@ export class ConflictAnalysisService {
       } else {
         // Calculate score using optimized algorithm
         eventScore = this.calculateEventConflictScore(event, category, config);
+        
+        // Apply seasonal and holiday multipliers before audience overlap
+        try {
+          const seasonalMultiplier = await seasonalityEngine.getSeasonalMultiplier(
+            event.date,
+            event.category,
+            event.subcategory || undefined,
+            'CZ' // Default to Czech Republic
+          );
+          
+          const holidayMultiplier = await holidayConflictDetector.getHolidayMultiplier(
+            event.date,
+            event.category,
+            event.subcategory || undefined,
+            'CZ' // Default to Czech Republic
+          );
+          
+          // Apply multipliers to base score
+          eventScore = eventScore * seasonalMultiplier.multiplier * holidayMultiplier;
+          
+          console.log(`  "${event.title}": seasonal ${seasonalMultiplier.multiplier.toFixed(2)}x, holiday ${holidayMultiplier.toFixed(2)}x -> adjusted score = ${eventScore.toFixed(2)}`);
+        } catch (seasonalityError) {
+          console.warn(`  "${event.title}": seasonality analysis failed, using base score:`, seasonalityError);
+          // Continue with base score if seasonality analysis fails
+        }
         
         // Apply audience overlap analysis if enabled and available
         if (params?.enableAdvancedAnalysis) {
