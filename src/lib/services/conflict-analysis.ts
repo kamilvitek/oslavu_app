@@ -2820,6 +2820,108 @@ export class ConflictAnalysisService {
   }
 
   /**
+   * Analyze date range with optimized seasonal and holiday factors
+   * This method integrates seasonality and holiday impact analysis
+   */
+  async analyzeDateRangeOptimized(params: ConflictAnalysisParams): Promise<{
+    recommendedDates: any[];
+    highRiskDates: any[];
+    seasonalFactors?: any;
+  }> {
+    const startTime = Date.now();
+    console.log('🔍 Starting optimized date range analysis with seasonality...');
+    
+    try {
+      // Get base conflict analysis
+      const baseAnalysis = await this.analyzeConflicts(params);
+      
+      // Get seasonal factors for the analysis period
+      const seasonalMultiplier = await seasonalityEngine.getSeasonalMultiplier(
+        params.startDate,
+        params.category,
+        params.subcategory,
+        'CZ'
+      );
+      
+      // Get holiday impact
+      const holidayImpact = await holidayConflictDetector.getHolidayImpact(
+        params.startDate,
+        params.category,
+        params.subcategory,
+        'CZ'
+      );
+      
+      // Enhance recommendations with seasonal factors
+      const enhancedRecommendations = baseAnalysis.recommendedDates.map(rec => ({
+        ...rec,
+        seasonalFactors: {
+          demandLevel: seasonalMultiplier.demandLevel,
+          seasonalMultiplier: seasonalMultiplier.multiplier,
+          holidayMultiplier: holidayImpact.multiplier,
+          optimalityScore: this.calculateOptimalityScore(rec, seasonalMultiplier, holidayImpact),
+          seasonalReasoning: seasonalMultiplier.reasoning,
+          holidayReasoning: holidayImpact.reasoning
+        }
+      }));
+      
+      // Enhance high-risk dates with seasonal factors
+      const enhancedHighRiskDates = baseAnalysis.highRiskDates.map(rec => ({
+        ...rec,
+        seasonalFactors: {
+          demandLevel: seasonalMultiplier.demandLevel,
+          seasonalMultiplier: seasonalMultiplier.multiplier,
+          holidayMultiplier: holidayImpact.multiplier,
+          optimalityScore: this.calculateOptimalityScore(rec, seasonalMultiplier, holidayImpact),
+          seasonalReasoning: seasonalMultiplier.reasoning,
+          holidayReasoning: holidayImpact.reasoning
+        }
+      }));
+      
+      const duration = Date.now() - startTime;
+      console.log(`✅ Optimized analysis completed in ${duration}ms`);
+      
+      return {
+        recommendedDates: enhancedRecommendations,
+        highRiskDates: enhancedHighRiskDates,
+        seasonalFactors: {
+          seasonalMultiplier,
+          holidayImpact
+        }
+      };
+      
+    } catch (error) {
+      console.error('❌ Optimized analysis failed:', error);
+      // Fallback to base analysis
+      const baseAnalysis = await this.analyzeConflicts(params);
+      return {
+        recommendedDates: baseAnalysis.recommendedDates,
+        highRiskDates: baseAnalysis.highRiskDates
+      };
+    }
+  }
+
+  /**
+   * Calculate optimality score based on seasonal and holiday factors
+   */
+  private calculateOptimalityScore(
+    recommendation: any,
+    seasonalMultiplier: any,
+    holidayImpact: any
+  ): number {
+    // Base score from conflict analysis
+    let score = 1.0 - (recommendation.conflictScore || 0);
+    
+    // Apply seasonal multiplier (higher demand = better score)
+    score *= seasonalMultiplier.multiplier;
+    
+    // Apply holiday impact (holidays can be good or bad depending on event type)
+    score *= holidayImpact.multiplier;
+    
+    // Normalize to 0-1 range
+    return Math.max(0, Math.min(1, score));
+  }
+
+  /**
    * Cleanup resources (terminate worker, clear caches)
    */
   cleanup(): void {

@@ -15,7 +15,7 @@
  * @fileoverview Core seasonality engine for enhanced conflict analysis
  */
 
-import { createClient } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import {
   SeasonalMultiplier,
   HolidayImpact,
@@ -39,7 +39,7 @@ import {
  * existing conflict analysis system to enhance scoring accuracy.
  */
 export class SeasonalityEngine {
-  private supabase = createClient();
+  private supabase = supabase;
   private config: SeasonalityEngineConfig;
   private cache = new Map<string, any>();
   private cacheTimestamps = new Map<string, number>();
@@ -229,7 +229,7 @@ export class SeasonalityEngine {
         subcategory,
         region,
         monthlyData,
-        pattern,
+        pattern: pattern as 'spring_peak' | 'summer_peak' | 'fall_peak' | 'winter_peak' | 'year_round' | 'irregular',
         optimalMonths,
         avoidMonths,
         confidence: this.calculateCurveConfidence(data || [])
@@ -587,8 +587,10 @@ export class SeasonalityEngine {
     // Check cache size limit
     if (this.cache.size >= this.config.cache.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
-      this.cacheTimestamps.delete(firstKey);
+      if (firstKey) {
+        this.cache.delete(firstKey);
+        this.cacheTimestamps.delete(firstKey);
+      }
     }
     
     this.cache.set(key, value);

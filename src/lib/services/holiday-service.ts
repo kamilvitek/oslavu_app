@@ -403,6 +403,35 @@ export class HolidayService {
   }
 
   /**
+   * Get holidays for a date range
+   */
+  async getHolidaysForDateRange(
+    startDate: string,
+    endDate: string,
+    region: string = 'CZ'
+  ): Promise<any[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('holidays')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .eq('region', region)
+        .order('date', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching holidays for date range:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error in getHolidaysForDateRange:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get configuration for specific Czech region
    */
   getCzechRegionConfig(regionCode: string): HolidayServiceConfig {

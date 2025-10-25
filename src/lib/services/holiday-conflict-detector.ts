@@ -15,7 +15,7 @@
  * @fileoverview Holiday impact detection for enhanced conflict analysis
  */
 
-import { createClient } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { holidayService } from './holiday-service';
 import {
   HolidayImpact,
@@ -33,7 +33,7 @@ import {
  * holiday system for comprehensive conflict analysis.
  */
 export class HolidayConflictDetector {
-  private supabase = createClient();
+  private supabase = supabase;
   private cache = new Map<string, any>();
   private cacheTimestamps = new Map<string, number>();
   private readonly CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -238,7 +238,7 @@ export class HolidayConflictDetector {
       }
 
       // Convert to HolidayConflict format
-      const conflicts: HolidayConflict[] = holidays.map(holiday => ({
+      const conflicts: HolidayConflict[] = holidays.map((holiday: any) => ({
         name: holiday.holiday_name,
         nameNative: holiday.holiday_name_native,
         holidayType: holiday.holiday_type,

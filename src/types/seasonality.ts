@@ -475,30 +475,4 @@ export type BusinessImpact = 'none' | 'partial' | 'full';
 // EXPORT ALL TYPES
 // =============================================================================
 
-export type {
-  SeasonalMultiplier,
-  HolidayImpact,
-  HolidayConflict,
-  SeasonalRecommendation,
-  SeasonalDemandCurve,
-  SeasonalMonthData,
-  SeasonalRule,
-  HolidayImpactRule,
-  SeasonalAnalysis,
-  SeasonalInsights,
-  SeasonalityEngineConfig,
-  SeasonalAnalysisParams,
-  SeasonalDemandCurveParams,
-  SeasonalDateRecommendation,
-  SeasonalCacheEntry,
-  SeasonalPerformanceMetrics,
-  SeasonalAnalysisError,
-  SeasonalRuleValidation,
-  MonthName,
-  DemandLevel,
-  RiskLevel,
-  ImpactLevel,
-  DataSource,
-  ImpactType,
-  BusinessImpact
-};
+// All types and interfaces are already exported above when declared
