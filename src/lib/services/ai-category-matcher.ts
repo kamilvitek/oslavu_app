@@ -100,7 +100,9 @@ Respond with a JSON object containing:
         throw new Error('No response from OpenAI');
       }
 
-      const result = JSON.parse(content) as CategoryMatchResult;
+      // Clean the content to remove markdown formatting
+      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const result = JSON.parse(cleanedContent) as CategoryMatchResult;
       
       // Cache the result
       (result as any).timestamp = Date.now();

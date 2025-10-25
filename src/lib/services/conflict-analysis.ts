@@ -488,7 +488,8 @@ export class ConflictAnalysisService {
                                    filteredEvents.length < 3 || 
                                    (originalAllEvents.length > 0 && filteredEvents.length === 0);
       
-      if (hasDataCoverageIssues) {
+      // Always analyze seasonal intelligence for better insights
+      if (true) { // Always run seasonal intelligence
         console.log('🔍 Data coverage issues detected - analyzing seasonal intelligence...');
         
         try {
