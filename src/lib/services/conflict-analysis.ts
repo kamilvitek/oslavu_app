@@ -482,10 +482,14 @@ export class ConflictAnalysisService {
       console.log(`User's preferred dates (${params.startDate} to ${params.endDate}) included: ${filteredHighRiskDates.some(d => d.startDate === params.startDate && d.endDate === params.endDate)}`);
       console.log(`High-risk dates scores:`, filteredHighRiskDates.map(d => `${d.startDate}: ${d.conflictScore} (${d.riskLevel})`));
 
-      // Analyze seasonal intelligence when no events are found or low coverage
+      // Analyze seasonal intelligence when no events are found, low coverage, or when events are filtered out
       let seasonalIntelligence;
-      if (filteredEvents.length === 0 || filteredEvents.length < 3) {
-        console.log('🔍 No events found or low coverage - analyzing seasonal intelligence...');
+      const hasDataCoverageIssues = filteredEvents.length === 0 || 
+                                   filteredEvents.length < 3 || 
+                                   (originalAllEvents.length > 0 && filteredEvents.length === 0);
+      
+      if (hasDataCoverageIssues) {
+        console.log('🔍 Data coverage issues detected - analyzing seasonal intelligence...');
         
         try {
           const targetDate = new Date(params.startDate);
@@ -503,9 +507,13 @@ export class ConflictAnalysisService {
             console.log(`⚠️  Seasonal risk detected: ${seasonalIntelligence.riskLevel} - ${seasonalIntelligence.seasonalFactors.join(', ')}`);
           }
           
-          // Add data coverage warning if no events found
+          // Add data coverage warning if no events found or events were filtered out
           if (filteredEvents.length === 0) {
-            seasonalIntelligence.dataCoverageWarning = `No competing events found in our databases for ${params.category} events in ${params.city} during ${targetDate.toLocaleDateString('en', { month: 'long', year: 'numeric' })}. This could indicate limited data coverage or a genuinely low-competition period.`;
+            if (originalAllEvents.length > 0) {
+              seasonalIntelligence.dataCoverageWarning = `Found ${originalAllEvents.length} events but they were filtered out due to low audience overlap or category mismatches. This could indicate limited data coverage or a genuinely low-competition period. Consider checking local event calendars manually.`;
+            } else {
+              seasonalIntelligence.dataCoverageWarning = `No competing events found in our databases for ${params.category} events in ${params.city} during ${targetDate.toLocaleDateString('en', { month: 'long', year: 'numeric' })}. This could indicate limited data coverage or a genuinely low-competition period.`;
+            }
           }
         } catch (error) {
           console.warn('Seasonal intelligence analysis failed:', error);
@@ -2130,8 +2138,8 @@ export class ConflictAnalysisService {
         )
       ]) as any;
 
-      // Event is significant if audience overlap is > 20%
-      const isSignificant = overlap.overlapScore > 0.2;
+      // Event is significant if audience overlap is > 10% (lowered threshold for better coverage)
+      const isSignificant = overlap.overlapScore > 0.1;
       
       if (isSignificant) {
         console.log(`🎯 Event "${event.title}" is significant: ${(overlap.overlapScore * 100).toFixed(1)}% audience overlap`);
@@ -2144,12 +2152,22 @@ export class ConflictAnalysisService {
       // Fallback to basic criteria if overlap analysis fails
       console.log(`⚠️ Audience overlap analysis failed for "${event.title}", using fallback criteria`);
       
-      // Fallback: Use venue + size + category criteria
+      // Fallback: Use venue + size + category criteria (more inclusive)
       const hasVenue = Boolean(event.venue && event.venue.length > 0);
-      const hasSize = Boolean(event.expectedAttendees && event.expectedAttendees > 100);
+      const hasSize = Boolean(event.expectedAttendees && event.expectedAttendees > 0);
       const isSameCategory = event.category === params.category;
+      const hasCategory = Boolean(event.category);
       
-      return hasVenue && (hasSize || isSameCategory);
+      // More inclusive fallback - consider event significant if it has basic info
+      const isSignificant = hasVenue || hasSize || hasCategory;
+      
+      if (isSignificant) {
+        console.log(`🎯 Event "${event.title}" is significant (fallback): venue=${hasVenue}, size=${hasSize}, category=${hasCategory}`);
+      } else {
+        console.log(`🚫 Event "${event.title}" is not significant (fallback): missing basic info`);
+      }
+      
+      return isSignificant;
     }
   }
 
