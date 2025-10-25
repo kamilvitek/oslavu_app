@@ -100,10 +100,7 @@ CREATE TABLE IF NOT EXISTS seasonal_insights_cache (
   calculated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
   
-  -- Indexes for performance
-  INDEX idx_seasonal_cache_key (cache_key),
-  INDEX idx_seasonal_cache_lookup (category, subcategory, region, month),
-  INDEX idx_seasonal_cache_expiry (expires_at)
+  -- No inline indexes - will be created separately below
 );
 
 -- =============================================================================
@@ -129,6 +126,16 @@ ON holiday_impact_rules(event_category, region);
 
 CREATE INDEX IF NOT EXISTS idx_holiday_impact_type 
 ON holiday_impact_rules(holiday_type, region);
+
+-- Seasonal insights cache indexes
+CREATE INDEX IF NOT EXISTS idx_seasonal_cache_key 
+ON seasonal_insights_cache(cache_key);
+
+CREATE INDEX IF NOT EXISTS idx_seasonal_cache_lookup 
+ON seasonal_insights_cache(category, subcategory, region, month);
+
+CREATE INDEX IF NOT EXISTS idx_seasonal_cache_expiry 
+ON seasonal_insights_cache(expires_at);
 
 -- =============================================================================
 -- HELPER FUNCTIONS
