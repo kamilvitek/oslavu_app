@@ -32,6 +32,7 @@ interface SeasonalIntelligenceResult {
   seasonalFactors: string[];
   recommendations: string[];
   confidence: number;
+  dataCoverageWarning?: string;
 }
 
 export class AICategoryMatcherService {

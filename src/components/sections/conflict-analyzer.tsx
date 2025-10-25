@@ -830,7 +830,7 @@ export function ConflictAnalyzer() {
                       <CardContent>
                         <div className="space-y-4">
                           {/* Data Coverage Warning */}
-                          {analysisResult.seasonalIntelligence.dataCoverageWarning && (
+                          {analysisResult.seasonalIntelligence?.dataCoverageWarning && (
                             <div className="p-4 border border-amber-200 bg-amber-50 rounded-lg">
                               <div className="flex items-start space-x-3">
                                 <div className="flex-shrink-0">
@@ -843,7 +843,7 @@ export function ConflictAnalyzer() {
                                     Data Coverage Alert
                                   </h4>
                                   <p className="text-sm text-amber-700">
-                                    {analysisResult.seasonalIntelligence.dataCoverageWarning}
+                                    {analysisResult.seasonalIntelligence?.dataCoverageWarning}
                                   </p>
                                 </div>
                               </div>
@@ -851,48 +851,48 @@ export function ConflictAnalyzer() {
                           )}
 
                           {/* Seasonal Risk Analysis */}
-                          {analysisResult.seasonalIntelligence.hasSeasonalRisk && (
+                          {analysisResult.seasonalIntelligence?.hasSeasonalRisk && (
                             <div className={`p-4 border rounded-lg ${
-                              analysisResult.seasonalIntelligence.riskLevel === 'high' 
+                              analysisResult.seasonalIntelligence?.riskLevel === 'high' 
                                 ? 'border-red-200 bg-red-50' 
-                                : analysisResult.seasonalIntelligence.riskLevel === 'medium'
+                                : analysisResult.seasonalIntelligence?.riskLevel === 'medium'
                                 ? 'border-orange-200 bg-orange-50'
                                 : 'border-yellow-200 bg-yellow-50'
                             }`}>
                               <div className="flex items-start space-x-3">
                                 <div className="flex-shrink-0">
                                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                    analysisResult.seasonalIntelligence.riskLevel === 'high' 
+                                    analysisResult.seasonalIntelligence?.riskLevel === 'high' 
                                       ? 'bg-red-100' 
-                                      : analysisResult.seasonalIntelligence.riskLevel === 'medium'
+                                      : analysisResult.seasonalIntelligence?.riskLevel === 'medium'
                                       ? 'bg-orange-100'
                                       : 'bg-yellow-100'
                                   }`}>
                                     <span className={`text-sm ${
-                                      analysisResult.seasonalIntelligence.riskLevel === 'high' 
+                                      analysisResult.seasonalIntelligence?.riskLevel === 'high' 
                                         ? 'text-red-600' 
-                                        : analysisResult.seasonalIntelligence.riskLevel === 'medium'
+                                        : analysisResult.seasonalIntelligence?.riskLevel === 'medium'
                                         ? 'text-orange-600'
                                         : 'text-yellow-600'
                                     }`}>
-                                      {analysisResult.seasonalIntelligence.riskLevel === 'high' ? '🔴' : 
-                                       analysisResult.seasonalIntelligence.riskLevel === 'medium' ? '🟡' : '🟢'}
+                                      {analysisResult.seasonalIntelligence?.riskLevel === 'high' ? '🔴' : 
+                                       analysisResult.seasonalIntelligence?.riskLevel === 'medium' ? '🟡' : '🟢'}
                                     </span>
                                   </div>
                                 </div>
                                 <div className="flex-1">
                                   <h4 className={`text-sm font-medium mb-2 ${
-                                    analysisResult.seasonalIntelligence.riskLevel === 'high' 
+                                    analysisResult.seasonalIntelligence?.riskLevel === 'high' 
                                       ? 'text-red-800' 
-                                      : analysisResult.seasonalIntelligence.riskLevel === 'medium'
+                                      : analysisResult.seasonalIntelligence?.riskLevel === 'medium'
                                       ? 'text-orange-800'
                                       : 'text-yellow-800'
                                   }`}>
-                                    Seasonal Risk: {analysisResult.seasonalIntelligence.riskLevel.toUpperCase()}
+                                    Seasonal Risk: {analysisResult.seasonalIntelligence?.riskLevel?.toUpperCase()}
                                   </h4>
                                   
                                   {/* Seasonal Factors */}
-                                  {analysisResult.seasonalIntelligence.seasonalFactors.length > 0 && (
+                                  {analysisResult.seasonalIntelligence?.seasonalFactors?.length > 0 && (
                                     <div className="mb-3">
                                       <h5 className="text-xs font-medium text-gray-700 mb-2">Key Factors:</h5>
                                       <ul className="text-sm space-y-1">
@@ -900,9 +900,9 @@ export function ConflictAnalyzer() {
                                           <li key={index} className="flex items-start space-x-2">
                                             <span className="text-gray-400 mt-1">•</span>
                                             <span className={`text-xs ${
-                                              analysisResult.seasonalIntelligence.riskLevel === 'high' 
+                                              analysisResult.seasonalIntelligence?.riskLevel === 'high' 
                                                 ? 'text-red-700' 
-                                                : analysisResult.seasonalIntelligence.riskLevel === 'medium'
+                                                : analysisResult.seasonalIntelligence?.riskLevel === 'medium'
                                                 ? 'text-orange-700'
                                                 : 'text-yellow-700'
                                             }`}>
@@ -915,11 +915,11 @@ export function ConflictAnalyzer() {
                                   )}
 
                                   {/* Recommendations */}
-                                  {analysisResult.seasonalIntelligence.recommendations.length > 0 && (
+                                  {analysisResult.seasonalIntelligence?.recommendations?.length > 0 && (
                                     <div>
                                       <h5 className="text-xs font-medium text-gray-700 mb-2">Recommendations:</h5>
                                       <ul className="text-sm space-y-1">
-                                        {analysisResult.seasonalIntelligence.recommendations.map((recommendation, index) => (
+                                        {analysisResult.seasonalIntelligence?.recommendations?.map((recommendation, index) => (
                                           <li key={index} className="flex items-start space-x-2">
                                             <span className="text-blue-500 mt-1">💡</span>
                                             <span className="text-xs text-blue-700">
@@ -936,7 +936,7 @@ export function ConflictAnalyzer() {
                                     <div className="flex items-center justify-between text-xs text-gray-500">
                                       <span>AI Confidence:</span>
                                       <span className="font-medium">
-                                        {(analysisResult.seasonalIntelligence.confidence * 100).toFixed(0)}%
+                                        {((analysisResult.seasonalIntelligence?.confidence ?? 0) * 100).toFixed(0)}%
                                       </span>
                                     </div>
                                   </div>
@@ -946,7 +946,7 @@ export function ConflictAnalyzer() {
                           )}
 
                           {/* No Seasonal Risk */}
-                          {!analysisResult.seasonalIntelligence.hasSeasonalRisk && (
+                          {!analysisResult.seasonalIntelligence?.hasSeasonalRisk && (
                             <div className="p-4 border border-green-200 bg-green-50 rounded-lg">
                               <div className="flex items-center space-x-3">
                                 <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
