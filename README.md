@@ -1,200 +1,71 @@
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+# Oslavu - AI-Powered Event Date Optimization
 
-# External API Keys
-TICKETMASTER_API_KEY=your_ticketmaster_api_key
-PREDICTHQ_API_KEY=your_predicthq_api_key
+> **Pick the perfect date—data-backed, competitor-free**
 
-# AI Services
-OPENAI_API_KEY=your_openai_api_key
-FIRECRAWL_API_KEY=your_firecrawl_api_key
+Oslavu is a sophisticated SaaS platform that helps event managers pick the perfect date for their conferences and events by automatically detecting conflicts with other major events in the same city or niche.
 
-# Optional Services
-POSTHOG_API_KEY=your_posthog_key
-RESEND_API_KEY=your_resend_api_key
+## 🚀 Quick Start
 
-# App Configuration
-NEXT_PUBLIC_BASE_URL=http://localhost:3000
-NODE_ENV=development
-```
-
-4. Set up Supabase:
 ```bash
-# Install Supabase CLI
-npm install -g supabase
+# Install dependencies
+npm install
 
-# Initialize Supabase (if starting fresh)
-supabase init
-
-# Start local Supabase (optional for development)
-supabase start
+# Set up environment variables
+cp env-template.txt .env.local
+# Edit .env.local with your API keys
 
 # Run database migrations
 supabase db push
-```
 
-5. Run the development server:
-```bash
+# Start development server
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to see the application.
 
-## Key Features
+## 📚 Documentation
 
-### 🎯 AI-Powered Conflict Analysis
-- **Multi-Source Data**: Integrates Ticketmaster, PredictHQ, and web scraping
-- **Semantic Deduplication**: Uses OpenAI embeddings for intelligent duplicate detection
-- **Advanced Scoring**: 0-20 conflict score with risk level assessment
-- **Real-time Analysis**: Sub-10 second response times with batch processing
-- **AI Normalization**: Intelligent event data processing across sources
+- **[Complete Documentation](docs/README.md)** - Comprehensive project overview
+- **[Getting Started](docs/development/setup.md)** - Development setup guide
+- **[Architecture](docs/architecture/overview.md)** - System architecture and design
+- **[Features](docs/features/)** - Detailed feature documentation
+  - [Conflict Analysis](docs/features/conflict-analysis.md) - Core conflict detection
+  - [Web Scraping](docs/features/web-scraping.md) - Data collection infrastructure
+  - [AI Normalization](docs/features/ai-normalization.md) - AI-powered data processing
+  - [Performance](docs/features/performance.md) - Optimization and monitoring
 
-### 🔍 Web Scraping Infrastructure
-- **Comprehensive Coverage**: 400+ Czech event sources including MUNI calendar
-- **AI Content Extraction**: GPT-4 powered event data extraction
-- **Intelligent Processing**: Semantic similarity and deduplication
-- **Rate Limiting**: Respectful scraping with proper delays
-- **Automated Sync**: Cron-based data synchronization
+## 🎯 Key Features
 
-### 📊 Advanced Analytics
-- **Audience Overlap**: AI-powered audience overlap prediction with batch processing
-- **Geographic Filtering**: Smart location-based event filtering with radius search
-- **Category Intelligence**: Automatic event categorization with synonym matching
-- **Performance Monitoring**: Comprehensive observability and metrics
-- **Venue Competition**: Enhanced venue capacity and competition analysis
+- **AI-Powered Analysis**: Sub-10 second conflict detection with 1000+ events
+- **Multi-Source Data**: Ticketmaster, PredictHQ, and 400+ Czech event sources
+- **Smart Normalization**: AI-powered event data processing and deduplication
+- **Real-time Monitoring**: Comprehensive observability and performance metrics
+- **Modern UI/UX**: Responsive design with dark mode support
 
-### 🎨 Modern UI/UX
-- **Responsive Design**: Mobile-first approach with modern components
-- **Interactive Dashboard**: Real-time analysis with progress indicators
-- **Data Visualization**: Advanced chart components and metrics
-- **Dark Mode**: Complete dark mode support
+## 🛠 Technology Stack
 
-## Project Structure
+- **Frontend**: Next.js 15, TypeScript, Tailwind CSS, shadcn/ui
+- **Backend**: Supabase (PostgreSQL), Next.js API routes
+- **AI**: OpenAI GPT-4, embeddings, batch processing
+- **Scraping**: Firecrawl, intelligent content extraction
+- **Monitoring**: Custom observability service
 
-```
-src/
-├── app/                    # Next.js app router
-│   ├── api/               # API routes
-│   │   ├── analyze/       # Conflict analysis endpoints
-│   │   ├── events/        # Event management endpoints
-│   │   ├── scraper/       # Web scraping endpoints
-│   │   ├── holidays/      # Holiday data endpoints
-│   │   └── observability/ # Monitoring and metrics
-│   ├── test-scraper/      # Scraper testing interface
-│   ├── globals.css        # Global styles
-│   ├── layout.tsx         # Root layout
-│   └── page.tsx           # Home page
-├── components/            # React components
-│   ├── forms/            # Form components
-│   ├── layout/           # Layout components
-│   ├── providers/        # Context providers
-│   ├── sections/         # Page sections
-│   └── ui/               # Reusable UI components
-├── lib/                   # Core business logic
-│   ├── services/         # Business logic services
-│   │   ├── conflict-analysis.ts    # Core conflict analysis engine
-│   │   ├── event-scraper.ts        # Web scraping service
-│   │   ├── batch-audience-overlap.ts # Batch processing service
-│   │   └── observability.ts        # Monitoring service
-│   ├── supabase.ts       # Supabase client
-│   └── utils.ts          # Helper utilities
-├── scripts/              # Utility and migration scripts
-└── types/                # TypeScript type definitions
-```
+## 📊 Current Status
 
-## Development Workflow
+- ✅ **Event Coverage**: 1000+ events from multiple sources
+- ✅ **Response Time**: 3-10 seconds (10x improvement)
+- ✅ **Data Sources**: 400+ Czech event sources + external APIs
+- ✅ **Performance**: 5-10x faster with batch processing
+- ✅ **Cost**: 10x reduction through optimization
 
-### Adding New Features
+## 🚀 Recent Achievements
 
-1. **API Integration**: Add new external API integrations in `src/lib/services/`
-2. **UI Components**: Create reusable components in `src/components/ui/`
-3. **Forms**: Add new forms in `src/components/forms/`
-4. **API Routes**: Create backend endpoints in `src/app/api/`
+- **AI-First Normalization**: Multi-strategy event data processing
+- **Performance Optimization**: Batch processing with 10x cost reduction
+- **Enhanced Coverage**: Comprehensive Czech event data collection
+- **Monitoring**: Real-time observability and automated alerts
 
-### Database Changes
-
-1. Create new migration file in `supabase/migrations/`
-2. Run `supabase db push` to apply changes
-3. Update TypeScript types in `src/types/`
-
-### Testing
-
-```bash
-# Run type checking
-npm run build
-
-# Run linting
-npm run lint
-```
-
-## API Documentation
-
-### POST /api/analyze
-
-Analyzes potential conflicts for event dates.
-
-**Request Body:**
-```json
-{
-  "city": "Prague",
-  "category": "Technology",
-  "subcategory": "AI/ML",
-  "expectedAttendees": 500,
-  "preferredDates": ["2024-03-15", "2024-03-16"],
-  "dateRange": {
-    "start": "2024-03-01",
-    "end": "2024-03-31"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "data": {
-    "id": "uuid",
-    "city": "Prague",
-    "category": "Technology",
-    "results": [
-      {
-        "date": "2024-03-15",
-        "score": 15,
-        "risk": "low",
-        "conflictingEvents": [],
-        "recommendation": "Excellent choice! No major conflicts detected."
-      }
-    ],
-    "createdAt": "2024-01-01T00:00:00Z"
-  }
-}
-```
-
-## Deployment
-
-### Vercel (Recommended)
-
-1. Connect your repository to Vercel
-2. Set environment variables in Vercel dashboard
-3. Deploy automatically on push to main branch
-
-### Other Platforms
-
-The app can be deployed to any platform that supports Next.js:
-- Netlify
-- AWS Amplify
-- Railway
-- Render
-
-## Business Model
-
-- **Free Tier**: 3 analyses per year
-- **Pro Tier**: €79/month (25 analyses)
-- **Agency Tier**: €299/month (unlimited analyses)
-- **API Access**: White-label integration for EMS platforms
-
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature-name`
@@ -202,29 +73,14 @@ The app can be deployed to any platform that supports Next.js:
 4. Push to the branch: `git push origin feature-name`
 5. Submit a pull request
 
-## Roadmap
-
-- [x] Implement external API integrations (Ticketmaster, PredictHQ, etc.)
-- [x] Build comprehensive web scraping infrastructure
-- [x] Add AI-powered event normalization and deduplication
-- [x] Implement performance optimizations and batch processing
-- [x] Add observability and monitoring capabilities
-- [x] Expand Czech event coverage (400+ sources)
-- [ ] Add user authentication and subscription management
-- [ ] Build analytics dashboard for event performance tracking
-- [ ] Implement real-time conflict monitoring
-- [ ] Add email notifications for new conflicts
-- [ ] Create mobile app version
-- [ ] Expand to more cities and regions
-
-## License
+## 📄 License
 
 This project is proprietary software. All rights reserved.
 
-## Support
+## 🆘 Support
 
 For support, email support@oslavu.com or create an issue in the repository.
 
-## Team
+---
 
-Built with ❤️ by the Oslavu team in Brno, Czech Republic.
+**Built with ❤️ by the Oslavu team in Brno, Czech Republic.**

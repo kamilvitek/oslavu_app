@@ -1,6 +1,20 @@
-# Oslavu - AI-Powered Event Date Optimization
+# Oslavu Documentation
 
-## Project Description
+Welcome to the comprehensive documentation for Oslavu - AI-Powered Event Date Optimization.
+
+## 📚 Documentation Structure
+
+- **[Getting Started](development/setup.md)** - Development setup and quick start guide
+- **[Architecture](architecture/overview.md)** - System architecture and technical design
+- **[Features](features/)** - Detailed feature documentation
+  - [Conflict Analysis](features/conflict-analysis.md) - Core conflict detection engine
+  - [Web Scraping](features/web-scraping.md) - Data collection infrastructure
+  - [AI Normalization](features/ai-normalization.md) - AI-powered data processing
+  - [Performance](features/performance.md) - Optimization and monitoring
+  - [Date Range Fix](features/date-range-fix.md) - Duplication issue resolution
+
+## 🎯 Project Overview
+
 Oslavu is a sophisticated SaaS platform that helps event managers pick the perfect date for their conferences and events by automatically detecting conflicts with other major events in the same city or niche. Instead of manually googling and cross-checking spreadsheets, organisers instantly see a conflict-score for every possible date, powered by AI-driven analysis.
 
 ### The Problem
