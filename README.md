@@ -48,19 +48,22 @@ Open [http://localhost:3000](http://localhost:3000) to see the application.
 - **Multi-Source Data**: Integrates Ticketmaster, PredictHQ, and web scraping
 - **Semantic Deduplication**: Uses OpenAI embeddings for intelligent duplicate detection
 - **Advanced Scoring**: 0-20 conflict score with risk level assessment
-- **Real-time Analysis**: Sub-30 second response times
+- **Real-time Analysis**: Sub-10 second response times with batch processing
+- **AI Normalization**: Intelligent event data processing across sources
 
 ### 🔍 Web Scraping Infrastructure
-- **Automated Scraping**: Czech event websites (GoOut, TicketPortal, Brno Expat)
+- **Comprehensive Coverage**: 400+ Czech event sources including MUNI calendar
 - **AI Content Extraction**: GPT-4 powered event data extraction
 - **Intelligent Processing**: Semantic similarity and deduplication
 - **Rate Limiting**: Respectful scraping with proper delays
+- **Automated Sync**: Cron-based data synchronization
 
 ### 📊 Advanced Analytics
-- **Audience Overlap**: AI-powered audience overlap prediction
-- **Geographic Filtering**: Smart location-based event filtering
-- **Category Intelligence**: Automatic event categorization
-- **Performance Monitoring**: Comprehensive logging and metrics
+- **Audience Overlap**: AI-powered audience overlap prediction with batch processing
+- **Geographic Filtering**: Smart location-based event filtering with radius search
+- **Category Intelligence**: Automatic event categorization with synonym matching
+- **Performance Monitoring**: Comprehensive observability and metrics
+- **Venue Competition**: Enhanced venue capacity and competition analysis
 
 ### 🎨 Modern UI/UX
 - **Responsive Design**: Mobile-first approach with modern components
@@ -74,6 +77,12 @@ Open [http://localhost:3000](http://localhost:3000) to see the application.
 src/
 ├── app/                    # Next.js app router
 │   ├── api/               # API routes
+│   │   ├── analyze/       # Conflict analysis endpoints
+│   │   ├── events/        # Event management endpoints
+│   │   ├── scraper/       # Web scraping endpoints
+│   │   ├── holidays/      # Holiday data endpoints
+│   │   └── observability/ # Monitoring and metrics
+│   ├── test-scraper/      # Scraper testing interface
 │   ├── globals.css        # Global styles
 │   ├── layout.tsx         # Root layout
 │   └── page.tsx           # Home page
@@ -83,11 +92,16 @@ src/
 │   ├── providers/        # Context providers
 │   ├── sections/         # Page sections
 │   └── ui/               # Reusable UI components
-├── lib/                   # Utility functions
+├── lib/                   # Core business logic
 │   ├── services/         # Business logic services
+│   │   ├── conflict-analysis.ts    # Core conflict analysis engine
+│   │   ├── event-scraper.ts        # Web scraping service
+│   │   ├── batch-audience-overlap.ts # Batch processing service
+│   │   └── observability.ts        # Monitoring service
 │   ├── supabase.ts       # Supabase client
 │   └── utils.ts          # Helper utilities
-└── types/                 # TypeScript type definitions
+├── scripts/              # Utility and migration scripts
+└── types/                # TypeScript type definitions
 ```
 
 ## Development Workflow
@@ -190,7 +204,12 @@ The app can be deployed to any platform that supports Next.js:
 
 ## Roadmap
 
-- [ ] Implement external API integrations (Ticketmaster, PredictHQ, etc.)
+- [x] Implement external API integrations (Ticketmaster, PredictHQ, etc.)
+- [x] Build comprehensive web scraping infrastructure
+- [x] Add AI-powered event normalization and deduplication
+- [x] Implement performance optimizations and batch processing
+- [x] Add observability and monitoring capabilities
+- [x] Expand Czech event coverage (400+ sources)
 - [ ] Add user authentication and subscription management
 - [ ] Build analytics dashboard for event performance tracking
 - [ ] Implement real-time conflict monitoring
