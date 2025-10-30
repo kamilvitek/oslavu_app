@@ -213,39 +213,57 @@ export class EventScraperService {
         }
         merged.maxPages = merged.maxPages ?? source.max_pages_per_crawl ?? undefined;
 
-        const startedAt = Date.now();
-        const crawlRes: any = await this.firecrawl.crawl({
-          startUrls: merged.startUrls,
-          maxDepth: merged.maxDepth,
-          allowList: merged.allowList,
-          denyList: merged.denyList,
-          actions: merged.actions as any,
-          waitFor: merged.waitFor as any,
-          maxPages: merged.maxPages,
-        } as any);
-
-        const durationMs = Date.now() - startedAt;
-
-        const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> =
-          Array.isArray(crawlRes?.data) ? crawlRes.data : [];
-
-        const pagesCrawled = pages.length;
-        console.log(`🔍 Firecrawl crawl returned ${pagesCrawled} pages for ${source.name}`);
+        // Crawl each start URL individually (SDK expects a single string `url`)
+        const startUrls = (merged.startUrls || []).filter(u => typeof u === 'string' && u.trim().length > 0);
+        if (startUrls.length === 0) startUrls.push(source.url);
 
         let totalEvents: CreateEventData[] = [];
         let pagesProcessed = 0;
-        // Prioritize detail pages over listings
+        let pagesCrawled = 0;
         const detailMatchers = (merged.detailUrlPatterns ?? []).map((p) => new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-        const detailPages = pages.filter(p => detailMatchers.some(rx => rx.test(p.url)));
-        const otherPages = pages.filter(p => !detailMatchers.some(rx => rx.test(p.url)));
 
-        for (const page of [...detailPages, ...otherPages]) {
-          const content = (page as any).markdown || (page as any).content || '';
-          if (!content) continue;
-          pagesProcessed++;
-          const events = await this.extractEventsWithGPT(content, source.name);
-          totalEvents.push(...events.map(e => this.transformScrapedEvent(e, source.name)));
+        const perUrlPageCap = merged.maxPages && startUrls.length > 0
+          ? Math.max(1, Math.floor(merged.maxPages / startUrls.length))
+          : undefined;
+
+        const crawlStartedAt = Date.now();
+
+        for (const url of startUrls) {
+          const startedAt = Date.now();
+          const res: any = await this.firecrawl.crawl({
+            url,
+            // Some SDK versions use `crawlerOptions` for limits and patterns
+            crawlerOptions: {
+              maxDepth: merged.maxDepth,
+              includes: merged.allowList,
+              excludes: merged.denyList,
+              limit: perUrlPageCap ?? merged.maxPages,
+            } as any,
+            actions: merged.actions as any,
+            waitFor: merged.waitFor as any,
+          } as any);
+
+          const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> =
+            Array.isArray(res?.data) ? res.data : [];
+          pagesCrawled += pages.length;
+
+          // Prioritize detail pages over listings
+          const detailPages = pages.filter(p => detailMatchers.some(rx => rx.test(p.url)));
+          const otherPages = pages.filter(p => !detailMatchers.some(rx => rx.test(p.url)));
+
+          for (const page of [...detailPages, ...otherPages]) {
+            const content = (page as any).markdown || (page as any).content || '';
+            if (!content) continue;
+            pagesProcessed++;
+            const events = await this.extractEventsWithGPT(content, source.name);
+            totalEvents.push(...events.map(e => this.transformScrapedEvent(e, source.name)));
+            if (merged.maxPages && pagesProcessed >= merged.maxPages) break;
+          }
+          console.log(`🔍 Crawled ${pages.length} pages from ${url} in ${Date.now() - startedAt}ms`);
+          if (merged.maxPages && pagesProcessed >= merged.maxPages) break;
         }
+
+        const durationMs = Date.now() - crawlStartedAt;
 
         // Attach crawl metrics into sync log via metadata on caller
         await this.db.executeWithRetry(async () => {
