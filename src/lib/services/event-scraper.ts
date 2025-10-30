@@ -252,10 +252,11 @@ export class EventScraperService {
           const otherPages = pages.filter(p => !detailMatchers.some(rx => rx.test(p.url)));
 
           for (const page of [...detailPages, ...otherPages]) {
-            const content = (page as any).markdown || (page as any).content || '';
-            if (!content) continue;
+            const markdown = (page as any).markdown || (page as any).content || '';
+            const html = (page as any).html || '';
+            if (!markdown && !html) continue;
             pagesProcessed++;
-            const events = await this.extractEventsWithGPT(content, source.name);
+            const events = await this.extractEventsGeneric({ markdown, html }, source.name);
             totalEvents.push(...events.map(e => this.transformScrapedEvent(e, source.name)));
             if (merged.maxPages && pagesProcessed >= merged.maxPages) break;
           }
@@ -282,22 +283,70 @@ export class EventScraperService {
         return totalEvents;
       }
 
-      // Legacy single-page scrape path (backward compatible)
-      const scrapeResult: any = await this.firecrawl.scrape(source.url, {
-        formats: ['markdown'],
-        onlyMainContent: source.config.onlyMainContent || true,
-        waitFor: source.config.waitFor || 2000,
-        timeout: 60000
-      });
+      // Adaptive single-page scrape with retries and HTML support
+      let attempt = 0;
+      const maxAttempts = 3;
+      let onlyMainContent = source.config.onlyMainContent !== undefined ? !!source.config.onlyMainContent : true;
+      let waitFor = source.config.waitFor || 2000;
+      let lastEvents: CreateEventData[] = [];
 
-      if (!scrapeResult.markdown) {
-        const errorMsg = 'No markdown content returned from Firecrawl';
-        console.error(`❌ Firecrawl API error:`, errorMsg);
-        throw new Error(`Firecrawl scraping failed: ${errorMsg}`);
+      while (attempt < maxAttempts) {
+        attempt++;
+        console.log(`🔍 Single-page scrape attempt ${attempt}/${maxAttempts} (onlyMainContent=${onlyMainContent}, waitFor=${waitFor})`);
+
+        const scrapeResult: any = await this.firecrawl.scrape(source.url, {
+          formats: ['markdown', 'html'],
+          onlyMainContent,
+          waitFor,
+          timeout: 60000
+        });
+
+        const markdown: string = (scrapeResult?.markdown) || (scrapeResult?.data?.markdown) || '';
+        const html: string = (scrapeResult?.html) || (scrapeResult?.data?.html) || '';
+
+        if (!markdown && !html) {
+          console.warn('⚠️ Firecrawl returned no content (markdown/html)');
+        }
+
+        const extracted = await this.extractEventsGeneric({ markdown, html }, source.name);
+        lastEvents = extracted.map(event => this.transformScrapedEvent(event, source.name));
+        if (lastEvents.length > 0) {
+          return lastEvents;
+        }
+
+        // Adaptive tuning for next attempt
+        if (attempt === 1) {
+          onlyMainContent = false; // broaden content area
+          waitFor = Math.min(waitFor + 2000, 8000);
+        } else if (attempt === 2) {
+          // Switch to shallow crawl fallback with generic defaults
+          console.log('🔍 Switching to shallow crawl fallback after empty single-page results');
+          const url = new URL(source.url);
+          const allowList = [url.origin, url.origin + '/*'];
+          const res: any = await (this.firecrawl as any).crawl(source.url, {
+            limit: 10,
+            maxDepth: 2,
+            allowList,
+            waitFor: 3000,
+            actions: [
+              { type: 'scroll', target: 'window', count: 3, delay: 500 }
+            ]
+          });
+          const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> = Array.isArray(res?.data) ? res.data : [];
+          let aggregated: CreateEventData[] = [];
+          for (const page of pages) {
+            const md = (page as any).markdown || (page as any).content || '';
+            const h = (page as any).html || '';
+            if (!md && !h) continue;
+            const evts = await this.extractEventsGeneric({ markdown: md, html: h }, source.name);
+            aggregated.push(...evts.map(e => this.transformScrapedEvent(e, source.name)));
+            if (aggregated.length >= 5) break; // early success criterion
+          }
+          if (aggregated.length > 0) return aggregated;
+        }
       }
 
-      const events = await this.extractEventsWithGPT(scrapeResult.markdown, source.name);
-      return events.map(event => this.transformScrapedEvent(event, source.name));
+      return lastEvents;
 
     } catch (error) {
       console.error(`❌ Firecrawl ${useCrawl ? 'crawl' : 'scrape'} failed for ${source.url}:`, error);
@@ -366,7 +415,7 @@ ATTENDANCE EXTRACTION GUIDELINES:
 - For Czech content: look for "kapacita", "míst", "návštěvníků", "účastníků"
 
 Content to extract from:
-${content.substring(0, 6000)} // Reduced content limit for cheaper model
+${content}
 
 IMPORTANT FILTERING RULES:
 - Only extract events with dates >= ${currentDate}
@@ -435,6 +484,115 @@ Return only valid JSON array. If no current/future events found, return empty ar
     } catch (error) {
       console.error(`❌ GPT-4 extraction failed for ${sourceName}:`, error);
       return [];
+    }
+  }
+
+  /**
+   * Generic extraction flow: structured-data first, then chunked LLM
+   */
+  private async extractEventsGeneric(
+    content: { markdown: string; html: string },
+    sourceName: string
+  ): Promise<ScrapedEvent[]> {
+    const { markdown, html } = content;
+    const structured = this.extractEventsFromStructuredData(html || markdown || '');
+    if (structured.length > 0) {
+      console.log(`🔍 Structured data extraction found ${structured.length} events`);
+      return structured;
+    }
+
+    const text = markdown || html || '';
+    if (!text) return [];
+
+    // Chunked LLM extraction
+    const maxChunk = 20000;
+    const overlap = 1000;
+    const chunks: string[] = [];
+    for (let i = 0; i < text.length; i += (maxChunk - overlap)) {
+      const slice = text.slice(i, Math.min(text.length, i + maxChunk));
+      chunks.push(slice);
+      if (i + maxChunk >= text.length) break;
+    }
+
+    const allEvents: ScrapedEvent[] = [];
+    const seen = new Set<string>();
+    for (const chunk of chunks) {
+      const events = await this.extractEventsWithGPT(chunk, sourceName);
+      for (const e of events) {
+        const key = `${(e.title||'').toLowerCase()}|${e.date||''}|${(e.url||'').toLowerCase()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          allEvents.push(e);
+        }
+      }
+      // Early exit if we already have some future events
+      if (allEvents.length >= 10) break;
+    }
+
+    console.log(`🔍 Chunked extraction yielded ${allEvents.length} events`);
+    return allEvents;
+  }
+
+  /**
+   * Extract schema.org/Event from JSON-LD or Microdata in HTML/Markdown string
+   */
+  private extractEventsFromStructuredData(doc: string): ScrapedEvent[] {
+    try {
+      const events: ScrapedEvent[] = [];
+      // JSON-LD blocks
+      const ldMatches = [...doc.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+      for (const m of ldMatches) {
+        const raw = (m[1] || '').trim();
+        try {
+          const json = JSON.parse(raw);
+          const nodes = Array.isArray(json) ? json : [json];
+          for (const node of nodes) {
+            this.collectEventNodes(node, events);
+          }
+        } catch {
+          // ignore malformed blocks
+        }
+      }
+      return events;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  private collectEventNodes(node: any, out: ScrapedEvent[]) {
+    if (!node || typeof node !== 'object') return;
+    const type = (node['@type'] || node.type);
+    const isEvent = (typeof type === 'string' && /event/i.test(type)) || (Array.isArray(type) && type.some((t: any) => /event/i.test(t)));
+    if (isEvent) {
+      const startDate = node.startDate || node.start_time || node.date || node.start_date;
+      const endDate = node.endDate || node.end_date;
+      const location = node.location || {};
+      const address = location.address || {};
+      const city = address.addressLocality || address.city || '';
+      const url = node.url || (node['@id'] || '');
+      const image = Array.isArray(node.image) ? node.image[0] : node.image;
+      out.push({
+        title: node.name || '',
+        description: node.description || '',
+        date: startDate || '',
+        endDate: endDate || undefined,
+        city: city || '',
+        venue: (location.name || ''),
+        category: undefined,
+        subcategory: undefined,
+        url: typeof url === 'string' ? url : '',
+        imageUrl: typeof image === 'string' ? image : undefined,
+        expectedAttendees: undefined
+      });
+    }
+    for (const k of Object.keys(node)) {
+      const val = (node as any)[k];
+      if (val && typeof val === 'object') this.collectEventNodes(val, out);
+      if (Array.isArray(val)) {
+        for (const item of val) {
+          if (item && typeof item === 'object') this.collectEventNodes(item, out);
+        }
+      }
     }
   }
 
