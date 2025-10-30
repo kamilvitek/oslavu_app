@@ -287,7 +287,7 @@ export class EventScraperService {
       let attempt = 0;
       const maxAttempts = 3;
       let onlyMainContent = source.config.onlyMainContent !== undefined ? !!source.config.onlyMainContent : true;
-      let waitFor = source.config.waitFor || 2000;
+      let waitFor = source.config.waitFor || 4000;
       let lastEvents: CreateEventData[] = [];
 
       while (attempt < maxAttempts) {
@@ -324,12 +324,12 @@ export class EventScraperService {
           const url = new URL(source.url);
           const allowList = [url.origin, url.origin + '/*'];
           const res: any = await (this.firecrawl as any).crawl(source.url, {
-            limit: 10,
+            limit: 12,
             maxDepth: 2,
             allowList,
             waitFor: 3000,
             actions: [
-              { type: 'scroll', target: 'window', count: 3, delay: 500 }
+              { type: 'scroll', target: 'window', count: 8, delay: 400 }
             ]
           });
           const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> = Array.isArray(res?.data) ? res.data : [];
@@ -343,6 +343,7 @@ export class EventScraperService {
             if (aggregated.length >= 5) break; // early success criterion
           }
           if (aggregated.length > 0) return aggregated;
+          console.log('🚨 Shallow crawl produced 0 events; consider increasing crawl caps for this host.');
         }
       }
 
@@ -466,9 +467,27 @@ Return only valid JSON array. If no current/future events found, return empty ar
         
         events = JSON.parse(cleanedResponse);
       } catch (parseError) {
-        console.error(`❌ Failed to parse GPT-4 JSON response for ${sourceName}:`, parseError);
-        console.error(`❌ Raw GPT-4 response:`, responseContent);
-        return [];
+        console.warn(`⚠️ First parse failed, retrying with stricter JSON-only instruction for ${sourceName}`);
+        const retry: any = await this.openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'Return ONLY a valid JSON array. No prose, no code fences.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: 2800
+        });
+        const retryContent = retry.choices[0]?.message?.content || '';
+        let cleaned = retryContent.trim();
+        if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        try {
+          events = JSON.parse(cleaned);
+        } catch (e) {
+          console.error(`❌ Failed to parse GPT-4 JSON (retry) for ${sourceName}:`, e);
+          console.error(`❌ Raw retry response:`, retryContent);
+          return [];
+        }
       }
 
       if (!Array.isArray(events)) {
@@ -498,7 +517,7 @@ Return only valid JSON array. If no current/future events found, return empty ar
     const structured = this.extractEventsFromStructuredData(html || markdown || '');
     if (structured.length > 0) {
       console.log(`🔍 Structured data extraction found ${structured.length} events`);
-      return structured;
+      return this.postNormalizeAndFilter(structured);
     }
 
     const text = markdown || html || '';
@@ -519,7 +538,7 @@ Return only valid JSON array. If no current/future events found, return empty ar
     for (const chunk of chunks) {
       const events = await this.extractEventsWithGPT(chunk, sourceName);
       for (const e of events) {
-        const key = `${(e.title||'').toLowerCase()}|${e.date||''}|${(e.url||'').toLowerCase()}`;
+        const key = `${(e.title||'').toLowerCase()}|${e.date||''}|${(this.normalizeUrl(e.url)||'').toLowerCase()}`;
         if (!seen.has(key)) {
           seen.add(key);
           allEvents.push(e);
@@ -529,8 +548,8 @@ Return only valid JSON array. If no current/future events found, return empty ar
       if (allEvents.length >= 10) break;
     }
 
-    console.log(`🔍 Chunked extraction yielded ${allEvents.length} events`);
-    return allEvents;
+    console.log(`🔍 Chunked extraction yielded ${allEvents.length} raw events`);
+    return this.postNormalizeAndFilter(allEvents);
   }
 
   /**
@@ -545,7 +564,7 @@ Return only valid JSON array. If no current/future events found, return empty ar
         const raw = (m[1] || '').trim();
         try {
           const json = JSON.parse(raw);
-          const nodes = Array.isArray(json) ? json : [json];
+          const nodes = this.flattenJsonLd(json);
           for (const node of nodes) {
             this.collectEventNodes(node, events);
           }
@@ -557,6 +576,22 @@ Return only valid JSON array. If no current/future events found, return empty ar
     } catch (e) {
       return [];
     }
+  }
+
+  private flattenJsonLd(json: any): any[] {
+    const out: any[] = [];
+    const stack = Array.isArray(json) ? [...json] : [json];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node || typeof node !== 'object') continue;
+      if (node['@graph']) {
+        const graph = Array.isArray(node['@graph']) ? node['@graph'] : [node['@graph']];
+        stack.push(...graph);
+      } else {
+        out.push(node);
+      }
+    }
+    return out;
   }
 
   private collectEventNodes(node: any, out: ScrapedEvent[]) {
@@ -593,6 +628,53 @@ Return only valid JSON array. If no current/future events found, return empty ar
           if (item && typeof item === 'object') this.collectEventNodes(item, out);
         }
       }
+    }
+  }
+
+  private postNormalizeAndFilter(events: ScrapedEvent[]): ScrapedEvent[] {
+    const todayIso = new Date().toISOString().split('T')[0];
+    const normalized: ScrapedEvent[] = [];
+    for (const e of events) {
+      let primary = e.date || '';
+      if (/\d/.test(primary) && /\d+\s*[.–-]\s*\d+/.test(primary)) {
+        const parts = primary.split(/[–-]/).map(s => s.trim());
+        if (parts.length >= 2) {
+          const tail = parts[parts.length - 1];
+          const day = parts[0].replace(/\D/g, '');
+          primary = `${day}.${tail}`;
+        }
+      }
+      const iso = this.parseDateFlexible(primary);
+      if (!iso) continue;
+      if (iso < todayIso) continue;
+      normalized.push({
+        ...e,
+        date: iso,
+        endDate: this.parseDateFlexible(e.endDate || '') || undefined,
+        url: this.normalizeUrl(e.url || '') || e.url
+      });
+    }
+    return normalized;
+  }
+
+  private normalizeUrl(url?: string): string | undefined {
+    if (!url) return undefined;
+    try {
+      const u = new URL(url, 'http://local');
+      const isRelative = !/^https?:/i.test(url);
+      const host = (u.host || '').toLowerCase();
+      const protocol = (u.protocol || '').toLowerCase();
+      const pathname = u.pathname.replace(/\/$/, '');
+      const params = new URLSearchParams(u.search);
+      const keep = new URLSearchParams();
+      for (const [k, v] of params.entries()) {
+        if (!/^utm_/i.test(k) && k.toLowerCase() !== 'fbclid') keep.append(k, v);
+      }
+      const query = keep.toString();
+      if (isRelative) return pathname + (query ? `?${query}` : '');
+      return `${protocol}//${host}${pathname}${query ? `?${query}` : ''}`;
+    } catch {
+      return url;
     }
   }
 
@@ -668,7 +750,7 @@ Return only valid JSON array. If no current/future events found, return empty ar
       expected_attendees: event.expectedAttendees,
       source: 'scraper',
       source_id: `${sourceName}_${event.title}_${event.date}`.replace(/[^a-zA-Z0-9_]/g, '_'),
-      url: event.url,
+      url: this.normalizeUrl(event.url) || event.url,
       image_url: event.imageUrl
     };
   }
@@ -767,6 +849,30 @@ Return only valid JSON array. If no current/future events found, return empty ar
 
     // Already ISO date
     if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+    // Czech month names (short and full)
+    const czMonths: Record<string, string> = {
+      'led': '01', 'leden': '01',
+      'úno': '02', 'únor': '02', 'unor': '02',
+      'bře': '03', 'březen': '03', 'brezen': '03',
+      'dub': '04', 'duben': '04',
+      'kvě': '05', 'květen': '05', 'kveten': '05',
+      'čer': '06', 'červen': '06', 'cerven': '06',
+      'čvc': '07', 'červenec': '07', 'cervenec': '07',
+      'srp': '08', 'srpen': '08',
+      'zář': '09', 'září': '09', 'zari': '09',
+      'říj': '10', 'říjen': '10', 'rijen': '10',
+      'lis': '11', 'listopad': '11',
+      'pro': '12', 'prosinec': '12'
+    };
+    const czMonthRegex = new RegExp(`^\\s*(\\d{1,2})\\.?(?:\\s*)(` + Object.keys(czMonths).join('|') + `)(?:\\s*)(\\d{4})\\s*$`, 'i');
+    let mcz = trimmed.match(czMonthRegex);
+    if (mcz) {
+      const day = mcz[1].padStart(2, '0');
+      const mon = czMonths[mcz[2].toLowerCase()];
+      const year = mcz[3];
+      return `${year}-${mon}-${day}`;
+    }
 
     // dd.mm.yyyy or d.m.yyyy
     let m = trimmed.match(/^(\d{1,2})[\.](\d{1,2})[\.](\d{4})$/);
