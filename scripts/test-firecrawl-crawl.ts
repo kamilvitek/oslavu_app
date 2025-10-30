@@ -2,11 +2,11 @@
 import { config } from 'dotenv';
 import path from 'path';
 
+// Ensure env is loaded before dynamic imports
 config({ path: path.resolve(process.cwd(), '.env.local') });
 
-const { eventScraperService } = require('../src/lib/services/event-scraper');
-
 async function main() {
+  const { eventScraperService } = await import('../src/lib/services/event-scraper');
   const sourceId = process.argv[2];
   if (!sourceId) {
     console.error('Usage: tsx scripts/test-firecrawl-crawl.ts <source_id>');

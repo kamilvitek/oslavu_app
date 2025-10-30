@@ -2,12 +2,12 @@
 import { config } from 'dotenv';
 import path from 'path';
 
+// Load env BEFORE importing any project modules (ESM import hoisting would otherwise run imports first)
 config({ path: path.resolve(process.cwd(), '.env.local') });
 
-import { serverDatabaseService } from '@/lib/supabase';
-import { CrawlConfigurationService } from '@/lib/services/crawl-configuration.service';
-
 async function seedPresets() {
+  const { serverDatabaseService } = await import('@/lib/supabase');
+  const { CrawlConfigurationService } = await import('@/lib/services/crawl-configuration.service');
   const db = serverDatabaseService;
   const { data, error } = await db.executeWithRetry(async () => {
     return await db.getClient().from('scraper_sources').select('id, name, url, crawl_config, use_crawl, max_pages_per_crawl');
