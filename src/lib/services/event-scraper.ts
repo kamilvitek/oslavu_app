@@ -240,6 +240,12 @@ export class EventScraperService {
               limit: perUrlPageCap ?? merged.maxPages,
               actions: merged.actions as any,
               waitFor: merged.waitFor as any,
+              scrapeOptions: {
+                formats: ['markdown', 'html'],
+                proxy: 'auto',
+                maxAge: 600000,
+                onlyMainContent: false
+              }
             }
           );
 
@@ -298,6 +304,7 @@ export class EventScraperService {
           formats: ['markdown', 'html'],
           onlyMainContent,
           waitFor,
+          proxy: 'auto',
           timeout: 60000
         });
 
@@ -330,7 +337,13 @@ export class EventScraperService {
             waitFor: 3000,
             actions: [
               { type: 'scroll', target: 'window', count: 8, delay: 400 }
-            ]
+            ],
+            scrapeOptions: {
+              formats: ['markdown', 'html'],
+              proxy: 'auto',
+              maxAge: 600000,
+              onlyMainContent: false
+            }
           });
           const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> = Array.isArray(res?.data) ? res.data : [];
           let aggregated: CreateEventData[] = [];
@@ -344,6 +357,34 @@ export class EventScraperService {
           }
           if (aggregated.length > 0) return aggregated;
           console.log('🚨 Shallow crawl produced 0 events; consider increasing crawl caps for this host.');
+
+          // Second fallback: month/pagination/consent action bundle
+          console.log('🔍 Trying month/pagination/consent action bundle');
+          const actions = this.buildGenericActions();
+          const res2: any = await (this.firecrawl as any).crawl(source.url, {
+            limit: 14,
+            maxDepth: 2,
+            allowList,
+            waitFor: 3500,
+            actions,
+            scrapeOptions: {
+              formats: ['markdown', 'html'],
+              proxy: 'auto',
+              maxAge: 600000,
+              onlyMainContent: false
+            }
+          });
+          const pages2: Array<{ url: string; markdown?: string; content?: string; html?: string; }> = Array.isArray(res2?.data) ? res2.data : [];
+          let aggregated2: CreateEventData[] = [];
+          for (const page of pages2) {
+            const md2 = (page as any).markdown || (page as any).content || '';
+            const h2 = (page as any).html || '';
+            if (!md2 && !h2) continue;
+            const ev2 = await this.extractEventsGeneric({ markdown: md2, html: h2 }, source.name);
+            aggregated2.push(...ev2.map(e => this.transformScrapedEvent(e, source.name)));
+            if (aggregated2.length >= 5) break;
+          }
+          if (aggregated2.length > 0) return aggregated2;
         }
       }
 
@@ -549,7 +590,12 @@ Return only valid JSON array. If no current/future events found, return empty ar
     }
 
     console.log(`🔍 Chunked extraction yielded ${allEvents.length} raw events`);
-    return this.postNormalizeAndFilter(allEvents);
+    const normalized = this.postNormalizeAndFilter(allEvents);
+    if (normalized.length > 0) return normalized;
+    // Regex-assisted fallback if LLM failed but content looks like an events list
+    const regexEvents = this.regexAssistExtract(text);
+    console.log(`🔍 Regex-assisted fallback found ${regexEvents.length} candidates`);
+    return this.postNormalizeAndFilter(regexEvents);
   }
 
   /**
@@ -676,6 +722,65 @@ Return only valid JSON array. If no current/future events found, return empty ar
     } catch {
       return url;
     }
+  }
+
+  /**
+   * Build a generic action bundle for month navigation, pagination, consent, and expanders.
+   * Uses text-based targeting to be language-agnostic, including Czech terms.
+   */
+  private buildGenericActions(): any[] {
+    const monthLabels = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+    const czMonths = ['leden','únor','unor','březen','brezen','duben','květen','kveten','červen','cerven','červenec','cervenec','srpen','září','zari','říjen','rijen','listopad','prosinec'];
+    const pagination = ['next','další','dalsi','older','starší','starsi','more','více','vice'];
+    const consent = ['accept','agree','allow','souhlasím','souhlasim','přijmout','prijmout','povolit','rozumím','rozumim'];
+    const expanders = ['load more','show more','zobrazit více','zobrazit vice','načíst další','nacist dalsi'];
+
+    // Click consent once
+    const consentClicks = consent.map(text => ({ type: 'click', target: { role: 'button', text }, once: true }));
+    // Month tabs/buttons (numbers and Czech names)
+    const monthClicks = [
+      ...monthLabels.map(text => ({ type: 'click', target: { text }, delay: 300 })),
+      ...czMonths.map(text => ({ type: 'click', target: { text }, delay: 300 })),
+    ];
+    // Pagination/next
+    const paginationClicks = pagination.map(text => ({ type: 'click', target: { text }, delay: 400 }));
+    // Expanders
+    const expanderClicks = expanders.map(text => ({ type: 'click', target: { text }, delay: 300 }));
+
+    return [
+      ...consentClicks,
+      { type: 'scroll', target: 'window', count: 2, delay: 250 },
+      ...monthClicks,
+      { type: 'scroll', target: 'window', count: 6, delay: 350 },
+      ...expanderClicks,
+      { type: 'scroll', target: 'window', count: 4, delay: 350 },
+      ...paginationClicks,
+      { type: 'scroll', target: 'window', count: 4, delay: 350 }
+    ];
+  }
+
+  /**
+   * Regex-assisted minimal extraction when LLM returns nothing. Best-effort.
+   */
+  private regexAssistExtract(text: string): ScrapedEvent[] {
+    const lines = text.split(/\r?\n/);
+    const events: ScrapedEvent[] = [];
+    const dateRe = /(\b\d{1,2}[\.\/]\d{1,2}[\.\/]\d{4}\b)|\b(\d{4}-\d{2}-\d{2})\b/;
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(dateRe);
+      if (!m) continue;
+      // Take nearby non-empty line as title
+      let title = '';
+      for (let j = Math.max(0, i - 2); j <= Math.min(lines.length - 1, i + 2); j++) {
+        const t = lines[j].trim();
+        if (t && !dateRe.test(t) && t.length >= 3) { title = t; break; }
+      }
+      if (!title) continue;
+      const rawDate = (m[0] || '').trim();
+      events.push({ title, description: '', date: rawDate, city: '', url: undefined });
+      if (events.length >= 20) break;
+    }
+    return events;
   }
 
   /**
