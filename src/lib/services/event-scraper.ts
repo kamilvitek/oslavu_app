@@ -647,11 +647,20 @@ Return only valid JSON array. If no current/future events found, return empty ar
    * Transform scraped event to CreateEventData format
    */
   private transformScrapedEvent(event: ScrapedEvent, sourceName: string): CreateEventData {
+    const normalize = (s?: string): string | undefined => {
+      if (!s) return undefined;
+      const iso = this.parseDateFlexible(s);
+      return iso || undefined;
+    };
+
+    const normalizedDate = normalize(event.date) as string;
+    const normalizedEnd = normalize(event.endDate);
+
     return {
       title: event.title,
       description: event.description || '',
-      date: event.date,
-      end_date: event.endDate,
+      date: normalizedDate,
+      end_date: normalizedEnd,
       city: event.city,
       venue: event.venue,
       category: event.category || 'Other',
@@ -674,9 +683,20 @@ Return only valid JSON array. If no current/future events found, return empty ar
       errors: []
     };
 
-    console.log(`🔍 Processing ${events.length} events from ${sourceName}`);
+    // Filter strictly to current/future dates to avoid storing past items
+    const todayIso = new Date().toISOString().split('T')[0];
+    const upcoming = events.filter(e => {
+      try {
+        const d = new Date(e.date);
+        return !isNaN(d.getTime()) && e.date >= todayIso;
+      } catch {
+        return false;
+      }
+    });
 
-    for (const event of events) {
+    console.log(`🔍 Processing ${upcoming.length}/${events.length} future events from ${sourceName}`);
+
+    for (const event of upcoming) {
       try {
         console.log(`🔍 Processing event: ${event.title}`);
         console.log(`🔍 Event data:`, JSON.stringify(event, null, 2));
@@ -735,6 +755,53 @@ Return only valid JSON array. If no current/future events found, return empty ar
     }
 
     return result;
+  }
+
+  /**
+   * Parse various common date formats to ISO YYYY-MM-DD
+   * Supports: ISO, dd.mm.yyyy, d.m.yyyy, dd/mm/yyyy, d/m/yyyy, yyyy.mm.dd, yyyy/mm/dd
+   */
+  private parseDateFlexible(input: string): string | null {
+    const trimmed = (input || '').toString().trim();
+    if (!trimmed) return null;
+
+    // Already ISO date
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+    // dd.mm.yyyy or d.m.yyyy
+    let m = trimmed.match(/^(\d{1,2})[\.](\d{1,2})[\.](\d{4})$/);
+    if (m) {
+      const [_, d, mo, y] = m;
+      const day = d.padStart(2, '0');
+      const month = mo.padStart(2, '0');
+      return `${y}-${month}-${day}`;
+    }
+
+    // dd/mm/yyyy or d/m/yyyy
+    m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const [_, d, mo, y] = m;
+      const day = d.padStart(2, '0');
+      const month = mo.padStart(2, '0');
+      return `${y}-${month}-${day}`;
+    }
+
+    // yyyy.mm.dd or yyyy/mm/dd
+    m = trimmed.match(/^(\d{4})[\.\/]?(\d{1,2})[\.\/]?(\d{1,2})$/);
+    if (m && trimmed.includes('.') || trimmed.includes('/')) {
+      const [_, y, mo, d] = m as any;
+      const day = String(d).padStart(2, '0');
+      const month = String(mo).padStart(2, '0');
+      return `${y}-${month}-${day}`;
+    }
+
+    // Fallback to Date parser if it produces a valid ISO date
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+
+    return null;
   }
 
   /**
