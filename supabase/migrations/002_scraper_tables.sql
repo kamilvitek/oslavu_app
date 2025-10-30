@@ -1214,7 +1214,7 @@ INSERT INTO scraper_sources (name, url, type, config) VALUES
   ('arena vitkovice cz', 'https://www.arena-vitkovice.cz/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('enteriaarena cz', 'https://www.enteriaarena.cz/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('homecreditarena cz', 'https://www.homecreditarena.cz/program/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
-  ('narodni divadlo cz', 'https://www.narodni-divadlo.cz/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('narodni divadlo cz', 'https://www.narodni-divadlo.cz/cs/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('dox cz', 'https://www.dox.cz/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('muni cz rijen 2025 page 1', 'https://www.muni.cz/kalendar/rijen-2025?page=1', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('muni cz rijen 2025 page 2', 'https://www.muni.cz/kalendar/rijen-2025?page=2', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
