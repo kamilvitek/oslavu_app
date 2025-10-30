@@ -403,6 +403,36 @@ export class HolidayService {
   }
 
   /**
+   * Get holidays for a date range
+   */
+  async getHolidaysForDateRange(
+    startDate: string,
+    endDate: string,
+    region: string = 'CZ'
+  ): Promise<any[]> {
+    try {
+      // Use the existing RPC function to get holidays for the date range
+      const { data, error } = await this.supabase
+        .rpc('get_holidays_for_date_range', {
+          start_date: startDate,
+          end_date: endDate,
+          country_code: 'CZE',
+          region_code: region
+        });
+
+      if (error) {
+        console.error('Error fetching holidays for date range:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error in getHolidaysForDateRange:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get configuration for specific Czech region
    */
   getCzechRegionConfig(regionCode: string): HolidayServiceConfig {

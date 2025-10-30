@@ -7,6 +7,9 @@ import { eventDeduplicator, DeduplicationMetrics } from './event-deduplicator';
 import { cityRecognitionService } from './city-recognition';
 import { holidayService } from './holiday-service';
 import { HolidayServiceConfig } from '@/types/holidays';
+import { seasonalityEngine } from './seasonality-engine';
+import { holidayConflictDetector } from './holiday-conflict-detector';
+import { aiCategoryMatcher } from './ai-category-matcher';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -39,6 +42,14 @@ export interface ConflictAnalysisResult {
   userPreferredStartDate?: string;
   userPreferredEndDate?: string;
   deduplicationMetrics?: DeduplicationMetrics;
+  seasonalIntelligence?: {
+    hasSeasonalRisk: boolean;
+    riskLevel: 'low' | 'medium' | 'high';
+    seasonalFactors: string[];
+    recommendations: string[];
+    confidence: number;
+    dataCoverageWarning?: string;
+  };
 }
 
 export interface DateRecommendation {
@@ -59,6 +70,15 @@ export interface DateRecommendation {
     business_impact: 'none' | 'partial' | 'full';
     venue_closure_expected: boolean;
     reasons: string[];
+  };
+  seasonalFactors?: {
+    demandLevel: string;
+    seasonalMultiplier: number;
+    holidayMultiplier: number;
+    seasonalReasoning: string[];
+    holidayReasoning: string[];
+    optimalityScore: number; // 0-1 score for how optimal this date is
+    venueAvailability: number;
   };
 }
 
@@ -462,6 +482,45 @@ export class ConflictAnalysisService {
       console.log(`User's preferred dates (${params.startDate} to ${params.endDate}) included: ${filteredHighRiskDates.some(d => d.startDate === params.startDate && d.endDate === params.endDate)}`);
       console.log(`High-risk dates scores:`, filteredHighRiskDates.map(d => `${d.startDate}: ${d.conflictScore} (${d.riskLevel})`));
 
+      // Analyze seasonal intelligence when no events are found, low coverage, or when events are filtered out
+      let seasonalIntelligence;
+      const hasDataCoverageIssues = filteredEvents.length === 0 || 
+                                   filteredEvents.length < 3 || 
+                                   (originalAllEvents.length > 0 && filteredEvents.length === 0);
+      
+      // Always analyze seasonal intelligence for better insights
+      if (true) { // Always run seasonal intelligence
+        console.log('🔍 Data coverage issues detected - analyzing seasonal intelligence...');
+        
+        try {
+          const targetDate = new Date(params.startDate);
+          const month = targetDate.getMonth() + 1;
+          
+          seasonalIntelligence = await aiCategoryMatcher.analyzeSeasonalIntelligence(
+            params.category,
+            params.subcategory,
+            month,
+            params.city,
+            'CZ'
+          );
+          
+          if (seasonalIntelligence.hasSeasonalRisk) {
+            console.log(`⚠️  Seasonal risk detected: ${seasonalIntelligence.riskLevel} - ${seasonalIntelligence.seasonalFactors.join(', ')}`);
+          }
+          
+          // Add data coverage warning if no events found or events were filtered out
+          if (filteredEvents.length === 0) {
+            if (originalAllEvents.length > 0) {
+              seasonalIntelligence.dataCoverageWarning = `Found ${originalAllEvents.length} events but they were filtered out due to low audience overlap or category mismatches. This could indicate limited data coverage or a genuinely low-competition period. Consider checking local event calendars manually.`;
+            } else {
+              seasonalIntelligence.dataCoverageWarning = `No competing events found in our databases for ${params.category} events in ${params.city} during ${targetDate.toLocaleDateString('en', { month: 'long', year: 'numeric' })}. This could indicate limited data coverage or a genuinely low-competition period.`;
+            }
+          }
+        } catch (error) {
+          console.warn('Seasonal intelligence analysis failed:', error);
+        }
+      }
+
       const totalTime = Date.now() - startTime;
       console.log(`🎯 Conflict analysis completed in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`);
 
@@ -472,7 +531,8 @@ export class ConflictAnalysisService {
         analysisDate: new Date().toISOString(),
         userPreferredStartDate: params.startDate,
         userPreferredEndDate: params.endDate,
-        deduplicationMetrics: deduplicationResult ? eventDeduplicator.getMetrics(deduplicationResult) : undefined
+        deduplicationMetrics: deduplicationResult ? eventDeduplicator.getMetrics(deduplicationResult) : undefined,
+        seasonalIntelligence
       };
     } catch (error) {
       const totalTime = Date.now() - startTime;
@@ -785,7 +845,7 @@ export class ConflictAnalysisService {
 
     // For UI display, show category-filtered events to show only relevant events
     // This ensures users see events that are actually relevant to their event type
-    const categoryFilteredEvents = this.filterEventsByCategory(uniqueEvents, params.category);
+    const categoryFilteredEvents = await this.filterEventsByCategory(uniqueEvents, params.category);
     console.log(`📂 UI display events (category-filtered): ${categoryFilteredEvents.length}`);
     console.log(`📂 All location-filtered events: ${uniqueEvents.length}`);
     
@@ -839,6 +899,46 @@ export class ConflictAnalysisService {
 
       // Advanced analysis features
       let audienceOverlap;
+      let seasonalFactors;
+
+      // Calculate seasonal insights for this date range
+      try {
+        const seasonalMultiplier = await seasonalityEngine.getSeasonalMultiplier(
+          dateRange.startDate,
+          params.category,
+          params.subcategory,
+          'CZ'
+        );
+        
+        const holidayImpact = await holidayConflictDetector.getHolidayImpact(
+          dateRange.startDate,
+          params.category,
+          params.subcategory,
+          'CZ'
+        );
+        
+        seasonalFactors = {
+          demandLevel: seasonalMultiplier.demandLevel,
+          seasonalMultiplier: seasonalMultiplier.multiplier,
+          holidayMultiplier: holidayImpact.multiplier,
+          seasonalReasoning: seasonalMultiplier.reasoning,
+          holidayReasoning: holidayImpact.reasoning,
+          optimalityScore: Math.min(seasonalMultiplier.multiplier / 2.0, 1.0), // Normalize to 0-1
+          venueAvailability: 0.8 // Default, could be enhanced with venue-specific data
+        };
+      } catch (seasonalityError) {
+        console.warn(`Seasonal analysis failed for ${dateRange.startDate}:`, seasonalityError);
+        // Provide default seasonal factors
+        seasonalFactors = {
+          demandLevel: 'medium',
+          seasonalMultiplier: 1.0,
+          holidayMultiplier: 1.0,
+          seasonalReasoning: ['Seasonal analysis unavailable'],
+          holidayReasoning: ['Holiday analysis unavailable'],
+          optimalityScore: 0.5,
+          venueAvailability: 0.8
+        };
+      }
 
       // Advanced analysis is disabled for performance reasons
       // Audience overlap analysis causes 70+ second delays due to sequential OpenAI API calls
@@ -863,7 +963,8 @@ export class ConflictAnalysisService {
         competingEvents,
         reasons,
         audienceOverlap,
-        holidayRestrictions: dateRange.holidayRestrictions
+        holidayRestrictions: dateRange.holidayRestrictions,
+        seasonalFactors
       };
     });
 
@@ -1346,6 +1447,31 @@ export class ConflictAnalysisService {
       } else {
         // Calculate score using optimized algorithm
         eventScore = this.calculateEventConflictScore(event, category, config);
+        
+        // Apply seasonal and holiday multipliers before audience overlap
+        try {
+          const seasonalMultiplier = await seasonalityEngine.getSeasonalMultiplier(
+            event.date,
+            event.category,
+            event.subcategory || undefined,
+            'CZ' // Default to Czech Republic
+          );
+          
+          const holidayMultiplier = await holidayConflictDetector.getHolidayMultiplier(
+            event.date,
+            event.category,
+            event.subcategory || undefined,
+            'CZ' // Default to Czech Republic
+          );
+          
+          // Apply multipliers to base score
+          eventScore = eventScore * seasonalMultiplier.multiplier * holidayMultiplier;
+          
+          console.log(`  "${event.title}": seasonal ${seasonalMultiplier.multiplier.toFixed(2)}x, holiday ${holidayMultiplier.toFixed(2)}x -> adjusted score = ${eventScore.toFixed(2)}`);
+        } catch (seasonalityError) {
+          console.warn(`  "${event.title}": seasonality analysis failed, using base score:`, seasonalityError);
+          // Continue with base score if seasonality analysis fails
+        }
         
         // Apply audience overlap analysis if enabled and available
         if (params?.enableAdvancedAnalysis) {
@@ -2013,8 +2139,8 @@ export class ConflictAnalysisService {
         )
       ]) as any;
 
-      // Event is significant if audience overlap is > 20%
-      const isSignificant = overlap.overlapScore > 0.2;
+      // Event is significant if audience overlap is > 10% (lowered threshold for better coverage)
+      const isSignificant = overlap.overlapScore > 0.1;
       
       if (isSignificant) {
         console.log(`🎯 Event "${event.title}" is significant: ${(overlap.overlapScore * 100).toFixed(1)}% audience overlap`);
@@ -2027,12 +2153,22 @@ export class ConflictAnalysisService {
       // Fallback to basic criteria if overlap analysis fails
       console.log(`⚠️ Audience overlap analysis failed for "${event.title}", using fallback criteria`);
       
-      // Fallback: Use venue + size + category criteria
+      // Fallback: Use venue + size + category criteria (more inclusive)
       const hasVenue = Boolean(event.venue && event.venue.length > 0);
-      const hasSize = Boolean(event.expectedAttendees && event.expectedAttendees > 100);
+      const hasSize = Boolean(event.expectedAttendees && event.expectedAttendees > 0);
       const isSameCategory = event.category === params.category;
+      const hasCategory = Boolean(event.category);
       
-      return hasVenue && (hasSize || isSameCategory);
+      // More inclusive fallback - consider event significant if it has basic info
+      const isSignificant = hasVenue || hasSize || hasCategory;
+      
+      if (isSignificant) {
+        console.log(`🎯 Event "${event.title}" is significant (fallback): venue=${hasVenue}, size=${hasSize}, category=${hasCategory}`);
+      } else {
+        console.log(`🚫 Event "${event.title}" is not significant (fallback): missing basic info`);
+      }
+      
+      return isSignificant;
     }
   }
 
@@ -2316,8 +2452,9 @@ export class ConflictAnalysisService {
 
   /**
    * Filter events by category to show only relevant events in "Found Events"
+   * Enhanced with AI-powered category matching for international events
    */
-  private filterEventsByCategory(events: Event[], targetCategory?: string): Event[] {
+  private async filterEventsByCategory(events: Event[], targetCategory?: string): Promise<Event[]> {
     if (!targetCategory) {
       return events; // No category filter, return all events
     }
@@ -2325,19 +2462,83 @@ export class ConflictAnalysisService {
     const normalizedTargetCategory = targetCategory.toLowerCase().trim();
     const expandedCategories = this.getExpandedCategories(targetCategory).map(cat => cat.toLowerCase().trim());
     
-    return events.filter(event => {
+    const filteredEvents: Event[] = [];
+    const aiMatchedEvents: Event[] = [];
+    
+    for (const event of events) {
       const eventCategory = event.category?.toLowerCase().trim() || '';
       
-      // For UI display, use expanded category matching to show related events
-      // This ensures users see events that are relevant to their selected category
+      // First try standard expanded category matching
       const isMatchingCategory = expandedCategories.includes(eventCategory);
       
-      if (!isMatchingCategory) {
-        console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - category not in expanded list`);
+      if (isMatchingCategory) {
+        filteredEvents.push(event);
+        console.log(`✅ Matched event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - standard match`);
+      } else {
+        // Try AI-powered category matching for international events
+        try {
+          const matchResult = await aiCategoryMatcher.matchCategory({
+            eventCategory: event.category || '',
+            targetCategory: targetCategory,
+            eventTitle: event.title,
+            eventDescription: event.description,
+            eventLanguage: this.detectEventLanguage(event)
+          });
+          
+          if (matchResult.isMatch && matchResult.confidence > 0.6) {
+            aiMatchedEvents.push(event);
+            console.log(`🤖 AI Matched event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - confidence: ${matchResult.confidence.toFixed(2)} - ${matchResult.reasoning}`);
+          } else {
+            console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - AI confidence: ${matchResult.confidence.toFixed(2)}`);
+          }
+        } catch (error) {
+          console.warn(`AI category matching failed for "${event.title}":`, error);
+          console.log(`🚫 Filtered out event "${event.title}" with category "${event.category}" (target: "${targetCategory}") - AI matching failed`);
+        }
       }
-      
-      return isMatchingCategory;
-    });
+    }
+    
+    // Combine standard matches and AI matches
+    const allMatchedEvents = [...filteredEvents, ...aiMatchedEvents];
+    
+    if (aiMatchedEvents.length > 0) {
+      console.log(`🤖 AI-powered matching found ${aiMatchedEvents.length} additional events that standard matching missed`);
+    }
+    
+    return allMatchedEvents;
+  }
+
+  /**
+   * Detect event language from title and description
+   */
+  private detectEventLanguage(event: Event): string {
+    const text = `${event.title} ${event.description || ''}`.toLowerCase();
+    
+    // Czech indicators
+    if (text.includes('divadlo') || text.includes('hudba') || text.includes('kultura') || 
+        text.includes('sport') || text.includes('obchod') || text.includes('vzdělání')) {
+      return 'cs';
+    }
+    
+    // German indicators
+    if (text.includes('theater') || text.includes('musik') || text.includes('kultur') || 
+        text.includes('geschäft')) {
+      return 'de';
+    }
+    
+    // French indicators
+    if (text.includes('théâtre') || text.includes('musique') || text.includes('culture') || 
+        text.includes('affaires')) {
+      return 'fr';
+    }
+    
+    // Spanish indicators
+    if (text.includes('teatro') || text.includes('música') || text.includes('cultura') || 
+        text.includes('deporte')) {
+      return 'es';
+    }
+    
+    return 'en'; // Default to English
   }
 
   /**
@@ -2740,6 +2941,108 @@ export class ConflictAnalysisService {
       console.error(`${apiName}: Error processing response:`, error);
       return [];
     }
+  }
+
+  /**
+   * Analyze date range with optimized seasonal and holiday factors
+   * This method integrates seasonality and holiday impact analysis
+   */
+  async analyzeDateRangeOptimized(params: ConflictAnalysisParams): Promise<{
+    recommendedDates: any[];
+    highRiskDates: any[];
+    seasonalFactors?: any;
+  }> {
+    const startTime = Date.now();
+    console.log('🔍 Starting optimized date range analysis with seasonality...');
+    
+    try {
+      // Get base conflict analysis
+      const baseAnalysis = await this.analyzeConflicts(params);
+      
+      // Get seasonal factors for the analysis period
+      const seasonalMultiplier = await seasonalityEngine.getSeasonalMultiplier(
+        params.startDate,
+        params.category,
+        params.subcategory,
+        'CZ'
+      );
+      
+      // Get holiday impact
+      const holidayImpact = await holidayConflictDetector.getHolidayImpact(
+        params.startDate,
+        params.category,
+        params.subcategory,
+        'CZ'
+      );
+      
+      // Enhance recommendations with seasonal factors
+      const enhancedRecommendations = baseAnalysis.recommendedDates.map(rec => ({
+        ...rec,
+        seasonalFactors: {
+          demandLevel: seasonalMultiplier.demandLevel,
+          seasonalMultiplier: seasonalMultiplier.multiplier,
+          holidayMultiplier: holidayImpact.multiplier,
+          optimalityScore: this.calculateOptimalityScore(rec, seasonalMultiplier, holidayImpact),
+          seasonalReasoning: seasonalMultiplier.reasoning,
+          holidayReasoning: holidayImpact.reasoning
+        }
+      }));
+      
+      // Enhance high-risk dates with seasonal factors
+      const enhancedHighRiskDates = baseAnalysis.highRiskDates.map(rec => ({
+        ...rec,
+        seasonalFactors: {
+          demandLevel: seasonalMultiplier.demandLevel,
+          seasonalMultiplier: seasonalMultiplier.multiplier,
+          holidayMultiplier: holidayImpact.multiplier,
+          optimalityScore: this.calculateOptimalityScore(rec, seasonalMultiplier, holidayImpact),
+          seasonalReasoning: seasonalMultiplier.reasoning,
+          holidayReasoning: holidayImpact.reasoning
+        }
+      }));
+      
+      const duration = Date.now() - startTime;
+      console.log(`✅ Optimized analysis completed in ${duration}ms`);
+      
+      return {
+        recommendedDates: enhancedRecommendations,
+        highRiskDates: enhancedHighRiskDates,
+        seasonalFactors: {
+          seasonalMultiplier,
+          holidayImpact
+        }
+      };
+      
+    } catch (error) {
+      console.error('❌ Optimized analysis failed:', error);
+      // Fallback to base analysis
+      const baseAnalysis = await this.analyzeConflicts(params);
+      return {
+        recommendedDates: baseAnalysis.recommendedDates,
+        highRiskDates: baseAnalysis.highRiskDates
+      };
+    }
+  }
+
+  /**
+   * Calculate optimality score based on seasonal and holiday factors
+   */
+  private calculateOptimalityScore(
+    recommendation: any,
+    seasonalMultiplier: any,
+    holidayImpact: any
+  ): number {
+    // Base score from conflict analysis
+    let score = 1.0 - (recommendation.conflictScore || 0);
+    
+    // Apply seasonal multiplier (higher demand = better score)
+    score *= seasonalMultiplier.multiplier;
+    
+    // Apply holiday impact (holidays can be good or bad depending on event type)
+    score *= holidayImpact.multiplier;
+    
+    // Normalize to 0-1 range
+    return Math.max(0, Math.min(1, score));
   }
 
   /**
