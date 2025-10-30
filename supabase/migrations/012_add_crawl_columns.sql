@@ -15,13 +15,13 @@ CREATE INDEX IF NOT EXISTS idx_scraper_sources_use_crawl
   ON public.scraper_sources (use_crawl);
 
 -- sync_logs: capture crawl performance metrics
-ALTER TABLE IF NOT EXISTS public.sync_logs
+ALTER TABLE IF EXISTS public.sync_logs
   ADD COLUMN IF NOT EXISTS pages_crawled INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS pages_processed INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS crawl_duration_ms BIGINT;
 
 -- events: persist richer detail page fields
-ALTER TABLE IF NOT EXISTS public.events
+ALTER TABLE IF EXISTS public.events
   ADD COLUMN IF NOT EXISTS detail_url TEXT,
   ADD COLUMN IF NOT EXISTS image_urls TEXT[],
   ADD COLUMN IF NOT EXISTS price_min NUMERIC,
