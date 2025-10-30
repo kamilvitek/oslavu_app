@@ -5,6 +5,8 @@ import { dataTransformer } from './data-transformer';
 import { eventStorageService } from './event-storage';
 import { serverDatabaseService } from '@/lib/supabase';
 import FirecrawlApp from '@mendable/firecrawl-js';
+import { CrawlConfigurationService } from '@/lib/services/crawl-configuration.service';
+import { CrawlConfig } from '@/lib/types/crawl';
 import OpenAI from 'openai';
 
 interface ScraperSource {
@@ -15,6 +17,11 @@ interface ScraperSource {
   enabled: boolean;
   config: Record<string, any>;
   last_scraped_at?: string;
+  // Crawl fields (nullable for legacy sources)
+  crawl_config?: Record<string, any> | null;
+  max_pages_per_crawl?: number | null;
+  crawl_frequency?: string | null; // INTERVAL as text
+  use_crawl?: boolean;
 }
 
 interface ScrapedEvent {
@@ -187,50 +194,95 @@ export class EventScraperService {
    * Scrape events using Firecrawl
    */
   private async scrapeWithFirecrawl(source: ScraperSource): Promise<CreateEventData[]> {
-    console.log(`🔍 Scraping with Firecrawl: ${source.url}`);
-    
+    const useCrawl = !!source.use_crawl && !!source.crawl_config;
+    console.log(`🔍 Scraping with Firecrawl (${useCrawl ? 'crawl' : 'scrape'}): ${source.url}`);
+
     try {
-      // Rate limiting with source-specific delays
       await this.enforceRateLimit(source.name);
-      
+
+      if (useCrawl) {
+        const hostname = new URL(source.url).hostname;
+        const presetKey = CrawlConfigurationService.getPresetForHost(hostname);
+        const preset = CrawlConfigurationService.buildPreset(presetKey);
+        const merged: CrawlConfig = CrawlConfigurationService.mergeConfig(
+          (source.crawl_config as any) ?? null,
+          preset
+        );
+        if (!merged.startUrls || merged.startUrls.length === 0) {
+          merged.startUrls = [source.url];
+        }
+        merged.maxPages = merged.maxPages ?? source.max_pages_per_crawl ?? undefined;
+
+        const startedAt = Date.now();
+        const crawlRes: any = await this.firecrawl.crawl({
+          startUrls: merged.startUrls,
+          maxDepth: merged.maxDepth,
+          allowList: merged.allowList,
+          denyList: merged.denyList,
+          actions: merged.actions as any,
+          waitFor: merged.waitFor as any,
+          maxPages: merged.maxPages,
+        } as any);
+
+        const durationMs = Date.now() - startedAt;
+
+        const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> =
+          Array.isArray(crawlRes?.data) ? crawlRes.data : [];
+
+        const pagesCrawled = pages.length;
+        console.log(`🔍 Firecrawl crawl returned ${pagesCrawled} pages for ${source.name}`);
+
+        let totalEvents: CreateEventData[] = [];
+        let pagesProcessed = 0;
+        // Prioritize detail pages over listings
+        const detailMatchers = (merged.detailUrlPatterns ?? []).map((p) => new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+        const detailPages = pages.filter(p => detailMatchers.some(rx => rx.test(p.url)));
+        const otherPages = pages.filter(p => !detailMatchers.some(rx => rx.test(p.url)));
+
+        for (const page of [...detailPages, ...otherPages]) {
+          const content = (page as any).markdown || (page as any).content || '';
+          if (!content) continue;
+          pagesProcessed++;
+          const events = await this.extractEventsWithGPT(content, source.name);
+          totalEvents.push(...events.map(e => this.transformScrapedEvent(e, source.name)));
+        }
+
+        // Attach crawl metrics into sync log via metadata on caller
+        await this.db.executeWithRetry(async () => {
+          return await this.db.getClient()
+            .from('sync_logs')
+            .update({
+              pages_crawled: pagesCrawled,
+              pages_processed: pagesProcessed,
+              crawl_duration_ms: durationMs,
+            })
+            .order('started_at', { ascending: false })
+            .limit(1);
+        });
+
+        console.log(`✅ Crawl processed ${pagesProcessed}/${pagesCrawled} pages, extracted ${totalEvents.length} events`);
+        return totalEvents;
+      }
+
+      // Legacy single-page scrape path (backward compatible)
       const scrapeResult: any = await this.firecrawl.scrape(source.url, {
         formats: ['markdown'],
         onlyMainContent: source.config.onlyMainContent || true,
         waitFor: source.config.waitFor || 2000,
         timeout: 60000
       });
-      
-      console.log(`🔍 Firecrawl response for ${source.url}:`, {
-        hasMarkdown: !!scrapeResult.markdown,
-        hasMetadata: !!scrapeResult.metadata,
-        statusCode: scrapeResult.metadata?.statusCode,
-        creditsUsed: scrapeResult.metadata?.creditsUsed,
-        fullResponse: JSON.stringify(scrapeResult, null, 2)
-      });
-      
-      // Check if scraping was successful (Firecrawl returns markdown at root level)
+
       if (!scrapeResult.markdown) {
         const errorMsg = 'No markdown content returned from Firecrawl';
         console.error(`❌ Firecrawl API error:`, errorMsg);
-        console.error(`❌ Full Firecrawl response:`, JSON.stringify(scrapeResult, null, 2));
         throw new Error(`Firecrawl scraping failed: ${errorMsg}`);
       }
-      
-      const markdown = scrapeResult.markdown;
-      if (!markdown) {
-        console.warn(`🔍 No markdown content extracted from ${source.url}`);
-        return [];
-      }
-      
-      // Extract events using GPT-4
-      const events = await this.extractEventsWithGPT(markdown, source.name);
-      console.log(`🔍 Extracted ${events.length} events from ${source.name}`);
-      
-      // Transform to CreateEventData format
+
+      const events = await this.extractEventsWithGPT(scrapeResult.markdown, source.name);
       return events.map(event => this.transformScrapedEvent(event, source.name));
-      
+
     } catch (error) {
-      console.error(`❌ Firecrawl scraping failed for ${source.url}:`, error);
+      console.error(`❌ Firecrawl ${useCrawl ? 'crawl' : 'scrape'} failed for ${source.url}:`, error);
       throw error;
     }
   }
@@ -265,7 +317,9 @@ export class EventScraperService {
 
 ${isCzechSource ? 'NOTE: This content is in Czech language. Extract events and translate titles/descriptions to English, but keep Czech city names as they are.' : ''}
 
-Return a JSON array of events with this structure:
+Prefer data from event detail pages if present. If JSON-LD or microdata with schema.org/Event is available, extract from it first and merge with page text.
+
+Return a JSON array of events with this structure (unknown fields may be omitted):
 {
   "title": "Event title (translate to English if Czech)",
   "description": "Event description (translate to English if Czech)",
@@ -275,8 +329,12 @@ Return a JSON array of events with this structure:
   "venue": "Venue name (optional, translate to English if Czech)",
   "category": "Event category (translate to English: festival, koncert->concert, divadlo->theater, sport->sports, kultura->culture)",
   "subcategory": "Event subcategory (optional, translate to English if Czech)",
-  "url": "Event URL (optional)",
-  "imageUrl": "Image URL (optional)",
+  "url": "Event detail page URL (preferred)",
+  "imageUrl": "Primary image URL (optional)",
+  "imageUrls": ["Additional image URLs (optional)"],
+  "priceMin": "Minimum price numeric (optional)",
+  "priceMax": "Maximum price numeric (optional)",
+  "organizer": "Organizer/Promoter (optional)",
   "expectedAttendees": "Number of expected attendees (CRITICAL: Try to extract this information)"
 }
 
