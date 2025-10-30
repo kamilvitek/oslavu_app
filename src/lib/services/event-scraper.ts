@@ -230,18 +230,18 @@ export class EventScraperService {
 
         for (const url of startUrls) {
           const startedAt = Date.now();
-          const res: any = await this.firecrawl.crawl({
+          // Use SDK signature: crawl(url: string, options?: object)
+          const res: any = await (this.firecrawl as any).crawl(
             url,
-            // Some SDK versions use `crawlerOptions` for limits and patterns
-            crawlerOptions: {
+            {
               maxDepth: merged.maxDepth,
-              includes: merged.allowList,
-              excludes: merged.denyList,
+              allowList: merged.allowList,
+              denyList: merged.denyList,
               limit: perUrlPageCap ?? merged.maxPages,
-            } as any,
-            actions: merged.actions as any,
-            waitFor: merged.waitFor as any,
-          } as any);
+              actions: merged.actions as any,
+              waitFor: merged.waitFor as any,
+            }
+          );
 
           const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> =
             Array.isArray(res?.data) ? res.data : [];
