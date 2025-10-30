@@ -9,14 +9,26 @@ async function seedPresets() {
   const { serverDatabaseService } = await import('@/lib/supabase');
   const { CrawlConfigurationService } = await import('@/lib/services/crawl-configuration.service');
   const db = serverDatabaseService;
-  const { data, error } = await db.executeWithRetry(async () => {
-    return await db.getClient().from('scraper_sources').select('id, name, url, crawl_config, use_crawl, max_pages_per_crawl');
-  });
-  if (error) {
-    console.error('❌ Failed to fetch scraper_sources', error);
-    process.exit(1);
+  // Fetch all sources with pagination (Supabase defaults to 1000 row limit)
+  const pageSize = 1000;
+  let offset = 0;
+  let sources: any[] = [];
+  while (true) {
+    const { data, error } = await db.executeWithRetry(async () => {
+      return await db.getClient()
+        .from('scraper_sources')
+        .select('id, name, url, crawl_config, use_crawl, max_pages_per_crawl')
+        .range(offset, offset + pageSize - 1);
+    });
+    if (error) {
+      console.error('❌ Failed to fetch scraper_sources page', { offset, error });
+      process.exit(1);
+    }
+    const chunk = (data as any[]) ?? [];
+    sources = sources.concat(chunk);
+    if (chunk.length < pageSize) break;
+    offset += pageSize;
   }
-  const sources = (data as any[]) ?? [];
   console.log(`🔧 Found ${sources.length} sources`);
 
   let updated = 0;
