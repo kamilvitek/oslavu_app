@@ -53,7 +53,7 @@ export class EventScraperService {
   private lastRequestTime = 0;
   private readonly minRequestInterval = 8000; // 8 seconds = 7.5 requests per minute (more conservative)
   private requestCount = 0;
-  private dailyRequestLimit = 50; // More conservative daily limit for Czech sources
+  private dailyRequestLimit = 5000; // Increased for full crawl of 1300+ sources (Firecrawl Standard: 50 req/min, we use ~5-7/min with delays)
   private readonly czechSourceDelay = 12000; // 12 seconds for Czech sources (Kudyznudy)
 
   constructor() {
@@ -1134,9 +1134,9 @@ Return only valid JSON array. If no current/future events found, return empty ar
    * Enforce rate limiting with Czech source support
    */
   private async enforceRateLimit(sourceName?: string): Promise<void> {
-    // Check daily limit
+    // Check request limit (safety limit - Firecrawl Standard: 50 req/min, we use ~5-7/min with delays)
     if (this.requestCount >= this.dailyRequestLimit) {
-      throw new Error(`Daily API request limit of ${this.dailyRequestLimit} exceeded`);
+      throw new Error(`API request limit of ${this.dailyRequestLimit} exceeded`);
     }
 
     // Determine delay based on source type
