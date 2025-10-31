@@ -22,6 +22,25 @@ if (!CRON_SECRET) {
   process.exit(1);
 }
 
+/**
+ * Check if the server is running
+ */
+async function checkServerConnection(): Promise<boolean> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/scraper/status`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000) // 5 second timeout
+    });
+    return response.ok || response.status < 500;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return false;
+    }
+    // ECONNREFUSED means server isn't running
+    return false;
+  }
+}
+
 interface ScraperTestResult {
   success: boolean;
   data?: any;
@@ -43,8 +62,14 @@ async function testScraperSync(): Promise<ScraperTestResult> {
       headers: {
         'Authorization': `Bearer ${CRON_SECRET}`,
         'Content-Type': 'application/json'
-      }
+      },
+      signal: AbortSignal.timeout(300000) // 5 minute timeout for sync
     });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
     
     const result = await response.json();
     const duration = Date.now() - startTime;
@@ -86,7 +111,14 @@ async function testScraperStatus(): Promise<ScraperTestResult> {
   const startTime = Date.now();
   
   try {
-    const response = await fetch(`${BASE_URL}/api/scraper/status`);
+    const response = await fetch(`${BASE_URL}/api/scraper/status`, {
+      signal: AbortSignal.timeout(10000) // 10 second timeout
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
     const result = await response.json();
     const duration = Date.now() - startTime;
     
@@ -108,7 +140,19 @@ async function testScraperStatus(): Promise<ScraperTestResult> {
     
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('❌ Scraper status test failed:', error);
+    
+    // Provide more helpful error messages
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        console.error('❌ Scraper status test failed: Request timed out');
+      } else if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
+        console.error('❌ Scraper status test failed: Connection refused - server may not be running');
+      } else {
+        console.error('❌ Scraper status test failed:', error.message);
+      }
+    } else {
+      console.error('❌ Scraper status test failed:', error);
+    }
     
     return {
       success: false,
@@ -135,7 +179,15 @@ async function testScrapedEvents(): Promise<ScraperTestResult> {
       size: '10'
     });
     
-    const response = await fetch(`${BASE_URL}/api/events/scraped?${queryParams.toString()}`);
+    const response = await fetch(`${BASE_URL}/api/events/scraped?${queryParams.toString()}`, {
+      signal: AbortSignal.timeout(30000) // 30 second timeout
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+    
     const result = await response.json();
     const duration = Date.now() - startTime;
     
@@ -180,7 +232,8 @@ async function testUnauthorizedAccess(): Promise<ScraperTestResult> {
       headers: {
         'Authorization': 'Bearer invalid-token',
         'Content-Type': 'application/json'
-      }
+      },
+      signal: AbortSignal.timeout(10000) // 10 second timeout
     });
     
     const result = await response.json();
@@ -219,6 +272,24 @@ async function testUnauthorizedAccess(): Promise<ScraperTestResult> {
  */
 async function runAllTests(): Promise<void> {
   console.log('🚀 Starting scraper API tests...\n');
+  
+  // Check if server is running first
+  console.log('🔍 Checking if server is running...');
+  const serverRunning = await checkServerConnection();
+  
+  if (!serverRunning) {
+    console.error('\n❌ Server is not running or not accessible!');
+    console.error(`   Tried to connect to: ${BASE_URL}`);
+    console.error('\n💡 To fix this:');
+    console.error('   1. Start the development server: npm run dev');
+    console.error('   2. Wait for the server to start (usually takes a few seconds)');
+    console.error('   3. Run this test again: npm run scrape:test');
+    console.error('\n💡 Alternative: Run scraper directly without API:');
+    console.error('   npm run scrape:run');
+    process.exit(1);
+  }
+  
+  console.log(`✅ Server is running at ${BASE_URL}\n`);
   
   const tests = [
     { name: 'Scraper Status', fn: testScraperStatus },

@@ -89,14 +89,17 @@ export async function GET(request: NextRequest) {
       const synonyms = getCategorySynonyms(normalizedCategory);
       
       // Build OR condition for category matching
-      const categoryConditions = synonyms.map(syn => `category.ilike.%${syn}%`).join(',');
+      // Supabase .or() format: field.operator.value,field.operator.value
+      const categoryConditions = synonyms.map(syn => `category.ilike.*${syn}*`).join(',');
       query = query.or(categoryConditions);
       
       console.log(`🔍 Using AI-normalized category matching: ${category} -> ${normalizedCategory} (${synonyms.length} synonyms)`);
     }
     
     if (search) {
-      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,venue.ilike.%${search}%`);
+      // Supabase .or() format: field.operator.value,field.operator.value
+      // Use * for wildcards in ilike operator
+      query = query.or(`title.ilike.*${search}*,description.ilike.*${search}*,venue.ilike.*${search}*`);
     }
     
     // Apply pagination
