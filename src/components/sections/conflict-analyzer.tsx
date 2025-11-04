@@ -475,14 +475,35 @@ export function ConflictAnalyzer() {
                                 <div className={`font-semibold ${getRiskTextColor(recommendation.riskLevel)}`}>
                                   {formatDateRange(recommendation.startDate, recommendation.endDate)}
                                 </div>
-                                <div className={`text-xs px-2 py-1 rounded-full ${getRiskBgColor(recommendation.riskLevel)} ${getRiskTextColor(recommendation.riskLevel)}`}>
-                                  {recommendation.riskLevel} Risk
+                                <div className="flex items-center space-x-2">
+                                  {recommendation.consolidatedRanges && recommendation.consolidatedRanges.count > 1 && (
+                                    <div className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+                                      {recommendation.consolidatedRanges.count} ranges consolidated
+                                    </div>
+                                  )}
+                                  <div className={`text-xs px-2 py-1 rounded-full ${getRiskBgColor(recommendation.riskLevel)} ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                    {recommendation.riskLevel} Risk
+                                  </div>
                                 </div>
                               </div>
                               
-                              <div className={`text-sm ${getRiskColor(recommendation.riskLevel)} mb-2`}>
-                                Conflict Score: {recommendation.conflictScore.toFixed(1)}/20
-                              </div>
+                              {/* Aggregated Stats for Consolidated Ranges */}
+                              {recommendation.aggregatedStats && recommendation.consolidatedRanges && recommendation.consolidatedRanges.count > 1 ? (
+                                <div className={`text-sm ${getRiskColor(recommendation.riskLevel)} mb-2 space-y-1`}>
+                                  <div>
+                                    Conflict Score: {recommendation.conflictScore.toFixed(1)}/20 (Avg)
+                                  </div>
+                                  <div className="text-xs opacity-90">
+                                    Max: {recommendation.aggregatedStats.maxConflictScore.toFixed(1)} | 
+                                    Avg: {recommendation.aggregatedStats.avgConflictScore.toFixed(1)} | 
+                                    Min: {recommendation.aggregatedStats.minConflictScore.toFixed(1)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className={`text-sm ${getRiskColor(recommendation.riskLevel)} mb-2`}>
+                                  Conflict Score: {recommendation.conflictScore.toFixed(1)}/20
+                                </div>
+                              )}
                               
                               <div className={`text-xs ${getRiskDetailColor(recommendation.riskLevel)} mb-2`}>
                                 {recommendation.reasons.join(' • ')}

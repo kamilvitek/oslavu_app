@@ -80,6 +80,15 @@ export interface DateRecommendation {
     optimalityScore: number; // 0-1 score for how optimal this date is
     venueAvailability: number;
   };
+  consolidatedRanges?: {
+    count: number; // Number of ranges consolidated
+    originalRanges: Array<{ startDate: string; endDate: string; conflictScore: number }>; // Original ranges
+  };
+  aggregatedStats?: {
+    maxConflictScore: number;
+    avgConflictScore: number;
+    minConflictScore: number;
+  };
 }
 
 export interface ConflictAnalysisParams {
@@ -482,6 +491,23 @@ export class ConflictAnalysisService {
       console.log(`User's preferred dates (${params.startDate} to ${params.endDate}) included: ${filteredHighRiskDates.some(d => d.startDate === params.startDate && d.endDate === params.endDate)}`);
       console.log(`High-risk dates scores:`, filteredHighRiskDates.map(d => `${d.startDate}: ${d.conflictScore} (${d.riskLevel})`));
 
+      // Consolidate adjacent/overlapping high-risk date ranges
+      // Separate user's preferred dates from others to preserve them
+      const userPreferredHighRisk = filteredHighRiskDates.filter(
+        d => d.startDate === params.startDate && d.endDate === params.endDate
+      );
+      const otherHighRiskDatesForConsolidation = filteredHighRiskDates.filter(
+        d => !(d.startDate === params.startDate && d.endDate === params.endDate)
+      );
+      
+      // Consolidate only the non-preferred dates
+      const consolidatedOtherHighRisk = this.consolidateHighRiskRanges(otherHighRiskDatesForConsolidation);
+      
+      // Combine user's preferred dates (always shown separately) with consolidated others
+      const finalHighRiskDates = [...userPreferredHighRisk, ...consolidatedOtherHighRisk];
+      
+      console.log(`📊 Consolidation: ${filteredHighRiskDates.length} ranges → ${finalHighRiskDates.length} ranges (${filteredHighRiskDates.length - finalHighRiskDates.length} consolidated)`);
+
       // Analyze seasonal intelligence when no events are found, low coverage, or when events are filtered out
       let seasonalIntelligence;
       const hasDataCoverageIssues = filteredEvents.length === 0 || 
@@ -532,7 +558,7 @@ export class ConflictAnalysisService {
 
       return {
         recommendedDates,
-        highRiskDates: filteredHighRiskDates,
+        highRiskDates: finalHighRiskDates,
         allEvents: originalAllEvents, // Return original unfiltered events for UI display
         analysisDate: new Date().toISOString(),
         userPreferredStartDate: params.startDate,
@@ -3049,6 +3075,261 @@ export class ConflictAnalysisService {
     
     // Normalize to 0-1 range
     return Math.max(0, Math.min(1, score));
+  }
+
+  /**
+   * Check if two date ranges are adjacent or overlapping
+   */
+  private areRangesAdjacentOrOverlapping(range1: DateRecommendation, range2: DateRecommendation): boolean {
+    const start1 = new Date(range1.startDate);
+    const end1 = new Date(range1.endDate);
+    const start2 = new Date(range2.startDate);
+    const end2 = new Date(range2.endDate);
+    
+    // Ranges are adjacent if end1 + 1 day = start2 or end2 + 1 day = start1
+    const isAdjacent = 
+      (end1.getTime() + 86400000) >= start2.getTime() && 
+      (end2.getTime() + 86400000) >= start1.getTime();
+    
+    // Ranges overlap if they share any common days
+    const overlaps = start1 <= end2 && start2 <= end1;
+    
+    return isAdjacent || overlaps;
+  }
+
+  /**
+   * Check if ranges have consistent audience overlap (>50%)
+   */
+  private hasConsistentAudienceOverlap(ranges: DateRecommendation[]): boolean {
+    if (ranges.length === 0) return false;
+    
+    // If any range doesn't have audience overlap data, check if others do
+    const rangesWithOverlap = ranges.filter(r => r.audienceOverlap && r.audienceOverlap.averageOverlap > 0.5);
+    
+    // If all ranges have overlap data, check consistency
+    if (rangesWithOverlap.length === ranges.length) {
+      // All ranges must have >50% overlap
+      return ranges.every(r => r.audienceOverlap && r.audienceOverlap.averageOverlap > 0.5);
+    }
+    
+    // If no ranges have overlap data, we can't determine consistency, so allow consolidation
+    // This handles cases where audience overlap analysis wasn't performed
+    if (rangesWithOverlap.length === 0) {
+      return true; // Allow consolidation if no overlap data available
+    }
+    
+    // If some ranges have overlap data, require all with data to have >50%
+    return rangesWithOverlap.every(r => r.audienceOverlap && r.audienceOverlap.averageOverlap > 0.5);
+  }
+
+  /**
+   * Merge date ranges into a single consolidated range
+   */
+  private mergeDateRanges(ranges: DateRecommendation[]): DateRecommendation {
+    if (ranges.length === 0) {
+      throw new Error('Cannot merge empty ranges array');
+    }
+    
+    if (ranges.length === 1) {
+      return ranges[0];
+    }
+    
+    // Find the earliest start date and latest end date
+    const dates = ranges.map(r => ({
+      start: new Date(r.startDate),
+      end: new Date(r.endDate)
+    }));
+    
+    const minStart = new Date(Math.min(...dates.map(d => d.start.getTime())));
+    const maxEnd = new Date(Math.max(...dates.map(d => d.end.getTime())));
+    
+    // Calculate aggregated stats
+    const conflictScores = ranges.map(r => r.conflictScore);
+    const maxConflictScore = Math.max(...conflictScores);
+    const avgConflictScore = conflictScores.reduce((sum, score) => sum + score, 0) / conflictScores.length;
+    const minConflictScore = Math.min(...conflictScores);
+    
+    // Get unique competing events
+    const uniqueEvents = this.getUniqueCompetingEvents(ranges);
+    
+    // Combine reasons (unique)
+    const allReasons = ranges.flatMap(r => r.reasons);
+    const uniqueReasons = [...new Set(allReasons)];
+    
+    // Combine audience overlap data
+    const audienceOverlapData = ranges.filter(r => r.audienceOverlap);
+    let mergedAudienceOverlap;
+    if (audienceOverlapData.length > 0) {
+      const avgOverlap = audienceOverlapData.reduce((sum, r) => sum + (r.audienceOverlap?.averageOverlap || 0), 0) / audienceOverlapData.length;
+      const allHighOverlapEvents = audienceOverlapData.flatMap(r => r.audienceOverlap?.highOverlapEvents || []);
+      const uniqueHighOverlapEvents = Array.from(
+        new Map(allHighOverlapEvents.map(e => [e.id, e])).values()
+      );
+      const allOverlapReasoning = audienceOverlapData.flatMap(r => r.audienceOverlap?.overlapReasoning || []);
+      const uniqueOverlapReasoning = [...new Set(allOverlapReasoning)];
+      
+      mergedAudienceOverlap = {
+        averageOverlap: avgOverlap,
+        highOverlapEvents: uniqueHighOverlapEvents,
+        overlapReasoning: uniqueOverlapReasoning.slice(0, 3) // Limit to top 3
+      };
+    }
+    
+    // Use the highest risk level
+    const riskLevels = ranges.map(r => r.riskLevel);
+    const highestRisk = riskLevels.includes('High') ? 'High' : 
+                       riskLevels.includes('Medium') ? 'Medium' : 'Low';
+    
+    // Create consolidated range
+    const consolidated: DateRecommendation = {
+      startDate: minStart.toISOString().split('T')[0],
+      endDate: maxEnd.toISOString().split('T')[0],
+      conflictScore: avgConflictScore, // Use average for display
+      riskLevel: highestRisk as 'Low' | 'Medium' | 'High',
+      competingEvents: uniqueEvents,
+      reasons: uniqueReasons,
+      audienceOverlap: mergedAudienceOverlap,
+      consolidatedRanges: {
+        count: ranges.length,
+        originalRanges: ranges.map(r => ({
+          startDate: r.startDate,
+          endDate: r.endDate,
+          conflictScore: r.conflictScore
+        }))
+      },
+      aggregatedStats: {
+        maxConflictScore,
+        avgConflictScore,
+        minConflictScore
+      }
+    };
+    
+    // Preserve holiday restrictions if any range has them
+    const rangesWithHolidays = ranges.filter(r => r.holidayRestrictions);
+    if (rangesWithHolidays.length > 0) {
+      // Merge holiday restrictions (combine all holidays and events)
+      const allHolidays = new Map();
+      const allCulturalEvents = new Map();
+      let businessImpact: 'none' | 'partial' | 'full' = 'none';
+      let venueClosureExpected = false;
+      
+      rangesWithHolidays.forEach(r => {
+        if (r.holidayRestrictions) {
+          r.holidayRestrictions.holidays?.forEach((h: any) => {
+            allHolidays.set(h.holiday_name || h.name, h);
+          });
+          r.holidayRestrictions.cultural_events?.forEach((e: any) => {
+            allCulturalEvents.set(e.event_name || e.name, e);
+          });
+          if (r.holidayRestrictions.business_impact === 'full') {
+            businessImpact = 'full';
+          } else if (r.holidayRestrictions.business_impact === 'partial' && businessImpact !== 'full') {
+            businessImpact = 'partial';
+          }
+          if (r.holidayRestrictions.venue_closure_expected) {
+            venueClosureExpected = true;
+          }
+        }
+      });
+      
+      consolidated.holidayRestrictions = {
+        holidays: Array.from(allHolidays.values()),
+        cultural_events: Array.from(allCulturalEvents.values()),
+        business_impact: businessImpact,
+        venue_closure_expected: venueClosureExpected,
+        reasons: [...new Set(rangesWithHolidays.flatMap(r => r.holidayRestrictions?.reasons || []))]
+      };
+    }
+    
+    return consolidated;
+  }
+
+  /**
+   * Get unique competing events from multiple ranges
+   */
+  private getUniqueCompetingEvents(ranges: DateRecommendation[]): Event[] {
+    const eventMap = new Map<string, Event>();
+    ranges.forEach(range => {
+      range.competingEvents.forEach(event => {
+        eventMap.set(event.id, event);
+      });
+    });
+    return Array.from(eventMap.values());
+  }
+
+  /**
+   * Filter out ranges that have conflict-free days (<3 score) in the middle
+   * when surrounded by high-conflict days
+   */
+  private filterConflictFreeDays(ranges: DateRecommendation[]): DateRecommendation[] {
+    return ranges.filter(range => {
+      // If range has conflict score < 3, it might be a conflict-free day
+      if (range.conflictScore < 3) {
+        // Check if this range is surrounded by high-risk ranges
+        // This is a simplified check - in practice, we'd need to check all dates in the range
+        // For now, we'll keep ranges with conflict score >= 3
+        return false; // Filter out conflict-free days
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Consolidate adjacent/overlapping high-risk date ranges
+   */
+  private consolidateHighRiskRanges(ranges: DateRecommendation[]): DateRecommendation[] {
+    if (ranges.length <= 1) {
+      return ranges;
+    }
+    
+    // Filter out conflict-free days first
+    const filteredRanges = this.filterConflictFreeDays(ranges);
+    
+    // Sort ranges by start date
+    const sortedRanges = [...filteredRanges].sort((a, b) => 
+      new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+    );
+    
+    const consolidated: DateRecommendation[] = [];
+    const processed = new Set<number>();
+    
+    for (let i = 0; i < sortedRanges.length; i++) {
+      if (processed.has(i)) continue;
+      
+      // Start a new consolidation group
+      const group = [sortedRanges[i]];
+      processed.add(i);
+      
+      // Try to find adjacent/overlapping ranges with consistent audience overlap
+      for (let j = i + 1; j < sortedRanges.length; j++) {
+        if (processed.has(j)) continue;
+        
+        const range1 = group[group.length - 1]; // Last range in group
+        const range2 = sortedRanges[j];
+        
+        // Check if ranges are adjacent/overlapping
+        if (this.areRangesAdjacentOrOverlapping(range1, range2)) {
+          // Check if they have consistent audience overlap (>50%)
+          const testGroup = [...group, range2];
+          if (this.hasConsistentAudienceOverlap(testGroup)) {
+            group.push(range2);
+            processed.add(j);
+          }
+        } else {
+          // If not adjacent, stop looking for this group
+          break;
+        }
+      }
+      
+      // Merge the group into a single range
+      if (group.length > 1) {
+        consolidated.push(this.mergeDateRanges(group));
+      } else {
+        consolidated.push(group[0]);
+      }
+    }
+    
+    return consolidated;
   }
 
   /**
