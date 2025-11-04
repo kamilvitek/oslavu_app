@@ -26,7 +26,7 @@ export function FAQ() {
     },
     {
       question: "Which events are covered?",
-      answer: "We cover a comprehensive range of events including conferences, meetups, festivals, concerts, sports events, and local gatherings. Our data sources include major platforms like Ticketmaster and PredictHQ, plus we scrape tens of local websites to ensure we don't miss any events that could impact your attendance."
+      answer: "We cover a comprehensive range of events including conferences, meetups, festivals, concerts, sports events, and local gatherings. Our data sources include major platforms like Ticketmaster and PredictHQ, plus we scrape over a thousand of local websites to ensure we don't miss any events that could impact your attendance."
     },
     {
       question: "Can I request a missing event?",
