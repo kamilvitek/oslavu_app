@@ -21,6 +21,10 @@ export function FAQ() {
       answer: "A Conflict Score is a proprietary algorithm that analyzes potential scheduling conflicts between your event and other events in the same city. It considers factors like audience overlap, event proximity, timing, and event type to give you a score from 0-20, where lower scores indicate higher conflict risk."
     },
     {
+      question: "What's audience overlap?",
+      answer: "Audience overlap tells you how many of the same people would likely attend both your event and competing events. We calculate this by analyzing event categories, genres, demographics, and how close events are scheduled together. For example, if you're planning a Rock concert and another Rock festival is happening just days before, there's a high audience overlap because the same music fans would be interested in both. The higher the overlap percentage, the more likely you'll compete for the same attendees, which can significantly impact your ticket sales and attendance. This helps you avoid scheduling conflicts that could hurt your event's success."
+    },
+    {
       question: "Which events are covered?",
       answer: "We cover a comprehensive range of events including conferences, meetups, festivals, concerts, sports events, and local gatherings. Our data sources include major platforms like Ticketmaster and PredictHQ, plus we scrape tens of local websites to ensure we don't miss any events that could impact your attendance."
     },
