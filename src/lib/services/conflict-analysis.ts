@@ -510,10 +510,16 @@ export class ConflictAnalysisService {
           
           // Add data coverage warning if no events found or events were filtered out
           if (filteredEvents.length === 0) {
+            // Check if this is a high-competition period based on seasonal intelligence
+            const isHighCompetitionPeriod = seasonalIntelligence.hasSeasonalRisk || seasonalIntelligence.riskLevel === 'high';
+            const lowCompetitionText = isHighCompetitionPeriod 
+              ? 'limited data coverage' 
+              : 'limited data coverage or a genuinely low-competition period';
+            
             if (originalAllEvents.length > 0) {
-              seasonalIntelligence.dataCoverageWarning = `Found ${originalAllEvents.length} events but they were filtered out due to low audience overlap or category mismatches. This could indicate limited data coverage or a genuinely low-competition period. Consider checking local event calendars manually.`;
+              seasonalIntelligence.dataCoverageWarning = `Found ${originalAllEvents.length} events but they were filtered out due to low audience overlap or category mismatches. This could indicate ${lowCompetitionText}. Consider checking local event calendars manually.`;
             } else {
-              seasonalIntelligence.dataCoverageWarning = `No competing events found in our databases for ${params.category} events in ${params.city} during ${targetDate.toLocaleDateString('en', { month: 'long', year: 'numeric' })}. This could indicate limited data coverage or a genuinely low-competition period.`;
+              seasonalIntelligence.dataCoverageWarning = `No competing events found in our databases for ${params.category} events in ${params.city} during ${targetDate.toLocaleDateString('en', { month: 'long', year: 'numeric' })}. This could indicate ${lowCompetitionText}.`;
             }
           }
         } catch (error) {
