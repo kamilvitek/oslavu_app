@@ -475,15 +475,8 @@ export function ConflictAnalyzer() {
                                 <div className={`font-semibold ${getRiskTextColor(recommendation.riskLevel)}`}>
                                   {formatDateRange(recommendation.startDate, recommendation.endDate)}
                                 </div>
-                                <div className="flex items-center space-x-2">
-                                  {recommendation.consolidatedRanges && recommendation.consolidatedRanges.count > 1 && (
-                                    <div className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
-                                      {recommendation.consolidatedRanges.count} ranges consolidated
-                                    </div>
-                                  )}
-                                  <div className={`text-xs px-2 py-1 rounded-full ${getRiskBgColor(recommendation.riskLevel)} ${getRiskTextColor(recommendation.riskLevel)}`}>
-                                    {recommendation.riskLevel} Risk
-                                  </div>
+                                <div className={`text-xs px-2 py-1 rounded-full ${getRiskBgColor(recommendation.riskLevel)} ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                  {recommendation.riskLevel} Risk
                                 </div>
                               </div>
                               
