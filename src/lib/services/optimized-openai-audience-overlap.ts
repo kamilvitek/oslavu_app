@@ -51,8 +51,24 @@ export class OptimizedOpenAIAudienceOverlapService {
 
         const cachedResult = await audienceOverlapCacheService.getCachedOverlap(cacheKey);
         if (cachedResult) {
+          // IMPORTANT: Apply temporal proximity adjustments to cached results
+          // Cache doesn't include date proximity, so we need to adjust even cached results
+          const baseOverlap = cachedResult.overlapScore;
+          const adjustedOverlap = this.applyTemporalProximityAdjustment(
+            plannedEvent,
+            event,
+            baseOverlap
+          );
+          
+          // Enhance reasoning with temporal proximity if relevant
+          const enhancedReasoning = this.enhanceReasoningWithTemporalProximity(
+            cachedResult.reasoning,
+            plannedEvent,
+            event
+          );
+          
           cachedResults.set(event.id, {
-            overlapScore: cachedResult.overlapScore,
+            overlapScore: Math.min(0.95, adjustedOverlap), // Cap at 95%
             confidence: cachedResult.confidence,
             factors: {
               demographicSimilarity: cachedResult.overlapScore * 0.3,
@@ -60,7 +76,7 @@ export class OptimizedOpenAIAudienceOverlapService {
               behaviorPatterns: cachedResult.overlapScore * 0.2,
               historicalPreference: cachedResult.overlapScore * 0.1
             },
-            reasoning: cachedResult.reasoning
+            reasoning: enhancedReasoning
           });
           cacheHits++;
         } else {

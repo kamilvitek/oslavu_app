@@ -35,8 +35,24 @@ export class OpenAIAudienceOverlapService {
 
       const cachedResult = await audienceOverlapCacheService.getCachedOverlap(cacheKey);
       if (cachedResult) {
+        // IMPORTANT: Apply temporal proximity adjustments to cached results
+        // Cache doesn't include date proximity, so we need to adjust even cached results
+        const baseOverlap = cachedResult.overlapScore;
+        const adjustedOverlap = this.applyTemporalProximityAdjustment(
+          event1,
+          event2,
+          baseOverlap
+        );
+        
+        // Enhance reasoning with temporal proximity if relevant
+        const enhancedReasoning = this.enhanceReasoningWithTemporalProximity(
+          cachedResult.reasoning,
+          event1,
+          event2
+        );
+        
         return {
-          overlapScore: cachedResult.overlapScore,
+          overlapScore: Math.min(0.95, adjustedOverlap), // Cap at 95%
           confidence: cachedResult.confidence,
           factors: {
             demographicSimilarity: cachedResult.overlapScore * 0.3,
@@ -44,7 +60,7 @@ export class OpenAIAudienceOverlapService {
             behaviorPatterns: cachedResult.overlapScore * 0.2,
             historicalPreference: cachedResult.overlapScore * 0.1
           },
-          reasoning: cachedResult.reasoning
+          reasoning: enhancedReasoning
         };
       }
 
@@ -449,6 +465,56 @@ export class OpenAIAudienceOverlapService {
     }
     
     return adjustedOverlap;
+  }
+
+  /**
+   * Enhance reasoning with temporal proximity information if not already present
+   */
+  private enhanceReasoningWithTemporalProximity(
+    existingReasoning: string[],
+    event1: Event,
+    event2: Event
+  ): string[] {
+    const event1Date = new Date(event1.date);
+    const event1EndDate = event1.endDate ? new Date(event1.endDate) : event1Date;
+    const event2Date = new Date(event2.date);
+    const event2EndDate = event2.endDate ? new Date(event2.endDate) : event2Date;
+    
+    const daysBefore = Math.max(0, Math.floor((event1Date.getTime() - event2EndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysAfter = Math.max(0, Math.floor((event2Date.getTime() - event1EndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysBetween = Math.min(daysBefore, daysAfter);
+    
+    // Check if reasoning already mentions temporal proximity
+    const hasTemporalMention = existingReasoning.some(reason => 
+      reason.toLowerCase().includes('day') || 
+      reason.toLowerCase().includes('week') || 
+      reason.toLowerCase().includes('temporal') ||
+      reason.toLowerCase().includes('proximity') ||
+      reason.toLowerCase().includes('close')
+    );
+    
+    if (!hasTemporalMention && daysBetween <= 7) {
+      let temporalNote = '';
+      if (daysBetween === 0) {
+        temporalNote = 'Events occur on the same day, creating maximum competition for the same audience.';
+      } else if (daysBetween <= 3) {
+        temporalNote = `Events occur within ${daysBetween} day(s), creating very high competition for the same audience.`;
+      } else {
+        temporalNote = `Events occur within ${daysBetween} days, creating high competition for the same audience.`;
+      }
+      
+      // Add temporal note to reasoning, but limit to 3 reasons
+      const enhancedReasoning = [...existingReasoning];
+      if (enhancedReasoning.length < 3) {
+        enhancedReasoning.push(temporalNote);
+      } else {
+        // Replace last reason if we have 3 already
+        enhancedReasoning[2] = temporalNote;
+      }
+      return enhancedReasoning;
+    }
+    
+    return existingReasoning;
   }
 
   /**
