@@ -111,9 +111,43 @@ export class OptimizedOpenAIAudienceOverlapService {
     plannedEvent: Event, 
     competingEvents: Event[]
   ): Promise<Map<string, AudienceOverlapPrediction>> {
+    // Calculate date proximity for each event
+    const plannedEventDate = new Date(plannedEvent.date);
+    const plannedEventEndDate = plannedEvent.endDate ? new Date(plannedEvent.endDate) : plannedEventDate;
+    
+    const eventDetailsWithProximity = competingEvents.map((event) => {
+      const eventDate = new Date(event.date);
+      const eventEndDate = event.endDate ? new Date(event.endDate) : eventDate;
+      
+      // Calculate minimum days between events
+      const daysBefore = Math.max(0, Math.floor((plannedEventDate.getTime() - eventEndDate.getTime()) / (1000 * 60 * 60 * 24)));
+      const daysAfter = Math.max(0, Math.floor((eventDate.getTime() - plannedEventEndDate.getTime()) / (1000 * 60 * 60 * 24)));
+      const daysBetween = Math.min(daysBefore, daysAfter);
+      
+      // Determine proximity level
+      let proximityLevel = 'distant';
+      if (daysBetween === 0) {
+        proximityLevel = 'same_day';
+      } else if (daysBetween <= 3) {
+        proximityLevel = 'immediate';
+      } else if (daysBetween <= 7) {
+        proximityLevel = 'week';
+      } else if (daysBetween <= 30) {
+        proximityLevel = 'month';
+      } else if (daysBetween <= 90) {
+        proximityLevel = 'quarter';
+      }
+      
+      return {
+        event,
+        daysBetween,
+        proximityLevel
+      };
+    });
+
     const prompt = `
     Analyze audience overlap between a planned event and ${competingEvents.length} competing events. 
-    Consider subcategory relationships and return a JSON object with overlap predictions.
+    Consider subcategory relationships, temporal proximity, and event significance. Return a JSON object with overlap predictions.
 
     PLANNED EVENT:
     Title: "${plannedEvent.title}"
@@ -122,9 +156,10 @@ export class OptimizedOpenAIAudienceOverlapService {
     Description: ${plannedEvent.description || 'No description'}
     Venue: ${plannedEvent.venue || 'Not specified'}
     Expected Attendees: ${plannedEvent.expectedAttendees || 'Not specified'}
+    Date: ${plannedEvent.date}${plannedEvent.endDate ? ` to ${plannedEvent.endDate}` : ''}
 
     COMPETING EVENTS:
-    ${competingEvents.map((event, index) => `
+    ${eventDetailsWithProximity.map(({ event, daysBetween, proximityLevel }, index) => `
     Event ${index + 1}:
     - ID: ${event.id}
     - Title: "${event.title}"
@@ -133,20 +168,43 @@ export class OptimizedOpenAIAudienceOverlapService {
     - Description: ${event.description || 'No description'}
     - Venue: ${event.venue || 'Not specified'}
     - Expected Attendees: ${event.expectedAttendees || 'Not specified'}
+    - Date: ${event.date}${event.endDate ? ` to ${event.endDate}` : ''}
+    - Days from planned event: ${daysBetween} days (${proximityLevel})
     `).join('\n')}
 
-    SUBCATEGORY RELATIONSHIPS (use these for overlap scoring):
-    - Same subcategory: 80-95% overlap
-    - Related subcategories (e.g., Rock/Metal, AI/ML): 60-75% overlap  
-    - Different subcategories in same category: 20-40% overlap
-    - Different categories: 5-15% overlap
+    TEMPORAL PROXIMITY IMPACT (CRITICAL - adjust overlap based on date proximity):
+    - Same day (0 days): +15-20% overlap boost (people can't attend both)
+    - Immediate (1-3 days): +10-15% overlap boost (very high competition)
+    - Within week (4-7 days): +5-10% overlap boost (high competition)
+    - Within month (8-30 days): +2-5% overlap boost (moderate competition)
+    - Within quarter (31-90 days): +0-2% overlap boost (some competition)
+    - Distant (90+ days): No boost (minimal temporal competition)
+
+    EVENT SIGNIFICANCE IMPACT (adjust overlap based on event size/prominence):
+    - Major events (10,000+ attendees): +10-15% overlap boost (draws large, overlapping audiences)
+    - Large events (1,000-10,000 attendees): +5-10% overlap boost
+    - Medium events (100-1,000 attendees): +0-5% overlap boost
+    - Small events (<100 attendees): No boost
+
+    SUBCATEGORY RELATIONSHIPS (base overlap scoring):
+    - Same subcategory: 80-95% base overlap
+    - Related subcategories (e.g., Rock/Metal, AI/ML): 60-75% base overlap  
+    - Different subcategories in same category: 20-40% base overlap
+    - Different categories: 5-15% base overlap
+
+    OVERLAP CALCULATION FORMULA:
+    Final overlap = Base subcategory overlap + Temporal proximity boost + Event significance boost
+    - Cap final overlap at 95% maximum (always some unique attendees)
+    - For same subcategory + same day + major event: expect 90-95% overlap
+    - For same subcategory + immediate (1-3 days) + major event: expect 85-90% overlap
+    - For same subcategory + week proximity + major event: expect 80-85% overlap
 
     Return a JSON object with this structure:
     {
       "results": {
         "${competingEvents[0]?.id}": {
-          "overlapScore": 0.75,
-          "confidence": 0.85,
+          "overlapScore": 0.85,
+          "confidence": 0.90,
           "factors": {
             "demographicSimilarity": 0.8,
             "interestAlignment": 0.7,
@@ -154,9 +212,9 @@ export class OptimizedOpenAIAudienceOverlapService {
             "historicalPreference": 0.5
           },
           "reasoning": [
-            "Both events target technology professionals",
-            "Similar age demographics and interests",
-            "Overlapping professional networks"
+            "Both events target Rock music fans in the same region",
+            "Events occur within 1-3 days, creating high temporal competition",
+            "Major festival (20k+ attendees) draws overlapping audience pool"
           ]
         }
         // ... repeat for each competing event
@@ -166,8 +224,9 @@ export class OptimizedOpenAIAudienceOverlapService {
     IMPORTANT: 
     - Return ONLY valid JSON
     - Include ALL competing event IDs in results
-    - Use subcategory relationships for accurate scoring
-    - Provide specific, actionable reasoning
+    - Apply temporal proximity and event significance boosts to base overlap
+    - Cap overlap at 95% maximum
+    - Provide specific, actionable reasoning that mentions temporal proximity and event significance
     `;
 
     const response = await this.callOpenAI(prompt, 'gpt-4o-mini');
@@ -184,14 +243,35 @@ export class OptimizedOpenAIAudienceOverlapService {
       const parsedResponse = JSON.parse(cleanResponse);
       const results = new Map<string, AudienceOverlapPrediction>();
 
-      // Process each result and cache it
+      // Process each result and apply temporal proximity adjustments
       for (const [eventId, prediction] of Object.entries(parsedResponse.results || {})) {
         const event = competingEvents.find(e => e.id === eventId);
         if (event && prediction) {
-          const overlapPrediction = prediction as AudienceOverlapPrediction;
+          let overlapPrediction = prediction as AudienceOverlapPrediction;
+          
+          // Apply temporal proximity and event significance adjustments
+          const adjustedOverlap = this.applyTemporalProximityAdjustment(
+            plannedEvent,
+            event,
+            overlapPrediction.overlapScore
+          );
+          
+          // Update overlap score with adjusted value (capped at 0.95)
+          overlapPrediction = {
+            ...overlapPrediction,
+            overlapScore: Math.min(0.95, adjustedOverlap),
+            // Add temporal proximity to reasoning if not already present
+            reasoning: this.enhanceReasoningWithTemporalProximity(
+              overlapPrediction.reasoning,
+              plannedEvent,
+              event
+            )
+          };
+          
           results.set(eventId, overlapPrediction);
 
-          // Cache the result
+          // Cache the result (note: cache key doesn't include dates, so this will be approximate)
+          // TODO: Consider adding date proximity to cache key in future update
           const cacheKey: OverlapCacheKey = {
             category1: plannedEvent.category,
             subcategory1: plannedEvent.subcategory || null,
@@ -270,6 +350,116 @@ export class OptimizedOpenAIAudienceOverlapService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Apply temporal proximity and event significance adjustments to overlap score
+   */
+  private applyTemporalProximityAdjustment(
+    plannedEvent: Event,
+    competingEvent: Event,
+    baseOverlap: number
+  ): number {
+    // Calculate days between events
+    const plannedEventDate = new Date(plannedEvent.date);
+    const plannedEventEndDate = plannedEvent.endDate ? new Date(plannedEvent.endDate) : plannedEventDate;
+    const eventDate = new Date(competingEvent.date);
+    const eventEndDate = competingEvent.endDate ? new Date(competingEvent.endDate) : eventDate;
+    
+    const daysBefore = Math.max(0, Math.floor((plannedEventDate.getTime() - eventEndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysAfter = Math.max(0, Math.floor((eventDate.getTime() - plannedEventEndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysBetween = Math.min(daysBefore, daysAfter);
+    
+    // Calculate temporal proximity boost
+    let temporalBoost = 0;
+    if (daysBetween === 0) {
+      temporalBoost = 0.18; // Same day: +18%
+    } else if (daysBetween <= 3) {
+      temporalBoost = 0.13; // Immediate (1-3 days): +13%
+    } else if (daysBetween <= 7) {
+      temporalBoost = 0.08; // Within week (4-7 days): +8%
+    } else if (daysBetween <= 30) {
+      temporalBoost = 0.04; // Within month (8-30 days): +4%
+    } else if (daysBetween <= 90) {
+      temporalBoost = 0.01; // Within quarter (31-90 days): +1%
+    }
+    // 90+ days: no boost
+    
+    // Calculate event significance boost
+    const competingAttendees = competingEvent.expectedAttendees || 0;
+    let significanceBoost = 0;
+    if (competingAttendees >= 10000) {
+      significanceBoost = 0.13; // Major events: +13%
+    } else if (competingAttendees >= 1000) {
+      significanceBoost = 0.08; // Large events: +8%
+    } else if (competingAttendees >= 100) {
+      significanceBoost = 0.03; // Medium events: +3%
+    }
+    // Small events: no boost
+    
+    // Apply boosts to base overlap
+    const adjustedOverlap = baseOverlap + temporalBoost + significanceBoost;
+    
+    // Log adjustment for debugging
+    if (temporalBoost > 0 || significanceBoost > 0) {
+      console.log(`  📅 Temporal adjustment: ${daysBetween} days apart (+${(temporalBoost * 100).toFixed(1)}%)`);
+      if (significanceBoost > 0) {
+        console.log(`  🎯 Significance adjustment: ${competingAttendees} attendees (+${(significanceBoost * 100).toFixed(1)}%)`);
+      }
+      console.log(`  📊 Overlap: ${(baseOverlap * 100).toFixed(1)}% → ${(adjustedOverlap * 100).toFixed(1)}%`);
+    }
+    
+    return adjustedOverlap;
+  }
+
+  /**
+   * Enhance reasoning with temporal proximity information if not already present
+   */
+  private enhanceReasoningWithTemporalProximity(
+    existingReasoning: string[],
+    plannedEvent: Event,
+    competingEvent: Event
+  ): string[] {
+    const plannedEventDate = new Date(plannedEvent.date);
+    const plannedEventEndDate = plannedEvent.endDate ? new Date(plannedEvent.endDate) : plannedEventDate;
+    const eventDate = new Date(competingEvent.date);
+    const eventEndDate = competingEvent.endDate ? new Date(competingEvent.endDate) : eventDate;
+    
+    const daysBefore = Math.max(0, Math.floor((plannedEventDate.getTime() - eventEndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysAfter = Math.max(0, Math.floor((eventDate.getTime() - plannedEventEndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysBetween = Math.min(daysBefore, daysAfter);
+    
+    // Check if reasoning already mentions temporal proximity
+    const hasTemporalMention = existingReasoning.some(reason => 
+      reason.toLowerCase().includes('day') || 
+      reason.toLowerCase().includes('week') || 
+      reason.toLowerCase().includes('temporal') ||
+      reason.toLowerCase().includes('proximity') ||
+      reason.toLowerCase().includes('close')
+    );
+    
+    if (!hasTemporalMention && daysBetween <= 7) {
+      let temporalNote = '';
+      if (daysBetween === 0) {
+        temporalNote = 'Events occur on the same day, creating maximum competition for the same audience.';
+      } else if (daysBetween <= 3) {
+        temporalNote = `Events occur within ${daysBetween} day(s), creating very high competition for the same audience.`;
+      } else {
+        temporalNote = `Events occur within ${daysBetween} days, creating high competition for the same audience.`;
+      }
+      
+      // Add temporal note to reasoning, but limit to 3 reasons
+      const enhancedReasoning = [...existingReasoning];
+      if (enhancedReasoning.length < 3) {
+        enhancedReasoning.push(temporalNote);
+      } else {
+        // Replace last reason if we have 3 already
+        enhancedReasoning[2] = temporalNote;
+      }
+      return enhancedReasoning;
+    }
+    
+    return existingReasoning;
   }
 
   /**

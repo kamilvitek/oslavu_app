@@ -52,9 +52,22 @@ export class OpenAIAudienceOverlapService {
       const eventAnalysis = await this.analyzeEventsWithAI(event1, event2);
       
       // Step 2: Predict audience overlap with subcategory awareness
-      const overlapPrediction = await this.predictOverlapWithAI(event1, event2, eventAnalysis);
+      let overlapPrediction = await this.predictOverlapWithAI(event1, event2, eventAnalysis);
       
-      // Step 3: Generate reasoning with subcategory insights
+      // Step 3: Apply temporal proximity and event significance adjustments
+      const adjustedOverlap = this.applyTemporalProximityAdjustment(
+        event1,
+        event2,
+        overlapPrediction.overlapScore
+      );
+      
+      // Update overlap score with adjusted value (capped at 0.95)
+      overlapPrediction = {
+        ...overlapPrediction,
+        overlapScore: Math.min(0.95, adjustedOverlap)
+      };
+      
+      // Step 4: Generate reasoning with subcategory insights
       const reasoning = await this.generateReasoningWithAI(event1, event2, overlapPrediction);
 
       const result = {
@@ -86,8 +99,31 @@ export class OpenAIAudienceOverlapService {
    * Analyze events using OpenAI to extract semantic features
    */
   private async analyzeEventsWithAI(event1: Event, event2: Event): Promise<any> {
+    // Calculate date proximity
+    const event1Date = new Date(event1.date);
+    const event1EndDate = event1.endDate ? new Date(event1.endDate) : event1Date;
+    const event2Date = new Date(event2.date);
+    const event2EndDate = event2.endDate ? new Date(event2.endDate) : event2Date;
+    
+    const daysBefore = Math.max(0, Math.floor((event1Date.getTime() - event2EndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysAfter = Math.max(0, Math.floor((event2Date.getTime() - event1EndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysBetween = Math.min(daysBefore, daysAfter);
+    
+    let proximityLevel = 'distant';
+    if (daysBetween === 0) {
+      proximityLevel = 'same day';
+    } else if (daysBetween <= 3) {
+      proximityLevel = '1-3 days apart';
+    } else if (daysBetween <= 7) {
+      proximityLevel = '4-7 days apart';
+    } else if (daysBetween <= 30) {
+      proximityLevel = '8-30 days apart';
+    } else if (daysBetween <= 90) {
+      proximityLevel = '31-90 days apart';
+    }
+    
     const prompt = `
-    Analyze these two events for audience overlap prediction, considering their subcategories and genres:
+    Analyze these two events for audience overlap prediction, considering their subcategories, genres, and temporal proximity:
 
     Event 1: "${event1.title}"
     Category: ${event1.category}
@@ -95,6 +131,7 @@ export class OpenAIAudienceOverlapService {
     Description: ${event1.description || 'No description'}
     Venue: ${event1.venue || 'Not specified'}
     Expected Attendees: ${event1.expectedAttendees || 'Not specified'}
+    Date: ${event1.date}${event1.endDate ? ` to ${event1.endDate}` : ''}
 
     Event 2: "${event2.title}"
     Category: ${event2.category}
@@ -102,6 +139,21 @@ export class OpenAIAudienceOverlapService {
     Description: ${event2.description || 'No description'}
     Venue: ${event2.venue || 'Not specified'}
     Expected Attendees: ${event2.expectedAttendees || 'Not specified'}
+    Date: ${event2.date}${event2.endDate ? ` to ${event2.endDate}` : ''}
+
+    TEMPORAL PROXIMITY: ${daysBetween} days between events (${proximityLevel})
+    - Same day (0 days): +15-20% overlap boost (people can't attend both)
+    - Immediate (1-3 days): +10-15% overlap boost (very high competition)
+    - Within week (4-7 days): +5-10% overlap boost (high competition)
+    - Within month (8-30 days): +2-5% overlap boost (moderate competition)
+    - Within quarter (31-90 days): +0-2% overlap boost (some competition)
+    - Distant (90+ days): No boost (minimal temporal competition)
+
+    EVENT SIGNIFICANCE: 
+    - Major events (10,000+ attendees): +10-15% overlap boost
+    - Large events (1,000-10,000 attendees): +5-10% overlap boost
+    - Medium events (100-1,000 attendees): +0-5% overlap boost
+    - Small events (<100 attendees): No boost
 
     Consider subcategory relationships:
     - Same subcategory: Very high overlap (80-95%)
@@ -147,6 +199,16 @@ export class OpenAIAudienceOverlapService {
    * Predict audience overlap using OpenAI
    */
   private async predictOverlapWithAI(event1: Event, event2: Event, analysis: any): Promise<any> {
+    // Calculate date proximity for context
+    const event1Date = new Date(event1.date);
+    const event1EndDate = event1.endDate ? new Date(event1.endDate) : event1Date;
+    const event2Date = new Date(event2.date);
+    const event2EndDate = event2.endDate ? new Date(event2.endDate) : event2Date;
+    
+    const daysBefore = Math.max(0, Math.floor((event1Date.getTime() - event2EndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysAfter = Math.max(0, Math.floor((event2Date.getTime() - event1EndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysBetween = Math.min(daysBefore, daysAfter);
+    
     const prompt = `
     Based on this event analysis, predict the audience overlap between these two events:
 
@@ -156,6 +218,7 @@ export class OpenAIAudienceOverlapService {
     - Key Topics: ${JSON.stringify(analysis.keyTopics1)}
     - Audience Motivation: ${analysis.audienceMotivation1}
     - Event Format: ${analysis.eventFormat1}
+    - Expected Attendees: ${event1.expectedAttendees || 'Not specified'}
 
     Event 2 Analysis:
     - Target Audience: ${JSON.stringify(analysis.targetAudience2)}
@@ -163,16 +226,31 @@ export class OpenAIAudienceOverlapService {
     - Key Topics: ${JSON.stringify(analysis.keyTopics2)}
     - Audience Motivation: ${analysis.audienceMotivation2}
     - Event Format: ${analysis.eventFormat2}
+    - Expected Attendees: ${event2.expectedAttendees || 'Not specified'}
+
+    TEMPORAL PROXIMITY: ${daysBetween} days between events
+    Apply temporal proximity boost to your base overlap calculation:
+    - Same day (0 days): +15-20% overlap boost
+    - Immediate (1-3 days): +10-15% overlap boost
+    - Within week (4-7 days): +5-10% overlap boost
+    - Within month (8-30 days): +2-5% overlap boost
+    - Within quarter (31-90 days): +0-2% overlap boost
+    - Distant (90+ days): No boost
+
+    EVENT SIGNIFICANCE: Apply boost based on event size
+    - Major events (10,000+ attendees): +10-15% overlap boost
+    - Large events (1,000-10,000 attendees): +5-10% overlap boost
+    - Medium events (100-1,000 attendees): +0-5% overlap boost
 
     Predict the audience overlap and return a JSON object with:
-    1. overlapScore: Number between 0 and 1 (0 = no overlap, 1 = complete overlap)
+    1. overlapScore: Number between 0 and 0.95 (0 = no overlap, 0.95 = very high overlap - cap at 95%)
     2. confidence: Number between 0 and 1 (how confident you are in this prediction)
     3. factors: Object with:
        - demographicSimilarity: 0-1 score
        - interestAlignment: 0-1 score
        - behaviorPatterns: 0-1 score
        - historicalPreference: 0-1 score
-    4. keyOverlapFactors: Array of the top 3 reasons for overlap
+    4. keyOverlapFactors: Array of the top 3 reasons for overlap (include temporal proximity if relevant)
     5. keyDifferentiators: Array of the top 3 reasons they don't overlap
 
     Consider:
@@ -182,6 +260,11 @@ export class OpenAIAudienceOverlapService {
     - Motivation for attending
     - Geographic and scheduling constraints
     - Industry/domain overlap
+    - TEMPORAL PROXIMITY: Events close in time create higher competition
+    - EVENT SIZE: Major events draw larger, overlapping audiences
+
+    IMPORTANT: Apply temporal proximity and event significance boosts to your base overlap score.
+    Final overlap should be: base_overlap + temporal_boost + significance_boost (capped at 0.95)
 
     Return only valid JSON, no additional text.
     `;
@@ -303,6 +386,69 @@ export class OpenAIAudienceOverlapService {
       eventFormat1: 'presentation',
       eventFormat2: 'presentation'
     };
+  }
+
+  /**
+   * Apply temporal proximity and event significance adjustments to overlap score
+   */
+  private applyTemporalProximityAdjustment(
+    event1: Event,
+    event2: Event,
+    baseOverlap: number
+  ): number {
+    // Calculate days between events
+    const event1Date = new Date(event1.date);
+    const event1EndDate = event1.endDate ? new Date(event1.endDate) : event1Date;
+    const event2Date = new Date(event2.date);
+    const event2EndDate = event2.endDate ? new Date(event2.endDate) : event2Date;
+    
+    const daysBefore = Math.max(0, Math.floor((event1Date.getTime() - event2EndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysAfter = Math.max(0, Math.floor((event2Date.getTime() - event1EndDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysBetween = Math.min(daysBefore, daysAfter);
+    
+    // Calculate temporal proximity boost
+    let temporalBoost = 0;
+    if (daysBetween === 0) {
+      temporalBoost = 0.18; // Same day: +18%
+    } else if (daysBetween <= 3) {
+      temporalBoost = 0.13; // Immediate (1-3 days): +13%
+    } else if (daysBetween <= 7) {
+      temporalBoost = 0.08; // Within week (4-7 days): +8%
+    } else if (daysBetween <= 30) {
+      temporalBoost = 0.04; // Within month (8-30 days): +4%
+    } else if (daysBetween <= 90) {
+      temporalBoost = 0.01; // Within quarter (31-90 days): +1%
+    }
+    // 90+ days: no boost
+    
+    // Calculate event significance boost (use the larger event)
+    const event1Attendees = event1.expectedAttendees || 0;
+    const event2Attendees = event2.expectedAttendees || 0;
+    const maxAttendees = Math.max(event1Attendees, event2Attendees);
+    
+    let significanceBoost = 0;
+    if (maxAttendees >= 10000) {
+      significanceBoost = 0.13; // Major events: +13%
+    } else if (maxAttendees >= 1000) {
+      significanceBoost = 0.08; // Large events: +8%
+    } else if (maxAttendees >= 100) {
+      significanceBoost = 0.03; // Medium events: +3%
+    }
+    // Small events: no boost
+    
+    // Apply boosts to base overlap
+    const adjustedOverlap = baseOverlap + temporalBoost + significanceBoost;
+    
+    // Log adjustment for debugging
+    if (temporalBoost > 0 || significanceBoost > 0) {
+      console.log(`  📅 Temporal adjustment: ${daysBetween} days apart (+${(temporalBoost * 100).toFixed(1)}%)`);
+      if (significanceBoost > 0) {
+        console.log(`  🎯 Significance adjustment: ${maxAttendees} attendees (+${(significanceBoost * 100).toFixed(1)}%)`);
+      }
+      console.log(`  📊 Overlap: ${(baseOverlap * 100).toFixed(1)}% → ${(adjustedOverlap * 100).toFixed(1)}%`);
+    }
+    
+    return adjustedOverlap;
   }
 
   /**
