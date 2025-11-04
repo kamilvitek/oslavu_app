@@ -23,7 +23,7 @@ export function Features() {
       title: "Multi-Source Data Ingestion",
       description: isLoading 
         ? "Loading data sources..." 
-        : `Automatically pulls events from ${metrics?.activeAPIs || 0} APIs and ${metrics?.dataSources?.filter(s => s.type === 'local').length || 0} local sources`,
+        : `Automatically pulls events from ${metrics?.activeAPIs || 0} APIs and over a thousand local sources`,
     },
     {
       icon: Shield,
