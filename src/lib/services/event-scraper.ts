@@ -5,6 +5,8 @@ import { dataTransformer } from './data-transformer';
 import { eventStorageService } from './event-storage';
 import { serverDatabaseService } from '@/lib/supabase';
 import FirecrawlApp from '@mendable/firecrawl-js';
+import { CrawlConfigurationService } from '@/lib/services/crawl-configuration.service';
+import { CrawlConfig } from '@/lib/types/crawl';
 import OpenAI from 'openai';
 
 interface ScraperSource {
@@ -15,6 +17,11 @@ interface ScraperSource {
   enabled: boolean;
   config: Record<string, any>;
   last_scraped_at?: string;
+  // Crawl fields (nullable for legacy sources)
+  crawl_config?: Record<string, any> | null;
+  max_pages_per_crawl?: number | null;
+  crawl_frequency?: string | null; // INTERVAL as text
+  use_crawl?: boolean;
 }
 
 interface ScrapedEvent {
@@ -46,7 +53,7 @@ export class EventScraperService {
   private lastRequestTime = 0;
   private readonly minRequestInterval = 8000; // 8 seconds = 7.5 requests per minute (more conservative)
   private requestCount = 0;
-  private dailyRequestLimit = 50; // More conservative daily limit for Czech sources
+  private dailyRequestLimit = 5000; // Increased for full crawl of 1300+ sources (Firecrawl Standard: 50 req/min, we use ~5-7/min with delays)
   private readonly czechSourceDelay = 12000; // 12 seconds for Czech sources (Kudyznudy)
 
   constructor() {
@@ -188,144 +195,204 @@ export class EventScraperService {
    * Uses crawlUrl for multi-page sites to discover all events
    */
   private async scrapeWithFirecrawl(source: ScraperSource): Promise<CreateEventData[]> {
-    console.log(`🔍 Scraping with Firecrawl: ${source.url}`);
-    
+    const useCrawl = !!source.use_crawl && !!source.crawl_config;
+    console.log(`🔍 Scraping with Firecrawl (${useCrawl ? 'crawl' : 'scrape'}): ${source.url}`);
+
     try {
-      // Rate limiting with source-specific delays
       await this.enforceRateLimit(source.name);
-      
-      // Check if source config prefers crawling for multi-page sites
-      let useCrawl = source.config.useCrawl !== false; // Default to true for better coverage
-      const maxPages = source.config.maxPages || 20; // Limit pages to avoid excessive costs
-      
-      let markdown = '';
-      let crawlFailed = false;
-      
+
       if (useCrawl) {
-        // Use crawlUrl for better multi-page coverage
-        console.log(`🔍 Starting crawl for ${source.url} (max ${maxPages} pages)`);
-        
-        try {
-          // Type assertion to access crawlUrl method
-          const firecrawlAny = this.firecrawl as any;
-          const crawlResult: any = await firecrawlAny.crawlUrl(source.url, {
-            limit: maxPages,
-            maxDepth: source.config.maxDepth || 2,
-            scrapeOptions: {
-              formats: ['markdown'],
-              onlyMainContent: source.config.onlyMainContent !== false,
-              waitFor: source.config.waitFor || 3000, // Increased wait time for dynamic content
-              timeout: 90000
-            }
-          }, 2000); // Poll every 2 seconds
-          
-          // Check if crawlResult is an error response
-          if (crawlResult && crawlResult.success === false) {
-            console.warn(`⚠️ Crawl returned error for ${source.url}:`, crawlResult.error || crawlResult.message);
-            crawlFailed = true;
-          } else if (crawlResult && crawlResult.status === 'completed' && crawlResult.data) {
-            console.log(`🔍 Crawl result for ${source.url}:`, {
-              status: crawlResult.status,
-              completed: crawlResult.completed,
-              total: crawlResult.total,
-              creditsUsed: crawlResult.creditsUsed
-            });
-            // Combine markdown from all crawled pages
-            const allPages = Array.isArray(crawlResult.data) ? crawlResult.data : [crawlResult.data];
-            markdown = allPages
-              .map((page: any) => page.markdown || '')
-              .filter((md: string) => md.length > 0)
-              .join('\n\n---PAGE BREAK---\n\n');
-            
-            console.log(`🔍 Crawled ${allPages.length} pages, total markdown length: ${markdown.length}`);
-            
-            if (markdown.length === 0) {
-              console.warn(`⚠️ Crawl completed but no markdown content extracted from ${source.url}`);
-              crawlFailed = true; // Try fallback scrape
-            }
-          } else if (crawlResult && crawlResult.status === 'failed') {
-            console.warn(`⚠️ Crawl failed for ${source.url}, falling back to single-page scrape`);
-            crawlFailed = true;
-          } else if (crawlResult && crawlResult.status) {
-            console.warn(`⚠️ Crawl incomplete for ${source.url} (status: ${crawlResult.status}), using available data`);
-            console.log(`🔍 Crawl result details:`, {
-              status: crawlResult.status,
-              completed: crawlResult.completed,
-              total: crawlResult.total,
-              hasData: !!crawlResult.data
-            });
-            
-            if (crawlResult.data) {
-              const allPages = Array.isArray(crawlResult.data) ? crawlResult.data : [crawlResult.data];
-              markdown = allPages
-                .map((page: any) => page.markdown || '')
-                .filter((md: string) => md.length > 0)
-                .join('\n\n---PAGE BREAK---\n\n');
-              
-              if (markdown.length === 0) {
-                console.warn(`⚠️ Crawl incomplete but no markdown content extracted from ${source.url}`);
-                crawlFailed = true;
+        const hostname = new URL(source.url).hostname;
+        const presetKey = CrawlConfigurationService.getPresetForHost(hostname);
+        const preset = CrawlConfigurationService.buildPreset(presetKey);
+        const merged: CrawlConfig = CrawlConfigurationService.mergeConfig(
+          (source.crawl_config as any) ?? null,
+          preset
+        );
+        if (!merged.startUrls || merged.startUrls.length === 0) {
+          merged.startUrls = [source.url];
+        }
+        merged.maxPages = merged.maxPages ?? source.max_pages_per_crawl ?? undefined;
+
+        // Crawl each start URL individually (SDK expects a single string `url`)
+        const startUrls = (merged.startUrls || []).filter(u => typeof u === 'string' && u.trim().length > 0);
+        if (startUrls.length === 0) startUrls.push(source.url);
+
+        let totalEvents: CreateEventData[] = [];
+        let pagesProcessed = 0;
+        let pagesCrawled = 0;
+        const detailMatchers = (merged.detailUrlPatterns ?? []).map((p) => new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+        const perUrlPageCap = merged.maxPages && startUrls.length > 0
+          ? Math.max(1, Math.floor(merged.maxPages / startUrls.length))
+          : undefined;
+
+        const crawlStartedAt = Date.now();
+
+        for (const url of startUrls) {
+          const startedAt = Date.now();
+          // Use SDK signature: crawl(url: string, options?: object)
+          const res: any = await (this.firecrawl as any).crawl(
+            url,
+            {
+              maxDepth: merged.maxDepth,
+              allowList: merged.allowList,
+              denyList: merged.denyList,
+              limit: perUrlPageCap ?? merged.maxPages,
+              actions: merged.actions as any,
+              waitFor: merged.waitFor as any,
+              scrapeOptions: {
+                formats: ['markdown', 'html'],
+                proxy: 'auto',
+                maxAge: 600000,
+                onlyMainContent: false
               }
-            } else {
-              console.warn(`⚠️ Crawl incomplete and no data available for ${source.url}`);
-              crawlFailed = true;
             }
-          } else {
-            console.warn(`⚠️ Unexpected crawl result format for ${source.url}:`, crawlResult);
-            crawlFailed = true;
+          );
+
+          const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> =
+            Array.isArray(res?.data) ? res.data : [];
+          pagesCrawled += pages.length;
+
+          // Prioritize detail pages over listings
+          const detailPages = pages.filter(p => detailMatchers.some(rx => rx.test(p.url)));
+          const otherPages = pages.filter(p => !detailMatchers.some(rx => rx.test(p.url)));
+
+          for (const page of [...detailPages, ...otherPages]) {
+            const markdown = (page as any).markdown || (page as any).content || '';
+            const html = (page as any).html || '';
+            if (!markdown && !html) continue;
+            pagesProcessed++;
+            const events = await this.extractEventsGeneric({ markdown, html }, source.name);
+            totalEvents.push(...events.map(e => this.transformScrapedEvent(e, source.name)));
+            if (merged.maxPages && pagesProcessed >= merged.maxPages) break;
           }
-        } catch (crawlError) {
-          console.warn(`⚠️ Crawl failed for ${source.url}, falling back to single-page scrape:`, crawlError);
-          crawlFailed = true;
+          console.log(`🔍 Crawled ${pages.length} pages from ${url} in ${Date.now() - startedAt}ms`);
+          if (merged.maxPages && pagesProcessed >= merged.maxPages) break;
         }
+
+        const durationMs = Date.now() - crawlStartedAt;
+
+        // Attach crawl metrics into sync log via metadata on caller
+        await this.db.executeWithRetry(async () => {
+          return await this.db.getClient()
+            .from('sync_logs')
+            .update({
+              pages_crawled: pagesCrawled,
+              pages_processed: pagesProcessed,
+              crawl_duration_ms: durationMs,
+            })
+            .order('started_at', { ascending: false })
+            .limit(1);
+        });
+
+        console.log(`✅ Crawl processed ${pagesProcessed}/${pagesCrawled} pages, extracted ${totalEvents.length} events`);
+        return totalEvents;
       }
-      
-      // Fallback to single-page scrape if crawl wasn't used or failed
-      if (crawlFailed || !markdown) {
-        console.log(`🔍 Using single-page scrape for ${source.url}`);
-        
+
+      // Adaptive single-page scrape with retries and HTML support
+      let attempt = 0;
+      const maxAttempts = 3;
+      let onlyMainContent = source.config.onlyMainContent !== undefined ? !!source.config.onlyMainContent : true;
+      let waitFor = source.config.waitFor || 4000;
+      let lastEvents: CreateEventData[] = [];
+
+      while (attempt < maxAttempts) {
+        attempt++;
+        console.log(`🔍 Single-page scrape attempt ${attempt}/${maxAttempts} (onlyMainContent=${onlyMainContent}, waitFor=${waitFor})`);
+
         const scrapeResult: any = await this.firecrawl.scrape(source.url, {
-          formats: ['markdown'],
-          onlyMainContent: source.config.onlyMainContent !== false,
-          waitFor: source.config.waitFor || 3000, // Increased wait time for dynamic content
-          timeout: 90000
+          formats: ['markdown', 'html'],
+          onlyMainContent,
+          waitFor,
+          proxy: 'auto',
+          timeout: 60000
         });
-        
-        console.log(`🔍 Firecrawl scrape response for ${source.url}:`, {
-          hasMarkdown: !!scrapeResult.markdown,
-          hasMetadata: !!scrapeResult.metadata,
-          statusCode: scrapeResult.metadata?.statusCode,
-          creditsUsed: scrapeResult.metadata?.creditsUsed,
-          markdownLength: scrapeResult.markdown?.length || 0
-        });
-        
-        // Check if scraping was successful
-        if (!scrapeResult.markdown) {
-          const errorMsg = 'No markdown content returned from Firecrawl';
-          console.error(`❌ Firecrawl API error:`, errorMsg);
-          console.error(`❌ Full Firecrawl response:`, JSON.stringify(scrapeResult, null, 2));
-          throw new Error(`Firecrawl scraping failed: ${errorMsg}`);
+
+        const markdown: string = (scrapeResult?.markdown) || (scrapeResult?.data?.markdown) || '';
+        const html: string = (scrapeResult?.html) || (scrapeResult?.data?.html) || '';
+
+        if (!markdown && !html) {
+          console.warn('⚠️ Firecrawl returned no content (markdown/html)');
         }
-        
-        markdown = scrapeResult.markdown;
+
+        const extracted = await this.extractEventsGeneric({ markdown, html }, source.name);
+        lastEvents = extracted.map(event => this.transformScrapedEvent(event, source.name));
+        if (lastEvents.length > 0) {
+          return lastEvents;
+        }
+
+        // Adaptive tuning for next attempt
+        if (attempt === 1) {
+          onlyMainContent = false; // broaden content area
+          waitFor = Math.min(waitFor + 2000, 8000);
+        } else if (attempt === 2) {
+          // Switch to shallow crawl fallback with generic defaults
+          console.log('🔍 Switching to shallow crawl fallback after empty single-page results');
+          const url = new URL(source.url);
+          const allowList = [url.origin, url.origin + '/*'];
+          const res: any = await (this.firecrawl as any).crawl(source.url, {
+            limit: 12,
+            maxDepth: 2,
+            allowList,
+            waitFor: 3000,
+            actions: [
+              { type: 'scroll', target: 'window', count: 8, delay: 400 }
+            ],
+            scrapeOptions: {
+              formats: ['markdown', 'html'],
+              proxy: 'auto',
+              maxAge: 600000,
+              onlyMainContent: false
+            }
+          });
+          const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> = Array.isArray(res?.data) ? res.data : [];
+          let aggregated: CreateEventData[] = [];
+          for (const page of pages) {
+            const md = (page as any).markdown || (page as any).content || '';
+            const h = (page as any).html || '';
+            if (!md && !h) continue;
+            const evts = await this.extractEventsGeneric({ markdown: md, html: h }, source.name);
+            aggregated.push(...evts.map(e => this.transformScrapedEvent(e, source.name)));
+            if (aggregated.length >= 5) break; // early success criterion
+          }
+          if (aggregated.length > 0) return aggregated;
+          console.log('🚨 Shallow crawl produced 0 events; consider increasing crawl caps for this host.');
+
+          // Second fallback: month/pagination/consent action bundle
+          console.log('🔍 Trying month/pagination/consent action bundle');
+          const actions = this.buildGenericActions();
+          const res2: any = await (this.firecrawl as any).crawl(source.url, {
+            limit: 14,
+            maxDepth: 2,
+            allowList,
+            waitFor: 3500,
+            actions,
+            scrapeOptions: {
+              formats: ['markdown', 'html'],
+              proxy: 'auto',
+              maxAge: 600000,
+              onlyMainContent: false
+            }
+          });
+          const pages2: Array<{ url: string; markdown?: string; content?: string; html?: string; }> = Array.isArray(res2?.data) ? res2.data : [];
+          let aggregated2: CreateEventData[] = [];
+          for (const page of pages2) {
+            const md2 = (page as any).markdown || (page as any).content || '';
+            const h2 = (page as any).html || '';
+            if (!md2 && !h2) continue;
+            const ev2 = await this.extractEventsGeneric({ markdown: md2, html: h2 }, source.name);
+            aggregated2.push(...ev2.map(e => this.transformScrapedEvent(e, source.name)));
+            if (aggregated2.length >= 5) break;
+          }
+          if (aggregated2.length > 0) return aggregated2;
+        }
       }
-      
-      if (!markdown || markdown.length === 0) {
-        console.warn(`🔍 No markdown content extracted from ${source.url}`);
-        return [];
-      }
-      
-      console.log(`🔍 Extracted markdown content (${markdown.length} characters) from ${source.name}`);
-      
-      // Extract events using configured LLM model
-      const events = await this.extractEventsWithGPT(markdown, source.name);
-      console.log(`🔍 Extracted ${events.length} events from ${source.name}`);
-      
-      // Transform to CreateEventData format
-      return events.map(event => this.transformScrapedEvent(event, source.name));
-      
+
+      return lastEvents;
+
     } catch (error) {
-      console.error(`❌ Firecrawl scraping failed for ${source.url}:`, error);
+      console.error(`❌ Firecrawl ${useCrawl ? 'crawl' : 'scrape'} failed for ${source.url}:`, error);
       throw error;
     }
   }
@@ -392,19 +459,24 @@ EXTRACTION REQUIREMENTS:
    - Various separators: DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY
 4. If date is ambiguous or missing, try to infer from context (e.g., "upcoming", "next month")
 5. If date cannot be determined, skip the event
+6. Prefer data from event detail pages if present. If JSON-LD or microdata with schema.org/Event is available, extract from it first and merge with page text.
 
 OUTPUT FORMAT - Each event must have:
 {
-  "title": "Event title in English (translated from Czech if needed)",
-  "description": "Event description in English (if available, translate from Czech)",
+  "title": "Event title (translate to English if Czech)",
+  "description": "Event description (translate to English if Czech)",
   "date": "YYYY-MM-DD (REQUIRED - must be >= ${currentDate})",
-  "endDate": "YYYY-MM-DD (optional, only if event spans multiple days)",
-  "city": "City name (preserve Czech names: Praha, Brno, Ostrava, Plzeň, etc.)",
-  "venue": "Venue name (translate to English if Czech, e.g., 'Kongresové centrum' → 'Congress Center')",
+  "endDate": "YYYY-MM-DD (optional)",
+  "city": "City name (keep original Czech names like Praha, Brno, Ostrava)",
+  "venue": "Venue name (optional, translate to English if Czech)",
   "category": "One of: Entertainment, Arts & Culture, Sports, Business, Education, Other",
-  "subcategory": "More specific category if available (e.g., 'Concert', 'Theater', 'Festival')",
-  "url": "Full URL to event page if available",
-  "imageUrl": "URL to event image if available",
+  "subcategory": "Event subcategory (optional, translate to English if Czech)",
+  "url": "Event detail page URL (preferred)",
+  "imageUrl": "Primary image URL (optional)",
+  "imageUrls": ["Additional image URLs (optional)"],
+  "priceMin": "Minimum price numeric (optional)",
+  "priceMax": "Maximum price numeric (optional)",
+  "organizer": "Organizer/Promoter (optional)",
   "expectedAttendees": NUMBER (REQUIRED - see guidelines below)
 }
 
@@ -433,6 +505,9 @@ ATTENDANCE EXTRACTION (CRITICAL - Always provide a number):
    - Theater shows: 200-2,000
    - Small events: 50-500
 5. If truly unknown: use minimum 100 for any public event
+
+Content to extract from:
+${content}
 
 DATE PARSING EXAMPLES:
 - "čtvrtek 4. prosince" / "4.12." → ${currentYear}-12-04 (current year is ${currentYear})
@@ -542,9 +617,27 @@ QUALITY STANDARDS:
           }
         }
       } catch (parseError) {
-        console.error(`❌ Failed to parse ${model} JSON response for ${sourceName}:`, parseError);
-        console.error(`❌ Raw ${model} response:`, responseContent);
-        return [];
+        console.warn(`⚠️ First parse failed, retrying with stricter JSON-only instruction for ${sourceName}`);
+        const retry: any = await this.openai.chat.completions.create({
+          model: model,
+          messages: [
+            { role: 'system', content: 'Return ONLY a valid JSON array. No prose, no code fences.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: 2800
+        });
+        const retryContent = retry.choices[0]?.message?.content || '';
+        let cleaned = retryContent.trim();
+        if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        try {
+          events = JSON.parse(cleaned);
+        } catch (e) {
+          console.error(`❌ Failed to parse ${model} JSON (retry) for ${sourceName}:`, e);
+          console.error(`❌ Raw retry response:`, retryContent);
+          return [];
+        }
       }
 
       if (!Array.isArray(events)) {
@@ -561,6 +654,242 @@ QUALITY STANDARDS:
       console.error(`❌ ${model} extraction failed for ${sourceName}:`, error);
       return [];
     }
+  }
+
+  /**
+   * Generic extraction flow: structured-data first, then chunked LLM
+   */
+  private async extractEventsGeneric(
+    content: { markdown: string; html: string },
+    sourceName: string
+  ): Promise<ScrapedEvent[]> {
+    const { markdown, html } = content;
+    const structured = this.extractEventsFromStructuredData(html || markdown || '');
+    if (structured.length > 0) {
+      console.log(`🔍 Structured data extraction found ${structured.length} events`);
+      return this.postNormalizeAndFilter(structured);
+    }
+
+    const text = markdown || html || '';
+    if (!text) return [];
+
+    // Chunked LLM extraction
+    const maxChunk = 20000;
+    const overlap = 1000;
+    const chunks: string[] = [];
+    for (let i = 0; i < text.length; i += (maxChunk - overlap)) {
+      const slice = text.slice(i, Math.min(text.length, i + maxChunk));
+      chunks.push(slice);
+      if (i + maxChunk >= text.length) break;
+    }
+
+    const allEvents: ScrapedEvent[] = [];
+    const seen = new Set<string>();
+    for (const chunk of chunks) {
+      const events = await this.extractEventsWithGPT(chunk, sourceName);
+      for (const e of events) {
+        const key = `${(e.title||'').toLowerCase()}|${e.date||''}|${(this.normalizeUrl(e.url)||'').toLowerCase()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          allEvents.push(e);
+        }
+      }
+      // Early exit if we already have some future events
+      if (allEvents.length >= 10) break;
+    }
+
+    console.log(`🔍 Chunked extraction yielded ${allEvents.length} raw events`);
+    const normalized = this.postNormalizeAndFilter(allEvents);
+    if (normalized.length > 0) return normalized;
+    // Regex-assisted fallback if LLM failed but content looks like an events list
+    const regexEvents = this.regexAssistExtract(text);
+    console.log(`🔍 Regex-assisted fallback found ${regexEvents.length} candidates`);
+    return this.postNormalizeAndFilter(regexEvents);
+  }
+
+  /**
+   * Extract schema.org/Event from JSON-LD or Microdata in HTML/Markdown string
+   */
+  private extractEventsFromStructuredData(doc: string): ScrapedEvent[] {
+    try {
+      const events: ScrapedEvent[] = [];
+      // JSON-LD blocks
+      const ldMatches = [...doc.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+      for (const m of ldMatches) {
+        const raw = (m[1] || '').trim();
+        try {
+          const json = JSON.parse(raw);
+          const nodes = this.flattenJsonLd(json);
+          for (const node of nodes) {
+            this.collectEventNodes(node, events);
+          }
+        } catch {
+          // ignore malformed blocks
+        }
+      }
+      return events;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  private flattenJsonLd(json: any): any[] {
+    const out: any[] = [];
+    const stack = Array.isArray(json) ? [...json] : [json];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node || typeof node !== 'object') continue;
+      if (node['@graph']) {
+        const graph = Array.isArray(node['@graph']) ? node['@graph'] : [node['@graph']];
+        stack.push(...graph);
+      } else {
+        out.push(node);
+      }
+    }
+    return out;
+  }
+
+  private collectEventNodes(node: any, out: ScrapedEvent[]) {
+    if (!node || typeof node !== 'object') return;
+    const type = (node['@type'] || node.type);
+    const isEvent = (typeof type === 'string' && /event/i.test(type)) || (Array.isArray(type) && type.some((t: any) => /event/i.test(t)));
+    if (isEvent) {
+      const startDate = node.startDate || node.start_time || node.date || node.start_date;
+      const endDate = node.endDate || node.end_date;
+      const location = node.location || {};
+      const address = location.address || {};
+      const city = address.addressLocality || address.city || '';
+      const url = node.url || (node['@id'] || '');
+      const image = Array.isArray(node.image) ? node.image[0] : node.image;
+      out.push({
+        title: node.name || '',
+        description: node.description || '',
+        date: startDate || '',
+        endDate: endDate || undefined,
+        city: city || '',
+        venue: (location.name || ''),
+        category: undefined,
+        subcategory: undefined,
+        url: typeof url === 'string' ? url : '',
+        imageUrl: typeof image === 'string' ? image : undefined,
+        expectedAttendees: undefined
+      });
+    }
+    for (const k of Object.keys(node)) {
+      const val = (node as any)[k];
+      if (val && typeof val === 'object') this.collectEventNodes(val, out);
+      if (Array.isArray(val)) {
+        for (const item of val) {
+          if (item && typeof item === 'object') this.collectEventNodes(item, out);
+        }
+      }
+    }
+  }
+
+  private postNormalizeAndFilter(events: ScrapedEvent[]): ScrapedEvent[] {
+    const todayIso = new Date().toISOString().split('T')[0];
+    const normalized: ScrapedEvent[] = [];
+    for (const e of events) {
+      let primary = e.date || '';
+      if (/\d/.test(primary) && /\d+\s*[.–-]\s*\d+/.test(primary)) {
+        const parts = primary.split(/[–-]/).map(s => s.trim());
+        if (parts.length >= 2) {
+          const tail = parts[parts.length - 1];
+          const day = parts[0].replace(/\D/g, '');
+          primary = `${day}.${tail}`;
+        }
+      }
+      const iso = this.parseDateFlexible(primary);
+      if (!iso) continue;
+      if (iso < todayIso) continue;
+      normalized.push({
+        ...e,
+        date: iso,
+        endDate: this.parseDateFlexible(e.endDate || '') || undefined,
+        url: this.normalizeUrl(e.url || '') || e.url
+      });
+    }
+    return normalized;
+  }
+
+  private normalizeUrl(url?: string): string | undefined {
+    if (!url) return undefined;
+    try {
+      const u = new URL(url, 'http://local');
+      const isRelative = !/^https?:/i.test(url);
+      const host = (u.host || '').toLowerCase();
+      const protocol = (u.protocol || '').toLowerCase();
+      const pathname = u.pathname.replace(/\/$/, '');
+      const params = new URLSearchParams(u.search);
+      const keep = new URLSearchParams();
+      for (const [k, v] of params.entries()) {
+        if (!/^utm_/i.test(k) && k.toLowerCase() !== 'fbclid') keep.append(k, v);
+      }
+      const query = keep.toString();
+      if (isRelative) return pathname + (query ? `?${query}` : '');
+      return `${protocol}//${host}${pathname}${query ? `?${query}` : ''}`;
+    } catch {
+      return url;
+    }
+  }
+
+  /**
+   * Build a generic action bundle for month navigation, pagination, consent, and expanders.
+   * Uses text-based targeting to be language-agnostic, including Czech terms.
+   */
+  private buildGenericActions(): any[] {
+    const monthLabels = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+    const czMonths = ['leden','únor','unor','březen','brezen','duben','květen','kveten','červen','cerven','červenec','cervenec','srpen','září','zari','říjen','rijen','listopad','prosinec'];
+    const pagination = ['next','další','dalsi','older','starší','starsi','more','více','vice'];
+    const consent = ['accept','agree','allow','souhlasím','souhlasim','přijmout','prijmout','povolit','rozumím','rozumim'];
+    const expanders = ['load more','show more','zobrazit více','zobrazit vice','načíst další','nacist dalsi'];
+
+    // Click consent once
+    const consentClicks = consent.map(text => ({ type: 'click', target: { role: 'button', text }, once: true }));
+    // Month tabs/buttons (numbers and Czech names)
+    const monthClicks = [
+      ...monthLabels.map(text => ({ type: 'click', target: { text }, delay: 300 })),
+      ...czMonths.map(text => ({ type: 'click', target: { text }, delay: 300 })),
+    ];
+    // Pagination/next
+    const paginationClicks = pagination.map(text => ({ type: 'click', target: { text }, delay: 400 }));
+    // Expanders
+    const expanderClicks = expanders.map(text => ({ type: 'click', target: { text }, delay: 300 }));
+
+    return [
+      ...consentClicks,
+      { type: 'scroll', target: 'window', count: 2, delay: 250 },
+      ...monthClicks,
+      { type: 'scroll', target: 'window', count: 6, delay: 350 },
+      ...expanderClicks,
+      { type: 'scroll', target: 'window', count: 4, delay: 350 },
+      ...paginationClicks,
+      { type: 'scroll', target: 'window', count: 4, delay: 350 }
+    ];
+  }
+
+  /**
+   * Regex-assisted minimal extraction when LLM returns nothing. Best-effort.
+   */
+  private regexAssistExtract(text: string): ScrapedEvent[] {
+    const lines = text.split(/\r?\n/);
+    const events: ScrapedEvent[] = [];
+    const dateRe = /(\b\d{1,2}[\.\/]\d{1,2}[\.\/]\d{4}\b)|\b(\d{4}-\d{2}-\d{2})\b/;
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(dateRe);
+      if (!m) continue;
+      // Take nearby non-empty line as title
+      let title = '';
+      for (let j = Math.max(0, i - 2); j <= Math.min(lines.length - 1, i + 2); j++) {
+        const t = lines[j].trim();
+        if (t && !dateRe.test(t) && t.length >= 3) { title = t; break; }
+      }
+      if (!title) continue;
+      const rawDate = (m[0] || '').trim();
+      events.push({ title, description: '', date: rawDate, city: '', url: undefined });
+      if (events.length >= 20) break;
+    }
+    return events;
   }
 
   /**
@@ -614,11 +943,20 @@ QUALITY STANDARDS:
    * Transform scraped event to CreateEventData format
    */
   private transformScrapedEvent(event: ScrapedEvent, sourceName: string): CreateEventData {
+    const normalize = (s?: string): string | undefined => {
+      if (!s) return undefined;
+      const iso = this.parseDateFlexible(s);
+      return iso || undefined;
+    };
+
+    const normalizedDate = normalize(event.date) as string;
+    const normalizedEnd = normalize(event.endDate);
+
     return {
       title: event.title,
       description: event.description || '',
-      date: event.date,
-      end_date: event.endDate,
+      date: normalizedDate,
+      end_date: normalizedEnd,
       city: event.city,
       venue: event.venue,
       category: event.category || 'Other',
@@ -626,7 +964,7 @@ QUALITY STANDARDS:
       expected_attendees: event.expectedAttendees,
       source: 'scraper',
       source_id: `${sourceName}_${event.title}_${event.date}`.replace(/[^a-zA-Z0-9_]/g, '_'),
-      url: event.url,
+      url: this.normalizeUrl(event.url) || event.url,
       image_url: event.imageUrl
     };
   }
@@ -641,9 +979,20 @@ QUALITY STANDARDS:
       errors: []
     };
 
-    console.log(`🔍 Processing ${events.length} events from ${sourceName}`);
+    // Filter strictly to current/future dates to avoid storing past items
+    const todayIso = new Date().toISOString().split('T')[0];
+    const upcoming = events.filter(e => {
+      try {
+        const d = new Date(e.date);
+        return !isNaN(d.getTime()) && e.date >= todayIso;
+      } catch {
+        return false;
+      }
+    });
 
-    for (const event of events) {
+    console.log(`🔍 Processing ${upcoming.length}/${events.length} future events from ${sourceName}`);
+
+    for (const event of upcoming) {
       try {
         console.log(`🔍 Processing event: ${event.title}`);
         console.log(`🔍 Event data:`, JSON.stringify(event, null, 2));
@@ -702,6 +1051,77 @@ QUALITY STANDARDS:
     }
 
     return result;
+  }
+
+  /**
+   * Parse various common date formats to ISO YYYY-MM-DD
+   * Supports: ISO, dd.mm.yyyy, d.m.yyyy, dd/mm/yyyy, d/m/yyyy, yyyy.mm.dd, yyyy/mm/dd
+   */
+  private parseDateFlexible(input: string): string | null {
+    const trimmed = (input || '').toString().trim();
+    if (!trimmed) return null;
+
+    // Already ISO date
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+    // Czech month names (short and full)
+    const czMonths: Record<string, string> = {
+      'led': '01', 'leden': '01',
+      'úno': '02', 'únor': '02', 'unor': '02',
+      'bře': '03', 'březen': '03', 'brezen': '03',
+      'dub': '04', 'duben': '04',
+      'kvě': '05', 'květen': '05', 'kveten': '05',
+      'čer': '06', 'červen': '06', 'cerven': '06',
+      'čvc': '07', 'červenec': '07', 'cervenec': '07',
+      'srp': '08', 'srpen': '08',
+      'zář': '09', 'září': '09', 'zari': '09',
+      'říj': '10', 'říjen': '10', 'rijen': '10',
+      'lis': '11', 'listopad': '11',
+      'pro': '12', 'prosinec': '12'
+    };
+    const czMonthRegex = new RegExp(`^\\s*(\\d{1,2})\\.?(?:\\s*)(` + Object.keys(czMonths).join('|') + `)(?:\\s*)(\\d{4})\\s*$`, 'i');
+    let mcz = trimmed.match(czMonthRegex);
+    if (mcz) {
+      const day = mcz[1].padStart(2, '0');
+      const mon = czMonths[mcz[2].toLowerCase()];
+      const year = mcz[3];
+      return `${year}-${mon}-${day}`;
+    }
+
+    // dd.mm.yyyy or d.m.yyyy
+    let m = trimmed.match(/^(\d{1,2})[\.](\d{1,2})[\.](\d{4})$/);
+    if (m) {
+      const [_, d, mo, y] = m;
+      const day = d.padStart(2, '0');
+      const month = mo.padStart(2, '0');
+      return `${y}-${month}-${day}`;
+    }
+
+    // dd/mm/yyyy or d/m/yyyy
+    m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const [_, d, mo, y] = m;
+      const day = d.padStart(2, '0');
+      const month = mo.padStart(2, '0');
+      return `${y}-${month}-${day}`;
+    }
+
+    // yyyy.mm.dd or yyyy/mm/dd
+    m = trimmed.match(/^(\d{4})[\.\/]?(\d{1,2})[\.\/]?(\d{1,2})$/);
+    if (m && trimmed.includes('.') || trimmed.includes('/')) {
+      const [_, y, mo, d] = m as any;
+      const day = String(d).padStart(2, '0');
+      const month = String(mo).padStart(2, '0');
+      return `${y}-${month}-${day}`;
+    }
+
+    // Fallback to Date parser if it produces a valid ISO date
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+
+    return null;
   }
 
   /**
@@ -823,9 +1243,9 @@ QUALITY STANDARDS:
    * Enforce rate limiting with Czech source support
    */
   private async enforceRateLimit(sourceName?: string): Promise<void> {
-    // Check daily limit
+    // Check request limit (safety limit - Firecrawl Standard: 50 req/min, we use ~5-7/min with delays)
     if (this.requestCount >= this.dailyRequestLimit) {
-      throw new Error(`Daily API request limit of ${this.dailyRequestLimit} exceeded`);
+      throw new Error(`API request limit of ${this.dailyRequestLimit} exceeded`);
     }
 
     // Determine delay based on source type

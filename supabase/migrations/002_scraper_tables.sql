@@ -1214,7 +1214,7 @@ INSERT INTO scraper_sources (name, url, type, config) VALUES
   ('arena vitkovice cz', 'https://www.arena-vitkovice.cz/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('enteriaarena cz', 'https://www.enteriaarena.cz/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('homecreditarena cz', 'https://www.homecreditarena.cz/program/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
-  ('narodni divadlo cz', 'https://www.narodni-divadlo.cz/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('narodni divadlo cz', 'https://www.narodni-divadlo.cz/cs/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('dox cz', 'https://www.dox.cz/program', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('muni cz rijen 2025 page 1', 'https://www.muni.cz/kalendar/rijen-2025?page=1', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('muni cz rijen 2025 page 2', 'https://www.muni.cz/kalendar/rijen-2025?page=2', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
@@ -1291,6 +1291,15 @@ INSERT INTO scraper_sources (name, url, type, config) VALUES
   ('muni cz prosinec 2026 page 4', 'https://www.muni.cz/kalendar/prosinec-2026?page=4', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('muni cz prosinec 2026 page 5', 'https://www.muni.cz/kalendar/prosinec-2026?page=5', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
   ('pvaexpo cz cs akce', 'https://www.pvaexpo.cz/cs/akce', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
-  ('letnany airport cz koncerty', 'https://www.letnany-airport.cz/koncerty/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb)
+  ('letnany airport cz koncerty', 'https://www.letnany-airport.cz/koncerty/', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  -- South Moravia and local calendars (added)
+  ('mikulov cz', 'https://www.mikulov.cz/turista/kalendar-akci', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('breclav eu kultura p1', 'https://breclav.eu/kultura-kalendar-akci?p=1&date=cur', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('breclav eu kultura p2', 'https://breclav.eu/kultura-kalendar-akci?p=2&date=cur', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('breclav eu kultura p3', 'https://breclav.eu/kultura-kalendar-akci?p=3&date=cur', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('breclav eu kultura p4', 'https://breclav.eu/kultura-kalendar-akci?p=4&date=cur', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('breclav eu kultura p5', 'https://breclav.eu/kultura-kalendar-akci?p=5&date=cur', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('breclav eu kultura p6', 'https://breclav.eu/kultura-kalendar-akci?p=6&date=cur', 'firecrawl', '{"waitFor": 2000, "onlyMainContent": true}'::jsonb),
+  ('jizni morava cz', 'https://www.jizni-morava.cz/cz/kalendar-akci#page:100#d1:27.10.2025#order:likes,1#d2:31.12.2026', 'firecrawl', '{"waitFor": 3000, "onlyMainContent": true}'::jsonb)
 ON CONFLICT DO NOTHING;
  
