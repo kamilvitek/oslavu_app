@@ -219,14 +219,17 @@ export class EventScraperService {
             }
           }, 2000); // Poll every 2 seconds
           
-          console.log(`🔍 Crawl result for ${source.url}:`, {
-            status: crawlResult.status,
-            completed: crawlResult.completed,
-            total: crawlResult.total,
-            creditsUsed: crawlResult.creditsUsed
-          });
-          
-          if (crawlResult.status === 'completed' && crawlResult.data) {
+          // Check if crawlResult is an error response
+          if (crawlResult && crawlResult.success === false) {
+            console.warn(`⚠️ Crawl returned error for ${source.url}:`, crawlResult.error || crawlResult.message);
+            crawlFailed = true;
+          } else if (crawlResult && crawlResult.status === 'completed' && crawlResult.data) {
+            console.log(`🔍 Crawl result for ${source.url}:`, {
+              status: crawlResult.status,
+              completed: crawlResult.completed,
+              total: crawlResult.total,
+              creditsUsed: crawlResult.creditsUsed
+            });
             // Combine markdown from all crawled pages
             const allPages = Array.isArray(crawlResult.data) ? crawlResult.data : [crawlResult.data];
             markdown = allPages
@@ -235,18 +238,41 @@ export class EventScraperService {
               .join('\n\n---PAGE BREAK---\n\n');
             
             console.log(`🔍 Crawled ${allPages.length} pages, total markdown length: ${markdown.length}`);
-          } else if (crawlResult.status === 'failed') {
+            
+            if (markdown.length === 0) {
+              console.warn(`⚠️ Crawl completed but no markdown content extracted from ${source.url}`);
+              crawlFailed = true; // Try fallback scrape
+            }
+          } else if (crawlResult && crawlResult.status === 'failed') {
             console.warn(`⚠️ Crawl failed for ${source.url}, falling back to single-page scrape`);
             crawlFailed = true;
-          } else {
+          } else if (crawlResult && crawlResult.status) {
             console.warn(`⚠️ Crawl incomplete for ${source.url} (status: ${crawlResult.status}), using available data`);
+            console.log(`🔍 Crawl result details:`, {
+              status: crawlResult.status,
+              completed: crawlResult.completed,
+              total: crawlResult.total,
+              hasData: !!crawlResult.data
+            });
+            
             if (crawlResult.data) {
               const allPages = Array.isArray(crawlResult.data) ? crawlResult.data : [crawlResult.data];
               markdown = allPages
                 .map((page: any) => page.markdown || '')
                 .filter((md: string) => md.length > 0)
                 .join('\n\n---PAGE BREAK---\n\n');
+              
+              if (markdown.length === 0) {
+                console.warn(`⚠️ Crawl incomplete but no markdown content extracted from ${source.url}`);
+                crawlFailed = true;
+              }
+            } else {
+              console.warn(`⚠️ Crawl incomplete and no data available for ${source.url}`);
+              crawlFailed = true;
             }
+          } else {
+            console.warn(`⚠️ Unexpected crawl result format for ${source.url}:`, crawlResult);
+            crawlFailed = true;
           }
         } catch (crawlError) {
           console.warn(`⚠️ Crawl failed for ${source.url}, falling back to single-page scrape:`, crawlError);
@@ -327,7 +353,14 @@ export class EventScraperService {
   private async extractEventsWithGPT(content: string, sourceName: string): Promise<ScrapedEvent[]> {
     // Get model from environment variable or source config, default to gpt-4o-mini
     const modelFromEnv = process.env.OPENAI_EXTRACTION_MODEL;
-    const model = modelFromEnv || 'gpt-4o-mini';
+    let model = modelFromEnv || 'gpt-4o-mini';
+    
+    // Validate model name (basic check)
+    const validModels = ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'];
+    if (!validModels.some(m => model.includes(m))) {
+      console.warn(`⚠️ Unknown model "${model}", defaulting to gpt-4o-mini`);
+      model = 'gpt-4o-mini';
+    }
     
     // Determine max_tokens based on model capabilities
     // gpt-4o-mini: 16k output tokens, gpt-4o: 16k output tokens, gpt-4-turbo: 16k output tokens
@@ -342,9 +375,10 @@ export class EventScraperService {
     
     try {
       const currentDate = new Date().toISOString().split('T')[0]; // Today's date in YYYY-MM-DD format
+      const currentYear = new Date().getFullYear(); // Current year for date parsing
       const isCzechSource = sourceName.toLowerCase().includes('kudyznudy') || sourceName.toLowerCase().includes('czech');
       
-      const prompt: string = `TASK: Extract ALL event information from the following web content. Today's date is ${currentDate}.
+      const prompt: string = `TASK: Extract ALL event information from the following web content. Today's date is ${currentDate} (year: ${currentYear}).
 
 ${isCzechSource ? 'LANGUAGE NOTE: This content is in Czech. Translate all titles and descriptions to English, but preserve Czech city names (Praha, Brno, Ostrava, Plzeň, etc.).' : ''}
 
@@ -401,10 +435,10 @@ ATTENDANCE EXTRACTION (CRITICAL - Always provide a number):
 5. If truly unknown: use minimum 100 for any public event
 
 DATE PARSING EXAMPLES:
-- "čtvrtek 4. prosince" / "4.12." → 2024-12-04 (if current year is 2024)
-- "6. listopadu" / "6.11." → 2024-11-06
-- "7. – 9. listopadu" → date: 2024-11-07, endDate: 2024-11-09
-- If year is missing, assume current year (2024) or next year if date has passed
+- "čtvrtek 4. prosince" / "4.12." → ${currentYear}-12-04 (current year is ${currentYear})
+- "6. listopadu" / "6.11." → ${currentYear}-11-06
+- "7. – 9. listopadu" → date: ${currentYear}-11-07, endDate: ${currentYear}-11-09
+- If year is missing, assume current year (${currentYear}) or next year if date has passed
 
 CONTENT TO EXTRACT FROM:
 ${(() => {
