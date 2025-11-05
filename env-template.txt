@@ -7,6 +7,9 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 
 # OpenAI Configuration (for AI scraping)
 OPENAI_API_KEY=your_openai_api_key_here
+# Optional: Choose extraction model (default: gpt-4o-mini)
+# Options: gpt-4o-mini (cheapest, good quality), gpt-4o (better quality, more expensive), gpt-4-turbo (best quality, most expensive)
+OPENAI_EXTRACTION_MODEL=gpt-4o-mini
 
 # Firecrawl Configuration (for web scraping)
 FIRECRAWL_API_KEY=your_firecrawl_api_key_here

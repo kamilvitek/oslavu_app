@@ -6,8 +6,8 @@ This document explains how to set up and use the web scraper infrastructure for 
 
 The web scraper infrastructure allows Oslavu to supplement API data (Ticketmaster, PredictHQ) with local event data scraped from Czech websites. It uses:
 
-- **Firecrawl** for web scraping
-- **OpenAI GPT-4** for content extraction
+- **Firecrawl** for web scraping (supports multi-page crawling)
+- **OpenAI LLM** for content extraction (configurable model: gpt-4o-mini, gpt-4o, or gpt-4-turbo)
 - **OpenAI Embeddings** for semantic deduplication
 - **Supabase** for data storage and vector similarity search
 
@@ -21,6 +21,9 @@ Add these to your `.env.local` file:
 # Scraping Services
 FIRECRAWL_API_KEY=your-firecrawl-key
 OPENAI_API_KEY=your-openai-key
+# Optional: Choose extraction model (default: gpt-4o-mini)
+# Options: gpt-4o-mini (cheapest), gpt-4o (better quality), gpt-4-turbo (best quality)
+OPENAI_EXTRACTION_MODEL=gpt-4o-mini
 
 # Optional (for advanced scraping)
 AGENTQL_API_KEY=your-agentql-key
