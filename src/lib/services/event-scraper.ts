@@ -103,7 +103,7 @@ export class EventScraperService {
         
         switch (source.type) {
           case 'firecrawl':
-            events = await this.scrapeWithFirecrawl(source);
+            events = await this.scrapeWithFirecrawl(source, syncLogId);
             break;
           case 'agentql':
             events = await this.scrapeWithAgentQL(source);
@@ -194,7 +194,7 @@ export class EventScraperService {
    * Scrape events using Firecrawl
    * Uses crawlUrl for multi-page sites to discover all events
    */
-  private async scrapeWithFirecrawl(source: ScraperSource): Promise<CreateEventData[]> {
+  private async scrapeWithFirecrawl(source: ScraperSource, syncLogId?: string): Promise<CreateEventData[]> {
     const useCrawl = !!source.use_crawl && !!source.crawl_config;
     console.log(`🔍 Scraping with Firecrawl (${useCrawl ? 'crawl' : 'scrape'}): ${source.url}`);
 
@@ -273,18 +273,19 @@ export class EventScraperService {
 
         const durationMs = Date.now() - crawlStartedAt;
 
-        // Attach crawl metrics into sync log via metadata on caller
-        await this.db.executeWithRetry(async () => {
-          return await this.db.getClient()
-            .from('sync_logs')
-            .update({
-              pages_crawled: pagesCrawled,
-              pages_processed: pagesProcessed,
-              crawl_duration_ms: durationMs,
-            })
-            .order('started_at', { ascending: false })
-            .limit(1);
-        });
+        // Attach crawl metrics into sync log if syncLogId is provided
+        if (syncLogId) {
+          await this.db.executeWithRetry(async () => {
+            return await this.db.getClient()
+              .from('sync_logs')
+              .update({
+                pages_crawled: pagesCrawled,
+                pages_processed: pagesProcessed,
+                crawl_duration_ms: durationMs,
+              })
+              .eq('id', syncLogId);
+          });
+        }
 
         console.log(`✅ Crawl processed ${pagesProcessed}/${pagesCrawled} pages, extracted ${totalEvents.length} events`);
         return totalEvents;
@@ -506,9 +507,6 @@ ATTENDANCE EXTRACTION (CRITICAL - Always provide a number):
    - Small events: 50-500
 5. If truly unknown: use minimum 100 for any public event
 
-Content to extract from:
-${content}
-
 DATE PARSING EXAMPLES:
 - "čtvrtek 4. prosince" / "4.12." → ${currentYear}-12-04 (current year is ${currentYear})
 - "6. listopadu" / "6.11." → ${currentYear}-11-06
@@ -632,7 +630,17 @@ QUALITY STANDARDS:
         if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
         if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
         try {
-          events = JSON.parse(cleaned);
+          const parsedRetry = JSON.parse(cleaned);
+          // Handle both array and object formats (though retry should return array)
+          if (Array.isArray(parsedRetry)) {
+            events = parsedRetry;
+          } else if (parsedRetry.events && Array.isArray(parsedRetry.events)) {
+            events = parsedRetry.events;
+          } else if (parsedRetry.data && Array.isArray(parsedRetry.data)) {
+            events = parsedRetry.data;
+          } else {
+            throw new Error('Retry response is not an array or object with events/data array');
+          }
         } catch (e) {
           console.error(`❌ Failed to parse ${model} JSON (retry) for ${sourceName}:`, e);
           console.error(`❌ Raw retry response:`, retryContent);
