@@ -8,6 +8,7 @@ import FirecrawlApp from '@mendable/firecrawl-js';
 import { CrawlConfigurationService } from '@/lib/services/crawl-configuration.service';
 import { CrawlConfig } from '@/lib/types/crawl';
 import OpenAI from 'openai';
+import { eventCleaningService } from './event-cleaning.service';
 
 interface ScraperSource {
   id: string;
@@ -118,12 +119,13 @@ export class EventScraperService {
         // Process and store events
         const result = await this.processScrapedEvents(events, source.name);
         
-        // Complete sync log
+        // Complete sync log with enhanced metrics
         await this.completeSyncLog(syncLogId, 'success', {
           events_processed: events.length,
           events_created: result.created,
           events_skipped: result.skipped,
-          errors: result.errors
+          errors: result.errors,
+          // Additional metrics will be added by processScrapedEvents
         });
         
         console.log(`✅ Scraped ${events.length} events from ${source.name} (${result.created} created, ${result.skipped} skipped)`);
@@ -212,7 +214,8 @@ export class EventScraperService {
         if (!merged.startUrls || merged.startUrls.length === 0) {
           merged.startUrls = [source.url];
         }
-        merged.maxPages = merged.maxPages ?? source.max_pages_per_crawl ?? undefined;
+        // Dynamic page limit: default to 500, or use configured value
+        merged.maxPages = merged.maxPages ?? source.max_pages_per_crawl ?? 500;
 
         // Crawl each start URL individually (SDK expects a single string `url`)
         const startUrls = (merged.startUrls || []).filter(u => typeof u === 'string' && u.trim().length > 0);
@@ -223,14 +226,32 @@ export class EventScraperService {
         let pagesCrawled = 0;
         const detailMatchers = (merged.detailUrlPatterns ?? []).map((p) => new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
-        const perUrlPageCap = merged.maxPages && startUrls.length > 0
-          ? Math.max(1, Math.floor(merged.maxPages / startUrls.length))
+        // Adaptive page limit strategy
+        const initialPageLimit = merged.maxPages ?? 500;
+        let currentPageLimit = initialPageLimit;
+        let eventsPerPageHistory: number[] = [];
+        const minEventsPerPage = 0.5; // Stop if we get less than 0.5 events per page on average
+        const lookbackWindow = 10; // Check last 10 pages for event discovery rate
+
+        const perUrlPageCap = currentPageLimit && startUrls.length > 0
+          ? Math.max(1, Math.floor(currentPageLimit / startUrls.length))
           : undefined;
 
         const crawlStartedAt = Date.now();
+        
+        // Incremental crawling: get already-crawled URLs to skip
+        const alreadyCrawledUrls = await this.getCrawledUrls(source.id);
+        const urlSet = new Set(alreadyCrawledUrls);
 
         for (const url of startUrls) {
           const startedAt = Date.now();
+          
+          // Skip if URL was already crawled recently (unless force refresh)
+          if (urlSet.has(url)) {
+            console.log(`⏭️ Skipping already-crawled URL: ${url}`);
+            continue;
+          }
+          
           // Use SDK signature: crawl(url: string, options?: object)
           const res: any = await (this.firecrawl as any).crawl(
             url,
@@ -254,21 +275,73 @@ export class EventScraperService {
             Array.isArray(res?.data) ? res.data : [];
           pagesCrawled += pages.length;
 
-          // Prioritize detail pages over listings
+          // Two-phase extraction: First pass - extract event URLs from listing pages
           const detailPages = pages.filter(p => detailMatchers.some(rx => rx.test(p.url)));
-          const otherPages = pages.filter(p => !detailMatchers.some(rx => rx.test(p.url)));
+          const listingPages = pages.filter(p => !detailMatchers.some(rx => rx.test(p.url)));
+          
+          // Phase 1: Extract event URLs from listing pages
+          const eventUrls = new Set<string>();
+          for (const page of listingPages) {
+            const markdown = (page as any).markdown || (page as any).content || '';
+            const html = (page as any).html || '';
+            if (!markdown && !html) continue;
+            
+            // Extract URLs from listing pages (quick pass)
+            const extracted = await this.extractEventsGeneric({ markdown, html }, source.name);
+            extracted.forEach(e => {
+              if (e.url) {
+                eventUrls.add(e.url);
+              }
+            });
+          }
+          
+          console.log(`🔍 Phase 1: Found ${eventUrls.size} event URLs from listing pages`);
+          
+          // Phase 2: Process detail pages (prioritized) and listing pages
+          const pagesToProcess = [...detailPages, ...listingPages];
 
-          for (const page of [...detailPages, ...otherPages]) {
+          for (const page of pagesToProcess) {
             const markdown = (page as any).markdown || (page as any).content || '';
             const html = (page as any).html || '';
             if (!markdown && !html) continue;
             pagesProcessed++;
             const events = await this.extractEventsGeneric({ markdown, html }, source.name);
-            totalEvents.push(...events.map(e => this.transformScrapedEvent(e, source.name)));
-            if (merged.maxPages && pagesProcessed >= merged.maxPages) break;
+            // Clean events before transformation
+            const cleanedEvents = events.map(e => eventCleaningService.cleanEvent(e, source.name));
+            const transformedEvents = cleanedEvents
+              .map(e => this.transformScrapedEvent(e, source.name))
+              .filter((e): e is CreateEventData => e !== null); // Filter out null events (invalid dates)
+            totalEvents.push(...transformedEvents);
+            
+            // Track events per page for adaptive limit
+            const eventsThisPage = transformedEvents.length;
+            eventsPerPageHistory.push(eventsThisPage);
+            if (eventsPerPageHistory.length > lookbackWindow) {
+              eventsPerPageHistory.shift(); // Keep only last N pages
+            }
+            
+            // Smart stopping: if event discovery rate drops below threshold, stop
+            if (pagesProcessed >= lookbackWindow && eventsPerPageHistory.length >= lookbackWindow) {
+              const avgEventsPerPage = eventsPerPageHistory.reduce((a, b) => a + b, 0) / eventsPerPageHistory.length;
+              if (avgEventsPerPage < minEventsPerPage && pagesProcessed >= 20) {
+                console.log(`🔍 Smart stop: event discovery rate dropped to ${avgEventsPerPage.toFixed(2)} events/page (threshold: ${minEventsPerPage}), stopping crawl`);
+                break;
+              }
+            }
+            
+            // Hard limit check
+            if (currentPageLimit && pagesProcessed >= currentPageLimit) {
+              console.log(`🔍 Reached page limit: ${currentPageLimit} pages`);
+              break;
+            }
           }
           console.log(`🔍 Crawled ${pages.length} pages from ${url} in ${Date.now() - startedAt}ms`);
-          if (merged.maxPages && pagesProcessed >= merged.maxPages) break;
+          // Check if we should stop based on adaptive limit
+          if (currentPageLimit && pagesProcessed >= currentPageLimit) break;
+          if (pagesProcessed >= lookbackWindow && eventsPerPageHistory.length >= lookbackWindow) {
+            const avgEventsPerPage = eventsPerPageHistory.reduce((a, b) => a + b, 0) / eventsPerPageHistory.length;
+            if (avgEventsPerPage < minEventsPerPage && pagesProcessed >= 20) break;
+          }
         }
 
         const durationMs = Date.now() - crawlStartedAt;
@@ -288,6 +361,13 @@ export class EventScraperService {
         }
 
         console.log(`✅ Crawl processed ${pagesProcessed}/${pagesCrawled} pages, extracted ${totalEvents.length} events`);
+        
+        // Update last_crawled_at after successful crawl
+        const eventUrlsForTracking = totalEvents.map(e => e.url).filter(Boolean) as string[];
+        if (eventUrlsForTracking.length > 0) {
+          await this.updateLastCrawledAt(source.id, eventUrlsForTracking);
+        }
+        
         return totalEvents;
       }
 
@@ -318,7 +398,11 @@ export class EventScraperService {
         }
 
         const extracted = await this.extractEventsGeneric({ markdown, html }, source.name);
-        lastEvents = extracted.map(event => this.transformScrapedEvent(event, source.name));
+        // Clean events before transformation
+        const cleanedExtracted = extracted.map(e => eventCleaningService.cleanEvent(e, source.name));
+        lastEvents = cleanedExtracted
+          .map(event => this.transformScrapedEvent(event, source.name))
+          .filter((e): e is CreateEventData => e !== null); // Filter out null events (invalid dates)
         if (lastEvents.length > 0) {
           return lastEvents;
         }
@@ -354,7 +438,12 @@ export class EventScraperService {
             const h = (page as any).html || '';
             if (!md && !h) continue;
             const evts = await this.extractEventsGeneric({ markdown: md, html: h }, source.name);
-            aggregated.push(...evts.map(e => this.transformScrapedEvent(e, source.name)));
+            // Clean events before transformation
+            const cleanedEvts = evts.map(e => eventCleaningService.cleanEvent(e, source.name));
+            const transformedEvts = cleanedEvts
+              .map(e => this.transformScrapedEvent(e, source.name))
+              .filter((e): e is CreateEventData => e !== null); // Filter out null events (invalid dates)
+            aggregated.push(...transformedEvts);
             if (aggregated.length >= 5) break; // early success criterion
           }
           if (aggregated.length > 0) return aggregated;
@@ -383,7 +472,12 @@ export class EventScraperService {
             const h2 = (page as any).html || '';
             if (!md2 && !h2) continue;
             const ev2 = await this.extractEventsGeneric({ markdown: md2, html: h2 }, source.name);
-            aggregated2.push(...ev2.map(e => this.transformScrapedEvent(e, source.name)));
+            // Clean events before transformation
+            const cleanedEv2 = ev2.map(e => eventCleaningService.cleanEvent(e, source.name));
+            const transformedEv2 = cleanedEv2
+              .map(e => this.transformScrapedEvent(e, source.name))
+              .filter((e): e is CreateEventData => e !== null); // Filter out null events (invalid dates)
+            aggregated2.push(...transformedEv2);
             if (aggregated2.length >= 5) break;
           }
           if (aggregated2.length > 0) return aggregated2;
@@ -464,11 +558,11 @@ EXTRACTION REQUIREMENTS:
 
 OUTPUT FORMAT - Each event must have:
 {
-  "title": "Event title (translate to English if Czech)",
+  "title": "CLEAN Event title - NO markdown, NO URLs, NO images, NO HTML tags (translate to English if Czech)",
   "description": "Event description (translate to English if Czech)",
   "date": "YYYY-MM-DD (REQUIRED - must be >= ${currentDate})",
   "endDate": "YYYY-MM-DD (optional)",
-  "city": "City name (keep original Czech names like Praha, Brno, Ostrava)",
+  "city": "City name (REQUIRED - keep original Czech names like Praha, Brno, Ostrava)",
   "venue": "Venue name (optional, translate to English if Czech)",
   "category": "One of: Entertainment, Arts & Culture, Sports, Business, Education, Other",
   "subcategory": "Event subcategory (optional, translate to English if Czech)",
@@ -480,6 +574,38 @@ OUTPUT FORMAT - Each event must have:
   "organizer": "Organizer/Promoter (optional)",
   "expectedAttendees": NUMBER (REQUIRED - see guidelines below)
 }
+
+CRITICAL TITLE EXTRACTION RULES:
+- Extract ONLY the event name/title - NO markdown syntax, NO URLs, NO images
+- Remove all markdown: **bold**, *italic*, [links](url), ![images](url)
+- Remove all HTML tags: <div>, <span>, <a>, etc.
+- Remove all URLs: http://, https://, www.
+- Remove all image references: ![alt](url), image URLs
+- Extract clean, readable text only
+
+EXAMPLES OF BAD vs GOOD EXTRACTION:
+BAD: "**499** Kč](https://www.smsticket.cz/vstupenky/62568) [**Filmová hudba Hanse Zimmera při svíčkách**"
+GOOD: "Filmová hudba Hanse Zimmera při svíčkách"
+
+BAD: "![Event Image](https://example.com/image.jpg) **Concert in Prague**"
+GOOD: "Concert in Prague"
+
+BAD: "[**Event Name**](https://example.com/event)"
+GOOD: "Event Name"
+
+CRITICAL CITY EXTRACTION (REQUIRED - NOT OPTIONAL):
+- City is MANDATORY for every event - if missing, extraction will fail
+- Extract city from venue name if present (e.g., "Lucerna, Praha" → city: "Prague")
+- Extract city from URL path if present (e.g., "/brno/event" → city: "Brno")
+- Extract city from event title if present (e.g., "Concert in Prague" → city: "Prague")
+- Extract city from venue location/address if present
+- If city cannot be determined from content, use venue name patterns:
+  - Venues with "Praha" or "Prague" → city: "Prague"
+  - Venues with "Brno" → city: "Brno"
+  - Venues with "Ostrava" → city: "Ostrava"
+  - Venues with "Plzen" or "Pilsen" → city: "Plzen"
+  - Venues with "Olomouc" → city: "Olomouc"
+- NEVER leave city empty - always provide a valid city name
 
 CATEGORY MAPPING (Czech → English):
 - "koncert", "hudba", "koncerty" → Entertainment
@@ -532,10 +658,13 @@ ${(() => {
 
 QUALITY CHECKLIST:
 ✓ Did I extract ALL events from the content?
+✓ Are all titles CLEAN (no markdown, no URLs, no images, no HTML)?
 ✓ Are all dates >= ${currentDate}?
 ✓ Are all dates in YYYY-MM-DD format?
+✓ Did I provide a city for EVERY event (REQUIRED - not optional)?
+✓ Did I extract city from venue/URL/title if not explicitly stated?
 ✓ Did I translate Czech titles/descriptions to English?
-✓ Did I preserve Czech city names?
+✓ Did I preserve Czech city names (Praha, Brno, Ostrava)?
 ✓ Did I provide expectedAttendees for every event?
 ✓ Are categories correctly mapped?
 ✓ Are URLs and image URLs included when available?
@@ -561,12 +690,14 @@ Your task is to extract structured event information from web content with high 
 
 CRITICAL REQUIREMENTS:
 1. Extract ALL events present in the content - do not skip any unless they are clearly historical
-2. Parse dates accurately - handle various formats (DD.MM.YYYY, DD/MM/YYYY, "tomorrow", "next week", etc.)
-3. Always provide expectedAttendees - use venue knowledge, capacity indicators, or reasonable estimates
-4. Translate Czech content to English BUT preserve Czech city names (Praha, Brno, Ostrava, etc.)
-5. Map categories correctly: koncert→Entertainment, divadlo→Arts & Culture, sport→Sports, festival→Arts & Culture
-6. Extract URLs and image URLs when available
-7. Return valid JSON only - no markdown code blocks, no explanations
+2. Extract CLEAN titles - remove ALL markdown, URLs, images, HTML tags - only plain text
+3. City is MANDATORY for every event - extract from venue name, URL path, or title if not explicitly stated
+4. Parse dates accurately - handle various formats (DD.MM.YYYY, DD/MM/YYYY, "tomorrow", "next week", etc.)
+5. Always provide expectedAttendees - use venue knowledge, capacity indicators, or reasonable estimates
+6. Translate Czech content to English BUT preserve Czech city names (Praha, Brno, Ostrava, etc.)
+7. Map categories correctly: koncert→Entertainment, divadlo→Arts & Culture, sport→Sports, festival→Arts & Culture
+8. Extract URLs and image URLs when available
+9. Return valid JSON only - no markdown code blocks, no explanations
 
 QUALITY STANDARDS:
 - Be thorough: extract every event, even if some fields are missing
@@ -654,6 +785,91 @@ QUALITY STANDARDS:
         return [];
       }
 
+      // Check extraction quality and retry if needed
+      const hasInvalidEvents = events.some(e => {
+        const hasMarkdown = e.title && (e.title.includes('**') || e.title.includes('[') || e.title.includes('<'));
+        const missingCity = !e.city || e.city.trim().length === 0;
+        return hasMarkdown || missingCity;
+      });
+
+      // Retry logic: if 0 events, missing city, or markdown in titles
+      if (events.length === 0 || hasInvalidEvents) {
+        const retryReason = events.length === 0 
+          ? 'no events extracted' 
+          : hasInvalidEvents 
+            ? 'invalid events (missing city or markdown in titles)'
+            : 'unknown';
+        
+        console.warn(`⚠️ Extraction quality issue (${retryReason}), retrying with enhanced prompt...`);
+        
+        // Enhanced prompt for retry
+        const retryPrompt = `${prompt}
+
+RETRY INSTRUCTIONS - Previous extraction had issues:
+${events.length === 0 ? '- No events were extracted - ensure you extract ALL events from the content' : ''}
+${hasInvalidEvents ? '- Some events had issues: missing city or markdown in titles - fix these issues' : ''}
+
+CRITICAL REMINDERS:
+- Extract EVERY event visible in the content
+- City is MANDATORY - extract from venue name, URL, or title if not explicitly stated
+- Titles must be CLEAN - remove ALL markdown, URLs, images, HTML tags
+- If you see markdown like **text** or [text](url), extract only the text part`;
+
+        try {
+          const retryResponse: any = await this.openai.chat.completions.create({
+            model: model,
+            messages: [
+              {
+                role: 'system',
+                content: `You are an expert event data extraction specialist. Previous extraction had issues: ${retryReason}. Fix these issues in your response.`
+              },
+              {
+                role: 'user',
+                content: retryPrompt
+              }
+            ],
+            temperature: 0.1,
+            max_tokens: maxTokens,
+            response_format: { type: 'json_object' }
+          });
+
+          const retryContent = retryResponse.choices[0]?.message?.content;
+          if (retryContent) {
+            try {
+              const parsedRetry = JSON.parse(retryContent.trim());
+              let retryEvents;
+              if (Array.isArray(parsedRetry)) {
+                retryEvents = parsedRetry;
+              } else if (parsedRetry.events && Array.isArray(parsedRetry.events)) {
+                retryEvents = parsedRetry.events;
+              } else if (parsedRetry.data && Array.isArray(parsedRetry.data)) {
+                retryEvents = parsedRetry.data;
+              } else {
+                retryEvents = events; // Fallback to original
+              }
+
+              // Check if retry improved quality
+              const retryHasInvalid = retryEvents.some((e: any) => {
+                const hasMarkdown = e.title && (e.title.includes('**') || e.title.includes('[') || e.title.includes('<'));
+                const missingCity = !e.city || e.city.trim().length === 0;
+                return hasMarkdown || missingCity;
+              });
+
+              if (retryEvents.length > events.length || (!retryHasInvalid && hasInvalidEvents)) {
+                console.log(`✅ Retry improved extraction: ${retryEvents.length} events (was ${events.length})`);
+                events = retryEvents;
+              } else {
+                console.log(`⚠️ Retry did not improve extraction, using original results`);
+              }
+            } catch (retryParseError) {
+              console.warn(`⚠️ Retry parse failed, using original results`);
+            }
+          }
+        } catch (retryError) {
+          console.warn(`⚠️ Retry request failed, using original results:`, retryError);
+        }
+      }
+
       console.log(`🤖 ${model} extracted ${events.length} events from ${sourceName}`);
       console.log(`🤖 Sample events:`, events.slice(0, 2));
       return events;
@@ -702,8 +918,7 @@ QUALITY STANDARDS:
           allEvents.push(e);
         }
       }
-      // Early exit if we already have some future events
-      if (allEvents.length >= 10) break;
+      // Process all chunks to completion - removed early exit for completeness
     }
 
     console.log(`🔍 Chunked extraction yielded ${allEvents.length} raw events`);
@@ -949,30 +1164,47 @@ QUALITY STANDARDS:
 
   /**
    * Transform scraped event to CreateEventData format
+   * Uses cleaning service for city fallback and source_id normalization
+   * Returns null if date cannot be normalized (event will be skipped)
    */
-  private transformScrapedEvent(event: ScrapedEvent, sourceName: string): CreateEventData {
+  private transformScrapedEvent(event: ScrapedEvent, sourceName: string): CreateEventData | null {
     const normalize = (s?: string): string | undefined => {
       if (!s) return undefined;
       const iso = this.parseDateFlexible(s);
       return iso || undefined;
     };
 
-    const normalizedDate = normalize(event.date) as string;
+    const normalizedDate = normalize(event.date);
     const normalizedEnd = normalize(event.endDate);
 
+    // Ensure we have a valid date string - required for CreateEventData
+    // Return null if date is invalid (event will be filtered out)
+    if (!normalizedDate) {
+      console.warn(`⚠️ Skipping event "${event.title}" - invalid or missing date`);
+      return null;
+    }
+
+    // Ensure city is extracted (already cleaned by cleaning service, but double-check)
+    const city = event.city || eventCleaningService.extractCityFallback(event, sourceName);
+
+    // Normalize source_id using URL hash instead of full title
+    // normalizedDate is guaranteed to be a string here due to the check above
+    const normalizedUrl = this.normalizeUrl(event.url) || event.url;
+    const sourceId = eventCleaningService.normalizeSourceId(sourceName, normalizedUrl, normalizedDate);
+
     return {
-      title: event.title,
+      title: event.title, // Already cleaned by cleaning service
       description: event.description || '',
       date: normalizedDate,
       end_date: normalizedEnd,
-      city: event.city,
-      venue: event.venue,
+      city: city,
+      venue: event.venue, // Already cleaned by cleaning service
       category: event.category || 'Other',
       subcategory: event.subcategory,
       expected_attendees: event.expectedAttendees,
       source: 'scraper',
-      source_id: `${sourceName}_${event.title}_${event.date}`.replace(/[^a-zA-Z0-9_]/g, '_'),
-      url: this.normalizeUrl(event.url) || event.url,
+      source_id: sourceId,
+      url: normalizedUrl,
       image_url: event.imageUrl
     };
   }
@@ -986,6 +1218,14 @@ QUALITY STANDARDS:
       skipped: 0,
       errors: []
     };
+
+    // Enhanced monitoring: track quality metrics
+    let totalEvents = events.length;
+    let eventsWithCity = 0;
+    let eventsWithValidTitle = 0;
+    let eventsWithUrl = 0;
+    let autoFixCount = 0;
+    let retryCount = 0;
 
     // Filter strictly to current/future dates to avoid storing past items
     const todayIso = new Date().toISOString().split('T')[0];
@@ -1005,8 +1245,64 @@ QUALITY STANDARDS:
         console.log(`🔍 Processing event: ${event.title}`);
         console.log(`🔍 Event data:`, JSON.stringify(event, null, 2));
         
-        // Validate event data
-        const validation = dataTransformer.validateEventData(event);
+        // Auto-fix pipeline: attempt to fix common issues before validation
+        let fixedEvent = { ...event };
+        const fixAttempts: string[] = [];
+        
+        // Fix missing city
+        if (!fixedEvent.city || fixedEvent.city.trim().length === 0) {
+          const cityFallback = eventCleaningService.extractCityFallback(
+            { ...event, city: event.city || '' },
+            sourceName
+          );
+          if (cityFallback) {
+            fixedEvent.city = cityFallback;
+            fixAttempts.push(`Fixed missing city: ${cityFallback}`);
+          }
+        }
+        
+        // Fix source_id too long
+        if (fixedEvent.source_id && fixedEvent.source_id.length > 100) {
+          const normalizedUrl = this.normalizeUrl(fixedEvent.url) || fixedEvent.url;
+          fixedEvent.source_id = eventCleaningService.normalizeSourceId(
+            sourceName,
+            normalizedUrl,
+            fixedEvent.date
+          );
+          fixAttempts.push(`Fixed source_id length: ${fixedEvent.source_id.length} chars`);
+        }
+        
+        // Fix invalid date format
+        if (fixedEvent.date && !/^\d{4}-\d{2}-\d{2}$/.test(fixedEvent.date)) {
+          const parsedDate = this.parseDateFlexible(fixedEvent.date);
+          if (parsedDate) {
+            fixedEvent.date = parsedDate;
+            fixAttempts.push(`Fixed date format: ${parsedDate}`);
+          }
+        }
+        
+        // Fix invalid end_date format
+        if (fixedEvent.end_date && !/^\d{4}-\d{2}-\d{2}$/.test(fixedEvent.end_date)) {
+          const parsedEndDate = this.parseDateFlexible(fixedEvent.end_date);
+          if (parsedEndDate) {
+            fixedEvent.end_date = parsedEndDate;
+            fixAttempts.push(`Fixed end_date format: ${parsedEndDate}`);
+          }
+        }
+        
+        // Fix title with markdown/HTML (should already be cleaned, but double-check)
+        if (fixedEvent.title && (fixedEvent.title.includes('**') || fixedEvent.title.includes('[') || fixedEvent.title.includes('<'))) {
+          fixedEvent.title = eventCleaningService.cleanTitle(fixedEvent.title);
+          fixAttempts.push('Fixed title: removed markdown/HTML');
+        }
+        
+        if (fixAttempts.length > 0) {
+          console.log(`🔧 Auto-fix applied: ${fixAttempts.join(', ')}`);
+          autoFixCount++;
+        }
+        
+        // Validate event data (after auto-fix)
+        const validation = dataTransformer.validateEventData(fixedEvent);
         console.log(`🔍 Validation result:`, {
           isValid: validation.isValid,
           errors: validation.errors,
@@ -1014,20 +1310,28 @@ QUALITY STANDARDS:
         });
         
         if (!validation.isValid) {
-          console.warn(`⚠️ Skipping invalid event "${event.title}": ${validation.errors.join(', ')}`);
+          console.warn(`⚠️ Skipping invalid event "${fixedEvent.title}" after auto-fix: ${validation.errors.join(', ')}`);
           result.skipped++;
           continue;
         }
+        
+        // Use sanitized data from validation
+        const finalEvent = validation.sanitizedData;
+        
+        // Track quality metrics (after validation)
+        if (finalEvent.city && finalEvent.city.trim().length > 0) eventsWithCity++;
+        if (finalEvent.title && !finalEvent.title.includes('**') && !finalEvent.title.includes('[')) eventsWithValidTitle++;
+        if (finalEvent.url) eventsWithUrl++;
 
         // Generate embedding for deduplication
-        const embeddingText = `${event.title} ${event.description} ${event.venue || ''}`;
+        const embeddingText = `${finalEvent.title} ${finalEvent.description || ''} ${finalEvent.venue || ''}`;
         const embedding = await this.generateEmbedding(embeddingText);
         
         if (embedding.length > 0) {
           // Check for duplicates
-          const isDuplicate = await this.checkForDuplicate(embedding, event.title, event.date);
+          const isDuplicate = await this.checkForDuplicate(embedding, finalEvent.title, finalEvent.date);
           if (isDuplicate) {
-            console.log(`🔍 Skipping duplicate event: ${event.title}`);
+            console.log(`🔍 Skipping duplicate event: ${finalEvent.title}`);
             result.skipped++;
             continue;
           }
@@ -1035,14 +1339,14 @@ QUALITY STANDARDS:
 
         // Store event with embedding
         const eventWithEmbedding = {
-          ...validation.sanitizedData,
+          ...finalEvent,
           embedding: embedding.length > 0 ? embedding : null
         };
         
         console.log(`🔍 Final event data for storage:`, JSON.stringify(eventWithEmbedding, null, 2));
 
         // Save to database
-        console.log(`💾 Saving event to database: ${event.title}`);
+        console.log(`💾 Saving event to database: ${finalEvent.title}`);
         const saveResult = await eventStorageService.saveEvents([eventWithEmbedding]);
         console.log(`💾 Save result:`, saveResult);
         
@@ -1057,6 +1361,20 @@ QUALITY STANDARDS:
         result.skipped++;
       }
     }
+
+    // Log quality metrics
+    const qualityScore = totalEvents > 0 
+      ? ((eventsWithCity + eventsWithValidTitle + eventsWithUrl) / (totalEvents * 3)) * 100 
+      : 0;
+    const cityExtractionRate = totalEvents > 0 ? (eventsWithCity / totalEvents) * 100 : 0;
+    
+    console.log(`📊 Extraction Quality Metrics:`);
+    console.log(`   - Total events: ${totalEvents}`);
+    console.log(`   - Events with city: ${eventsWithCity} (${cityExtractionRate.toFixed(1)}%)`);
+    console.log(`   - Events with valid title: ${eventsWithValidTitle} (${((eventsWithValidTitle / totalEvents) * 100).toFixed(1)}%)`);
+    console.log(`   - Events with URL: ${eventsWithUrl} (${((eventsWithUrl / totalEvents) * 100).toFixed(1)}%)`);
+    console.log(`   - Auto-fix applied: ${autoFixCount}`);
+    console.log(`   - Overall quality score: ${qualityScore.toFixed(1)}%`);
 
     return result;
   }
@@ -1229,17 +1547,29 @@ QUALITY STANDARDS:
       const startedAt = new Date(metadata.started_at || completedAt);
       const durationMs = new Date(completedAt).getTime() - startedAt.getTime();
 
+      // Extract metadata fields separately
+      const { started_at, events_processed, events_created, events_skipped, errors, ...restMetadata } = metadata;
+
       await this.db.executeWithRetry(async () => {
-        const result = await this.db.getClient()
+        const updateData: any = {
+          status,
+          completed_at: completedAt,
+          duration_ms: durationMs,
+          events_processed: events_processed || 0,
+          events_created: events_created || 0,
+          events_skipped: events_skipped || 0,
+          errors: errors || [],
+        };
+        
+        // Add metadata if present (for enhanced metrics)
+        if (Object.keys(restMetadata).length > 0) {
+          updateData.metadata = restMetadata;
+        }
+        
+        return await this.db.getClient()
           .from('sync_logs')
-          .update({
-            status,
-            completed_at: completedAt,
-            duration_ms: durationMs,
-            ...metadata
-          })
+          .update(updateData)
           .eq('id', syncLogId);
-        return result;
       });
 
     } catch (error) {
@@ -1280,6 +1610,57 @@ QUALITY STANDARDS:
     this.requestCount++;
     
     console.log(`🔍 Making request ${this.requestCount}/${this.dailyRequestLimit} (${isCzechSource ? 'Czech source' : 'standard'})`);
+  }
+
+  /**
+   * Get already-crawled URLs for incremental crawling
+   */
+  private async getCrawledUrls(sourceId: string): Promise<string[]> {
+    try {
+      const { data, error } = await this.db.executeWithRetry(async () => {
+        return await this.db.getClient()
+          .from('scraper_sources')
+          .select('crawl_state')
+          .eq('id', sourceId)
+          .single();
+      });
+
+      if (error || !data) {
+        return [];
+      }
+
+      const crawlState = (data.crawl_state as any) || {};
+      return (crawlState.crawledUrls || []) as string[];
+    } catch (error) {
+      console.warn('⚠️ Error getting crawled URLs:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Update last_crawled_at and crawl_state after crawl
+   */
+  private async updateLastCrawledAt(sourceId: string, crawledUrls: string[]): Promise<void> {
+    try {
+      const now = new Date().toISOString();
+      const existingUrls = await this.getCrawledUrls(sourceId);
+      const allUrls = Array.from(new Set([...existingUrls, ...crawledUrls]));
+      
+      await this.db.executeWithRetry(async () => {
+        return await this.db.getClient()
+          .from('scraper_sources')
+          .update({
+            last_crawled_at: now,
+            crawl_state: {
+              crawledUrls: allUrls.slice(-1000), // Keep last 1000 URLs
+              lastCrawlAt: now,
+            }
+          })
+          .eq('id', sourceId);
+      });
+    } catch (error) {
+      console.warn('⚠️ Error updating last_crawled_at:', error);
+    }
   }
 
   /**
