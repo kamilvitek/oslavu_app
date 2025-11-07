@@ -589,18 +589,13 @@ export function ConflictAnalyzer() {
                                       {recommendation.competingEvents.length} Competing Event{recommendation.competingEvents.length > 1 ? 's' : ''}
                                     </span>
                                   </div>
-                                  <div className="space-y-1 max-h-20 overflow-y-auto">
-                                    {recommendation.competingEvents.slice(0, 3).map((event, eventIndex) => (
+                                  <div className="space-y-1">
+                                    {recommendation.competingEvents.map((event, eventIndex) => (
                                       <div key={eventIndex} className="text-xs text-red-700 flex items-center justify-between">
                                         <span className="truncate">{event.title}</span>
                                         <span className="text-red-600 ml-2">{event.category}</span>
                                       </div>
                                     ))}
-                                    {recommendation.competingEvents.length > 3 && (
-                                      <div className="text-xs text-red-600">
-                                        ... and {recommendation.competingEvents.length - 3} more events
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
                               )}
@@ -707,14 +702,14 @@ export function ConflictAnalyzer() {
                                 
                                 {recommendation.competingEvents.length > 0 && (
                                   <div className="mt-3 p-3 bg-red-50 rounded border-l-4 border-red-400">
-                                    <div className="flex items-center space-x-2 mb-2">
+                                    <div className="flex items-center space-x-2 mb-3">
                                       <Calendar className="h-4 w-4 text-red-600" />
                                       <span className="text-sm font-medium text-red-800">
                                         {recommendation.competingEvents.length} Competing Event{recommendation.competingEvents.length > 1 ? 's' : ''} Found
                                       </span>
                                     </div>
-                                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                                      {recommendation.competingEvents.slice(0, 5).map((event, eventIndex) => (
+                                    <div className="space-y-2">
+                                      {recommendation.competingEvents.map((event, eventIndex) => (
                                         <div key={eventIndex} className="text-sm text-red-700 flex items-center justify-between p-2 bg-white rounded border">
                                           <div className="flex-1">
                                             <div className="font-medium">{event.title}</div>
@@ -743,11 +738,6 @@ export function ConflictAnalyzer() {
                                           </div>
                                         </div>
                                       ))}
-                                      {recommendation.competingEvents.length > 5 && (
-                                        <div className="text-sm text-red-600 text-center py-2">
-                                          ... and {recommendation.competingEvents.length - 5} more events
-                                        </div>
-                                      )}
                                     </div>
                                   </div>
                                 )}
