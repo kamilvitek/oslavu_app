@@ -557,13 +557,37 @@ export class ConflictAnalysisService {
         }
       }
 
+      // Collect all Perplexity events from date recommendations and add to allEvents
+      const allPerplexityEvents: Event[] = [];
+      [...recommendedDates, ...finalHighRiskDates].forEach(rec => {
+        if (rec.perplexityResearch) {
+          // Extract events from Perplexity research
+          if (rec.perplexityResearch.conflictingEvents.length > 0) {
+            const perplexityEvents = this.convertPerplexityEventsToEvents(
+              rec.perplexityResearch.conflictingEvents,
+              params
+            );
+            allPerplexityEvents.push(...perplexityEvents);
+          }
+        }
+      });
+
+      // Deduplicate Perplexity events by title and date
+      const uniquePerplexityEvents = allPerplexityEvents.filter((event, index, self) =>
+        index === self.findIndex(e => e.title === event.title && e.date === event.date)
+      );
+
+      // Merge Perplexity events with original events for UI display
+      const allEventsWithPerplexity = [...originalAllEvents, ...uniquePerplexityEvents];
+      console.log(`📊 Total events: ${originalAllEvents.length} from APIs + ${uniquePerplexityEvents.length} from Perplexity = ${allEventsWithPerplexity.length} total`);
+
       const totalTime = Date.now() - startTime;
       console.log(`🎯 Conflict analysis completed in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`);
 
       return {
         recommendedDates,
         highRiskDates: finalHighRiskDates,
-        allEvents: originalAllEvents, // Return original unfiltered events for UI display
+        allEvents: allEventsWithPerplexity, // Include Perplexity events in allEvents for UI display
         analysisDate: new Date().toISOString(),
         userPreferredStartDate: params.startDate,
         userPreferredEndDate: params.endDate,
@@ -811,6 +835,7 @@ export class ConflictAnalysisService {
 
 
     // Store original unfiltered events for UI display
+    // Note: Perplexity events will be added later during date analysis
     const originalAllEvents = [...allEvents];
     
     // Filter events by location to remove distant cities

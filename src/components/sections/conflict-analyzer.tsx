@@ -102,7 +102,8 @@ export function ConflictAnalyzer() {
             end: formData.dateRangeEnd
           },
           preferredDates: [formData.startDate, formData.endDate],
-          enableAdvancedAnalysis: true // Always enabled for best results
+          enableAdvancedAnalysis: true, // Always enabled for best results
+          enablePerplexityResearch: true // Enable Perplexity online research for comprehensive event discovery
         })
       });
 
@@ -762,6 +763,58 @@ export function ConflictAnalyzer() {
                                     {recommendation.audienceOverlap.overlapReasoning.length > 0 && (
                                       <div className="text-sm text-red-700">
                                         ⚠️ {recommendation.audienceOverlap.overlapReasoning[0]}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Perplexity Research Insights */}
+                                {recommendation.perplexityResearch && (
+                                  <div className="mt-3 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                      <span className="text-sm font-medium text-blue-800">
+                                        🌐 Online Research Insights
+                                      </span>
+                                      {recommendation.perplexityResearch.researchMetadata?.confidence && (
+                                        <span className={`text-xs px-2 py-1 rounded ${
+                                          recommendation.perplexityResearch.researchMetadata.confidence === 'high' 
+                                            ? 'bg-green-100 text-green-800'
+                                            : recommendation.perplexityResearch.researchMetadata.confidence === 'medium'
+                                            ? 'bg-yellow-100 text-yellow-800'
+                                            : 'bg-gray-100 text-gray-800'
+                                        }`}>
+                                          {recommendation.perplexityResearch.researchMetadata.confidence} confidence
+                                        </span>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Touring Artists */}
+                                    {recommendation.perplexityResearch.touringArtists.length > 0 && (
+                                      <div className="mb-2">
+                                        <div className="text-xs font-medium text-blue-700 mb-1">
+                                          Touring Artists:
+                                        </div>
+                                        <div className="text-xs text-blue-600">
+                                          {recommendation.perplexityResearch.touringArtists.map((artist, idx) => (
+                                            <div key={idx}>
+                                              {artist.artistName} - {artist.locations.join(', ')}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Recommendations */}
+                                    {recommendation.perplexityResearch.recommendations && (
+                                      <div className="mt-2">
+                                        <div className="text-xs font-medium text-blue-700 mb-1">
+                                          Research Recommendation:
+                                        </div>
+                                        <div className="text-xs text-blue-600">
+                                          {recommendation.perplexityResearch.recommendations.reasoning.map((reason, idx) => (
+                                            <div key={idx}>• {reason}</div>
+                                          ))}
+                                        </div>
                                       </div>
                                     )}
                                   </div>
