@@ -986,21 +986,8 @@ export class ConflictAnalysisService {
         params
       );
 
-      // Determine severity level based on number of competing events
-      const severityLevel = this.determineSeverityLevel(competingEvents.length);
-      const config = this.severityConfigs[severityLevel];
-
-      let conflictScore = await this.calculateConflictScoreOptimized(
-        competingEvents,
-        params.expectedAttendees,
-        params.category,
-        params,
-        config,
-        dateRange.holidayRestrictions
-      );
-
-      let riskLevel = this.determineRiskLevel(conflictScore);
-      const reasons = this.generateReasons(competingEvents, conflictScore);
+      // FIXED: Don't calculate conflict score yet - wait until after Perplexity events are added
+      // This ensures Perplexity events (like MKLV Fest) are included in the score calculation
 
       // Advanced analysis features
       let audienceOverlap;
@@ -1107,19 +1094,29 @@ export class ConflictAnalysisService {
             competingEvents = [...competingEvents, ...relevantPerplexityEvents];
             console.log(`✅ Added ${relevantPerplexityEvents.length} relevant Perplexity events to competing events (filtered out ${perplexityEvents.length - relevantPerplexityEvents.length} irrelevant events, total: ${competingEvents.length})`);
           }
-          
-          // Update conflict score based on Perplexity findings if high risk
-          if (perplexityResearch && perplexityResearch.recommendations.riskLevel === 'high') {
-            conflictScore = Math.min(20, conflictScore + 2); // Increase conflict score
-            if (conflictScore > 12) {
-              riskLevel = 'High';
-            }
-          }
         } catch (error) {
           console.warn(`Perplexity research failed for ${dateRange.startDate}:`, error);
           // Continue without Perplexity research - don't break analysis
         }
       }
+
+      // FIXED: Calculate conflict score AFTER Perplexity events are added
+      // This ensures Perplexity events (like MKLV Fest with 1000+ attendees) are included in the score
+      // Determine severity level based on number of competing events (now includes Perplexity events)
+      const severityLevel = this.determineSeverityLevel(competingEvents.length);
+      const config = this.severityConfigs[severityLevel];
+
+      let conflictScore = await this.calculateConflictScoreOptimized(
+        competingEvents,
+        params.expectedAttendees,
+        params.category,
+        params,
+        config,
+        dateRange.holidayRestrictions
+      );
+
+      let riskLevel = this.determineRiskLevel(conflictScore);
+      const reasons = this.generateReasons(competingEvents, conflictScore);
 
       // Advanced analysis is disabled for performance reasons
       // Audience overlap analysis causes 70+ second delays due to sequential OpenAI API calls
@@ -1913,8 +1910,14 @@ export class ConflictAnalysisService {
     }
     
     // Higher score for events with expected attendees (indicates significant events)
+    // FIXED: Increase score more aggressively for large events to properly reflect major festivals
     if (event.expectedAttendees && event.expectedAttendees > 100) {
-      eventScore += Math.min(event.expectedAttendees / 100, 5); // Up to 5 points for large events
+      // For events with 1000+ attendees, add significant points
+      if (event.expectedAttendees >= 1000) {
+        eventScore += Math.min(event.expectedAttendees / 50, 10); // Up to 10 points for very large events (1000+ = 20 points, 5000+ = 10 points)
+      } else {
+        eventScore += Math.min(event.expectedAttendees / 100, 5); // Up to 5 points for medium events
+      }
     }
     
     // Adjust based on analysis depth
@@ -1922,6 +1925,10 @@ export class ConflictAnalysisService {
       // More detailed analysis for deep mode
       if (event.expectedAttendees && event.expectedAttendees > 500) {
         eventScore += 3; // Increased for large events
+      }
+      // Additional bonus for very large events (festivals)
+      if (event.expectedAttendees && event.expectedAttendees >= 1000) {
+        eventScore += 5; // Extra points for major festivals
       }
     }
     
@@ -2093,15 +2100,21 @@ export class ConflictAnalysisService {
         scalingFactor = 1.0;
       }
       
-      // Adjust for event size - smaller events are less affected by conflicts (only for similar-sized events)
-      if (expectedAttendees < 100) {
-        scalingFactor *= 0.5; // Very small events
-      } else if (expectedAttendees < 500) {
-        scalingFactor *= 0.7; // Small events
-      } else if (expectedAttendees < 1000) {
-        scalingFactor *= 0.9; // Medium events
+      // FIXED: Only reduce scaling factor for similar-sized events when there's no size advantage
+      // Don't reduce it when competing events are much larger (that's already handled above)
+      // This ensures major festivals competing with smaller events get high scores
+      if (sizeRatio < 2) {
+        // Only apply size reduction for similar-sized events
+        if (expectedAttendees < 100) {
+          scalingFactor *= 0.5; // Very small events
+        } else if (expectedAttendees < 500) {
+          scalingFactor *= 0.7; // Small events
+        } else if (expectedAttendees < 1000) {
+          scalingFactor *= 0.9; // Medium events
+        }
+        // Large events (1000+) keep full scaling factor
       }
-      // Large events (1000+) keep full scaling factor
+      // When competing events are 2x+ larger, keep the increased scaling factor (1.1, 1.3, or 1.5)
     }
     
     console.log(`    Audience scaling: ${expectedAttendees} attendees, ${totalCompetingAudience} competing audience (max: ${maxCompetingEventSize}), size ratio: ${sizeRatio.toFixed(2)}x, saturation: ${(marketSaturation * 100).toFixed(1)}% -> factor: ${scalingFactor.toFixed(2)}`);

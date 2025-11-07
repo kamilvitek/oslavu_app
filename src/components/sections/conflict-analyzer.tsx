@@ -468,8 +468,7 @@ export function ConflictAnalyzer() {
                       <div className="space-y-3">
                         {analysisResult.highRiskDates.length > 0 ? (
                           analysisResult.highRiskDates
-                            // Filter out user's preferred dates - they're shown in "Your Preferred Dates Analysis"
-                            .filter(rec => !(rec.startDate === analysisResult.userPreferredStartDate && rec.endDate === analysisResult.userPreferredEndDate))
+                            // FIXED: Don't filter out user's preferred dates - show them in both sections if they have conflicts
                             .map((recommendation, index) => (
                             <div 
                               key={index}
@@ -681,25 +680,41 @@ export function ConflictAnalyzer() {
                               preferredDateAnalysis = [defaultAnalysis];
                             }
                             
-                            return preferredDateAnalysis.map((recommendation, index) => (
+                            return preferredDateAnalysis.map((recommendation, index) => {
+                              // FIXED: Use red/orange colors when there are conflicts, regardless of risk level
+                              const hasConflicts = recommendation.competingEvents.length > 0 || recommendation.conflictScore > 0;
+                              const bgColor = hasConflicts 
+                                ? (recommendation.conflictScore >= 6 ? 'bg-red-50 border-red-200' : 'bg-orange-50 border-orange-200')
+                                : getRiskBgColor(recommendation.riskLevel);
+                              const textColor = hasConflicts
+                                ? (recommendation.conflictScore >= 6 ? 'text-red-900' : 'text-orange-900')
+                                : getRiskTextColor(recommendation.riskLevel);
+                              const detailColor = hasConflicts
+                                ? (recommendation.conflictScore >= 6 ? 'text-red-600' : 'text-orange-600')
+                                : getRiskDetailColor(recommendation.riskLevel);
+                              const badgeColor = hasConflicts
+                                ? (recommendation.conflictScore >= 6 ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800')
+                                : `${getRiskBgColor(recommendation.riskLevel)} ${getRiskTextColor(recommendation.riskLevel)}`;
+                              
+                              return (
                               <div 
                                 key={index}
-                                className={`p-4 border-2 rounded-lg ${getRiskBgColor(recommendation.riskLevel)}`}
+                                className={`p-4 border-2 rounded-lg ${bgColor}`}
                               >
                                 <div className="flex items-center justify-between mb-2">
-                                  <div className={`font-semibold text-lg ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                  <div className={`font-semibold text-lg ${textColor}`}>
                                     {formatDateRange(recommendation.startDate, recommendation.endDate)}
                                   </div>
-                                  <div className={`text-sm px-3 py-1 rounded-full ${getRiskBgColor(recommendation.riskLevel)} ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                  <div className={`text-sm px-3 py-1 rounded-full ${badgeColor}`}>
                                     {recommendation.riskLevel} Risk
                                   </div>
                                 </div>
                                 
-                                <div className={`text-base ${getRiskColor(recommendation.riskLevel)} mb-3`}>
+                                <div className={`text-base ${hasConflicts ? (recommendation.conflictScore >= 6 ? 'text-red-700' : 'text-orange-700') : getRiskColor(recommendation.riskLevel)} mb-3`}>
                                   Conflict Score: {recommendation.conflictScore.toFixed(1)}/20
                                 </div>
                                 
-                                <div className={`text-sm ${getRiskDetailColor(recommendation.riskLevel)} mb-3`}>
+                                <div className={`text-sm ${detailColor} mb-3`}>
                                   {recommendation.reasons.join(' • ')}
                                 </div>
                                 
@@ -858,7 +873,8 @@ export function ConflictAnalyzer() {
                                   </div>
                                 )}
                               </div>
-                            ));
+                              );
+                            });
                           })()}
                         </div>
                       </CardContent>
