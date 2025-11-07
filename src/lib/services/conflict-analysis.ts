@@ -562,19 +562,23 @@ export class ConflictAnalysisService {
       [...recommendedDates, ...finalHighRiskDates].forEach(rec => {
         if (rec.perplexityResearch) {
           // Extract events from Perplexity research
+          // Pass date range to filter out events outside the requested range
           if (rec.perplexityResearch.conflictingEvents.length > 0) {
             const perplexityEvents = this.convertPerplexityEventsToEvents(
               rec.perplexityResearch.conflictingEvents,
-              params
+              params,
+              rec.startDate,
+              rec.endDate
             );
             allPerplexityEvents.push(...perplexityEvents);
           }
         }
       });
 
-      // Deduplicate Perplexity events by title and date
-      const uniquePerplexityEvents = allPerplexityEvents.filter((event, index, self) =>
-        index === self.findIndex(e => e.title === event.title && e.date === event.date)
+      // Deduplicate Perplexity events by ID (deterministic based on name, date, location)
+      // This ensures the same event from different date ranges is only shown once
+      const uniquePerplexityEvents = Array.from(
+        new Map(allPerplexityEvents.map(e => [e.id, e])).values()
       );
 
       // Merge Perplexity events with original events for UI display
@@ -1024,6 +1028,7 @@ export class ConflictAnalysisService {
         try {
           perplexityResearch = await this.enhanceWithPerplexityResearch(
             dateRange.startDate,
+            dateRange.endDate,
             params
           );
           
@@ -1036,8 +1041,14 @@ export class ConflictAnalysisService {
           }
           
           // Merge Perplexity events with competing events
+          // Pass date range to filter out events outside the requested range
           if (perplexityResearch && perplexityResearch.conflictingEvents.length > 0) {
-            const perplexityEvents = this.convertPerplexityEventsToEvents(perplexityResearch.conflictingEvents, params);
+            const perplexityEvents = this.convertPerplexityEventsToEvents(
+              perplexityResearch.conflictingEvents, 
+              params,
+              dateRange.startDate,
+              dateRange.endDate
+            );
             competingEvents = [...competingEvents, ...perplexityEvents];
           }
         } catch (error) {
@@ -3309,9 +3320,11 @@ export class ConflictAnalysisService {
 
   /**
    * Enhance date recommendations with Perplexity research
+   * Uses the specific date range being analyzed, not the overall analysis range
    */
   private async enhanceWithPerplexityResearch(
-    date: string,
+    startDate: string,
+    endDate: string,
     params: ConflictAnalysisParams
   ): Promise<PerplexityConflictResearch | null> {
     try {
@@ -3319,11 +3332,11 @@ export class ConflictAnalysisService {
         city: params.city,
         category: params.category,
         subcategory: params.subcategory,
-        date: date,
+        date: startDate, // Use start date as primary date
         expectedAttendees: params.expectedAttendees,
         dateRange: {
-          start: params.dateRangeStart,
-          end: params.dateRangeEnd,
+          start: startDate, // Use the specific date range being analyzed
+          end: endDate,     // Not the overall analysis range
         },
       };
 
@@ -3337,6 +3350,7 @@ export class ConflictAnalysisService {
 
   /**
    * Convert Perplexity events to Event format for integration
+   * Filters out events outside the requested date range and uses deterministic IDs
    */
   private convertPerplexityEventsToEvents(
     perplexityEvents: Array<{
@@ -3348,25 +3362,116 @@ export class ConflictAnalysisService {
       description?: string;
       source?: string;
     }>,
-    params: ConflictAnalysisParams
+    params: ConflictAnalysisParams,
+    requestedStartDate?: string,
+    requestedEndDate?: string
   ): Event[] {
-    return perplexityEvents.map((pe, index) => ({
-      id: `perplexity-${Date.now()}-${index}`,
-      title: pe.name,
-      description: pe.description,
-      date: pe.date,
-      city: pe.location,
-      venue: undefined,
-      category: params.category,
-      subcategory: params.subcategory,
-      expectedAttendees: pe.expectedAttendance,
-      source: 'online_research' as const,
-      sourceId: pe.source,
-      url: pe.source,
-      imageUrl: undefined,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }));
+    const { createHash } = require('crypto');
+    
+    return perplexityEvents
+      .filter(pe => {
+        // Normalize and validate date
+        const normalizedDate = this.normalizePerplexityDate(pe.date);
+        if (!normalizedDate) {
+          console.warn(`⚠️ Skipping Perplexity event "${pe.name}" - invalid date: ${pe.date}`);
+          return false;
+        }
+        
+        // Filter out events outside the requested date range
+        if (requestedStartDate && requestedEndDate) {
+          const eventDate = new Date(normalizedDate);
+          const startDate = new Date(requestedStartDate);
+          const endDate = new Date(requestedEndDate);
+          
+          // Set time to midnight for accurate date comparison
+          eventDate.setHours(0, 0, 0, 0);
+          startDate.setHours(0, 0, 0, 0);
+          endDate.setHours(0, 0, 0, 0);
+          
+          // Check if event is within the requested date range (inclusive)
+          if (eventDate < startDate || eventDate > endDate) {
+            console.log(`🚫 Filtering out Perplexity event "${pe.name}" on ${normalizedDate} - outside requested range ${requestedStartDate} to ${requestedEndDate}`);
+            return false; // Filter out events outside the range
+          }
+        }
+        
+        return true; // Keep events within the range or if no range specified
+      })
+      .map(pe => {
+        // Normalize date
+        const normalizedDate = this.normalizePerplexityDate(pe.date) || pe.date;
+        
+        // Generate deterministic ID based on event content (name, date, location)
+        // This ensures the same event always gets the same ID, enabling proper deduplication
+        const idString = `perplexity_${pe.name}_${normalizedDate}_${pe.location}`;
+        const hash = createHash('sha256')
+          .update(idString.toLowerCase().trim())
+          .digest('hex')
+          .substring(0, 16);
+        const deterministicId = `perplexity-${hash}`;
+        
+        return {
+          id: deterministicId,
+          title: pe.name,
+          description: pe.description,
+          date: normalizedDate,
+          city: pe.location,
+          venue: undefined,
+          category: params.category,
+          subcategory: params.subcategory,
+          expectedAttendees: pe.expectedAttendance,
+          source: 'online_research' as const,
+          sourceId: pe.source,
+          url: pe.source,
+          imageUrl: undefined,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+  }
+
+  /**
+   * Normalize Perplexity date to YYYY-MM-DD format
+   * Handles various date formats consistently
+   */
+  private normalizePerplexityDate(dateStr: string): string | null {
+    if (!dateStr || typeof dateStr !== 'string') {
+      return null;
+    }
+    
+    // If already in YYYY-MM-DD format, return as-is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
+      return dateStr.trim();
+    }
+    
+    try {
+      // Handle DD.MM.YYYY format (common in Czech)
+      const dotFormat = dateStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+      if (dotFormat) {
+        const [, day, month, year] = dotFormat;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+      
+      // Handle DD/MM/YYYY format
+      const slashFormat = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (slashFormat) {
+        const [, day, month, year] = slashFormat;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+      
+      // Try standard Date parsing
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   /**

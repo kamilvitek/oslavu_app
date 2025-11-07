@@ -70,7 +70,7 @@ export class PerplexityResearchService {
   
   // Request cache with TTL
   private requestCache = new Map<string, { data: PerplexityConflictResearch; expiry: number }>();
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
   constructor() {
     // Don't store API key in constructor - read it at runtime
@@ -156,19 +156,32 @@ export class PerplexityResearchService {
     // Category-specific event types
     const categoryEventTypes = this.getCategoryEventTypes(category, subcategory);
     
+    // Build exact date constraint for prompt
+    const exactDateConstraint = dateRange 
+      ? `ONLY return events that occur on EXACTLY these dates: ${dateRange.start} to ${dateRange.end} (inclusive). Do NOT include events outside this date range.`
+      : `ONLY return events that occur on EXACTLY this date: ${date}. Do NOT include events on other dates.`;
+    
     const prompt = `You are an event conflict analyst. A user is organizing a ${category} event${subcategory ? ` (${subcategory})` : ''} in ${city} on ${date}. They expect ${expectedAttendees} attendees.
 
+CRITICAL DATE CONSTRAINT:
+${exactDateConstraint}
+- For conflictingEvents: ONLY include events where the event date matches EXACTLY the specified date(s)
+- For touringArtists: ONLY include artists performing on the EXACT date(s) specified
+- For localFestivals: ONLY include festivals that occur on the EXACT date(s) specified
+- For holidaysAndCulturalEvents: ONLY include holidays/events on the EXACT date(s) specified
+- If an event spans multiple days, ONLY include it if it overlaps with the specified date(s)
+
 Search for:
-1. Other ${categoryEventTypes} in ${nearbyCities} during ${dateRangeStr}
-2. Major ${category} artists/events touring Czech Republic that week
-3. Local festivals or cultural events targeting similar audiences
-4. Holidays or special events in Czech Republic during that period
+1. Other ${categoryEventTypes} in ${nearbyCities} ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
+2. Major ${category} artists/events touring Czech Republic ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
+3. Local festivals or cultural events targeting similar audiences ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
+4. Holidays or special events in Czech Republic ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
 
 Provide structured JSON with:
-- conflictingEvents: Array of competing events with name, date (YYYY-MM-DD format), location, type (concert/festival/cultural_event/other), expectedAttendance (if known), description, source URL if available
-- touringArtists: Array of major artists touring with artistName, tourDates (array of YYYY-MM-DD), locations (array), genre
-- localFestivals: Array of local festivals with name, dates (date range string), location, type, description
-- holidaysAndCulturalEvents: Array with name, date (YYYY-MM-DD), type (holiday/cultural_event), impact (low/medium/high), description
+- conflictingEvents: Array of competing events with name, date (YYYY-MM-DD format - MUST match the exact date(s) specified), location, type (concert/festival/cultural_event/other), expectedAttendance (if known), description, source URL if available
+- touringArtists: Array of major artists touring with artistName, tourDates (array of YYYY-MM-DD - MUST include the exact date(s) specified), locations (array), genre
+- localFestivals: Array of local festivals with name, dates (date range string - MUST overlap with the exact date(s) specified), location, type, description
+- holidaysAndCulturalEvents: Array with name, date (YYYY-MM-DD - MUST match the exact date(s) specified), type (holiday/cultural_event), impact (low/medium/high), description
 - recommendations: Object with shouldMoveDate (boolean), recommendedDates (array of YYYY-MM-DD if shouldMoveDate is true), reasoning (array of strings), riskLevel (low/medium/high)
 
 CRITICAL FOR RECOMMENDATIONS - Write in simple, direct language:
@@ -189,10 +202,11 @@ Example of bad reasoning:
 
 IMPORTANT: 
 - Use YYYY-MM-DD format for all dates
+- ONLY return events that occur on the EXACT date(s) specified: ${dateRange ? `${dateRange.start} to ${dateRange.end}` : date}
 - Be specific about dates and locations
 - Include source URLs when available
 - Write recommendations in simple, conversational language
-- If no conflicts found, return empty arrays but still provide recommendations
+- If no conflicts found on the exact date(s), return empty arrays but still provide recommendations
 
 Return ONLY valid JSON, no markdown code blocks or additional text.`;
 
@@ -494,14 +508,44 @@ Return ONLY valid JSON, no markdown code blocks or additional text.`;
 
   /**
    * Normalize date to YYYY-MM-DD format
+   * Handles various date formats consistently
    */
   private normalizeDate(dateStr: string): string {
+    if (!dateStr || typeof dateStr !== 'string') {
+      return dateStr;
+    }
+    
+    // If already in YYYY-MM-DD format, return as-is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
+      return dateStr.trim();
+    }
+    
     try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) {
-        return dateStr; // Return original if invalid
+      // Handle DD.MM.YYYY format (common in Czech)
+      const dotFormat = dateStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+      if (dotFormat) {
+        const [, day, month, year] = dotFormat;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
       }
-      return date.toISOString().split('T')[0];
+      
+      // Handle DD/MM/YYYY format
+      const slashFormat = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (slashFormat) {
+        const [, day, month, year] = slashFormat;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+      
+      // Try standard Date parsing
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      
+      // Return original if all parsing fails
+      return dateStr;
     } catch {
       return dateStr;
     }
