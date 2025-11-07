@@ -751,7 +751,7 @@ export class ConflictAnalysisService {
 
     console.log('🔗 API URLs being called:');
     console.log(`  Ticketmaster: ${ticketmasterUrl}`);
-    console.log(`  PredictHQ: ${predicthqUrl}`);
+    // console.log(`  PredictHQ: ${predicthqUrl}`); // PredictHQ disabled
     console.log(`  Brno: ${brnoUrl}`);
 
     // Add scraped events URL
@@ -763,10 +763,11 @@ export class ConflictAnalysisService {
         name: 'ticketmaster',
         promise: createTimeoutFetch(ticketmasterUrl, 'ticketmaster') // Temporarily disable caching for debugging
       },
-      {
-        name: 'predicthq', 
-        promise: createTimeoutFetch(predicthqUrl, 'predicthq') // Temporarily disable caching for debugging
-      },
+      // PredictHQ disabled
+      // {
+      //   name: 'predicthq', 
+      //   promise: createTimeoutFetch(predicthqUrl, 'predicthq') // Temporarily disable caching for debugging
+      // },
       {
         name: 'brno',
         promise: createTimeoutFetch(brnoUrl, 'brno') // Temporarily disable caching for debugging
@@ -828,7 +829,9 @@ export class ConflictAnalysisService {
     }
 
     // Create legacy response format for compatibility
-    const [ticketmasterResponse, predicthqResponse, brnoResponse, scrapedResponse] = responses;
+    // Note: PredictHQ is disabled, so responses array has 3 items instead of 4
+    const [ticketmasterResponse, brnoResponse, scrapedResponse] = responses;
+    const predicthqResponse = { name: 'predicthq', status: 'fulfilled' as const, value: { success: true, data: { events: [], total: 0, source: 'predicthq' } } };
 
     const totalFetchTime = Date.now() - startTime;
     console.log(`🚀 API requests completed in ${totalFetchTime}ms`);
@@ -891,7 +894,7 @@ export class ConflictAnalysisService {
       
       // Count events by source (you might need to add source tracking to events)
       // For now, we'll estimate based on the total events and known sources
-      const activeSources = ['ticketmaster', 'predicthq', 'brno-local'];
+      const activeSources = ['ticketmaster', 'brno-local']; // PredictHQ disabled
       const eventsPerSource = Math.floor(uniqueEvents.length / activeSources.length);
       
       activeSources.forEach(sourceId => {
