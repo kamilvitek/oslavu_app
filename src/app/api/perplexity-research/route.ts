@@ -21,6 +21,14 @@ const PerplexityResearchSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    // Debug: Check environment variable directly in API route
+    console.log('🔍 API Route - Environment Check:', {
+      hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY,
+      keyLength: process.env.PERPLEXITY_API_KEY?.length || 0,
+      keyPrefix: process.env.PERPLEXITY_API_KEY ? process.env.PERPLEXITY_API_KEY.substring(0, 8) + '...' : 'none',
+      allEnvKeys: Object.keys(process.env).filter(k => k.includes('PERPLEXITY') || k.includes('OPENAI')).join(', '),
+    });
+
     const body = await request.json();
     const validatedData = PerplexityResearchSchema.parse(body);
 
@@ -71,5 +79,18 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     }, { status: 500 });
   }
+}
+
+/**
+ * GET /api/perplexity-research - Debug endpoint to check API key
+ */
+export async function GET(request: NextRequest) {
+  return NextResponse.json({
+    hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY,
+    keyLength: process.env.PERPLEXITY_API_KEY?.length || 0,
+    keyPrefix: process.env.PERPLEXITY_API_KEY ? process.env.PERPLEXITY_API_KEY.substring(0, 8) + '...' : 'none',
+    allEnvKeys: Object.keys(process.env).filter(k => k.includes('PERPLEXITY') || k.includes('OPENAI')).join(', '),
+    nodeEnv: process.env.NODE_ENV,
+  });
 }
 
