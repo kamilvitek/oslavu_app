@@ -170,7 +170,16 @@ Respond with a JSON object containing:
         throw new Error('No response from OpenAI');
       }
 
-      return JSON.parse(content) as SeasonalIntelligenceResult;
+      // Strip markdown code blocks if present
+      let cleanedContent = content.trim();
+      if (cleanedContent.startsWith('```')) {
+        // Remove opening code block (e.g., ```json or ```)
+        cleanedContent = cleanedContent.replace(/^```[a-z]*\n?/i, '');
+        // Remove closing code block
+        cleanedContent = cleanedContent.replace(/\n?```$/i, '');
+      }
+
+      return JSON.parse(cleanedContent) as SeasonalIntelligenceResult;
 
     } catch (error) {
       console.warn('AI seasonal intelligence failed, using fallback:', error);

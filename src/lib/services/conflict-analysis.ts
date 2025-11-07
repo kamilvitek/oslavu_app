@@ -633,9 +633,10 @@ export class ConflictAnalysisService {
     });
 
     // Add radius only for PredictHQ (Ticketmaster city variations work better without radius)
+    // Note: PredictHQ is disabled, so we don't need to build these params
     const ticketmasterQueryParams = new URLSearchParams(queryParams);
-    const predicthqQueryParams = new URLSearchParams(queryParams);
-    predicthqQueryParams.set('radius', params.searchRadius || '50km');
+    // const predicthqQueryParams = new URLSearchParams(queryParams); // PredictHQ disabled
+    // predicthqQueryParams.set('radius', params.searchRadius || '50km'); // PredictHQ disabled
 
     console.log('Fetching events with params:', queryParams.toString());
 
@@ -652,10 +653,10 @@ export class ConflictAnalysisService {
     console.log('Final baseUrl:', baseUrl);
     console.log('API Keys availability:');
     console.log('- TICKETMASTER_API_KEY:', !!process.env.TICKETMASTER_API_KEY);
-    console.log('- PREDICTHQ_API_KEY:', !!process.env.PREDICTHQ_API_KEY);
+    // console.log('- PREDICTHQ_API_KEY:', !!process.env.PREDICTHQ_API_KEY); // PredictHQ disabled
     console.log('API URLs being called:');
     console.log('- Ticketmaster:', `${baseUrl}/api/analyze/events/ticketmaster?${ticketmasterQueryParams.toString()}`);
-    console.log('- PredictHQ:', `${baseUrl}/api/analyze/events/predicthq?${predicthqQueryParams.toString()}`);
+    // console.log('- PredictHQ:', `${baseUrl}/api/analyze/events/predicthq?${predicthqQueryParams.toString()}`); // PredictHQ disabled
     console.log('- Brno:', `${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd
@@ -674,15 +675,16 @@ export class ConflictAnalysisService {
       size: '25'
     });
 
-    const standardPredicthqParams = new URLSearchParams({
-      city: params.city,
-      startDate: params.dateRangeStart,
-      endDate: params.dateRangeEnd,
-      category: params.category,
-      expandedCategories: expandedCategories.join(','),
-      size: '25',
-      radius: params.searchRadius || '50km'
-    });
+    // PredictHQ disabled - no longer building params
+    // const standardPredicthqParams = new URLSearchParams({
+    //   city: params.city,
+    //   startDate: params.dateRangeStart,
+    //   endDate: params.dateRangeEnd,
+    //   category: params.category,
+    //   expandedCategories: expandedCategories.join(','),
+    //   size: '25',
+    //   radius: params.searchRadius || '50km'
+    // });
 
     // Create timeout controller for API requests
     const timeoutMs = 6000; // Consistent 6 second timeout for all requests
@@ -743,7 +745,7 @@ export class ConflictAnalysisService {
     
     // Create API request promises with consistent parameters
     const ticketmasterUrl = `${baseUrl}/api/analyze/events/ticketmaster?${standardTicketmasterParams.toString()}`;
-    const predicthqUrl = `${baseUrl}/api/analyze/events/predicthq?${standardPredicthqParams.toString()}`;
+    // const predicthqUrl = `${baseUrl}/api/analyze/events/predicthq?${standardPredicthqParams.toString()}`; // PredictHQ disabled
     const brnoUrl = `${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd

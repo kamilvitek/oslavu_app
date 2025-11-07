@@ -404,6 +404,8 @@ export class HolidayService {
 
   /**
    * Get holidays for a date range
+   * Note: The database function get_holidays_for_date_range doesn't exist,
+   * so we use get_holidays_for_date in a loop as a fallback
    */
   async getHolidaysForDateRange(
     startDate: string,
@@ -411,7 +413,7 @@ export class HolidayService {
     region: string = 'CZ'
   ): Promise<any[]> {
     try {
-      // Use the existing RPC function to get holidays for the date range
+      // Try the date range function first (if it exists in the future)
       const { data, error } = await this.supabase
         .rpc('get_holidays_for_date_range', {
           start_date: startDate,
@@ -419,6 +421,32 @@ export class HolidayService {
           country_code: 'CZE',
           region_code: region
         });
+
+      // If function doesn't exist, use get_holidays_for_date in a loop
+      if (error && (error.message?.includes('function') || error.message?.includes('does not exist') || error.code === 'PGRST202')) {
+        console.warn('get_holidays_for_date_range function not found, using get_holidays_for_date in a loop');
+        
+        const holidays: any[] = [];
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
+        // Iterate through each date in the range
+        for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+          const dateStr = date.toISOString().split('T')[0];
+          const { data: dayHolidays, error: dayError } = await this.supabase
+            .rpc('get_holidays_for_date', {
+              target_date: dateStr,
+              country_code: 'CZE',
+              region_code: region || null
+            });
+          
+          if (!dayError && dayHolidays) {
+            holidays.push(...dayHolidays);
+          }
+        }
+        
+        return holidays;
+      }
 
       if (error) {
         console.error('Error fetching holidays for date range:', error);
