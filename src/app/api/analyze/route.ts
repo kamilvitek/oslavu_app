@@ -45,6 +45,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate maximum date range: 31 days
+    const dateRangeDays = Math.ceil((analysisEndDate.getTime() - analysisStartDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (dateRangeDays > 31) {
+      return NextResponse.json(
+        { error: `Analysis date range cannot exceed 31 days. Current range: ${dateRangeDays} days` },
+        { status: 400 }
+      );
+    }
+
     // Allow dates from 30 days ago onwards for testing purposes
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);

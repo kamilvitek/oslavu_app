@@ -592,9 +592,26 @@ export class ConflictAnalysisService {
         new Map(allPerplexityEvents.map(e => [e.id, e])).values()
       );
 
-      // Merge Perplexity events with original events for UI display
-      const allEventsWithPerplexity = [...originalAllEvents, ...uniquePerplexityEvents];
-      console.log(`📊 Total events: ${originalAllEvents.length} from APIs + ${uniquePerplexityEvents.length} from Perplexity = ${allEventsWithPerplexity.length} total`);
+      // Also deduplicate against originalAllEvents to prevent showing the same event twice
+      // Create a set of existing event IDs for fast lookup
+      const existingEventIds = new Set(originalAllEvents.map(e => e.id));
+      
+      // Filter out Perplexity events that already exist in originalAllEvents
+      const newPerplexityEvents = uniquePerplexityEvents.filter(e => !existingEventIds.has(e.id));
+      
+      console.log(`📊 Deduplication: ${allPerplexityEvents.length} Perplexity events → ${uniquePerplexityEvents.length} unique → ${newPerplexityEvents.length} new (${uniquePerplexityEvents.length - newPerplexityEvents.length} already in originalAllEvents)`);
+
+      // Final deduplication: ensure no duplicate events by ID across all sources
+      const allEventsMap = new Map<string, Event>();
+      originalAllEvents.forEach(e => allEventsMap.set(e.id, e));
+      newPerplexityEvents.forEach(e => {
+        if (!allEventsMap.has(e.id)) {
+          allEventsMap.set(e.id, e);
+        }
+      });
+      const allEventsWithPerplexity = Array.from(allEventsMap.values());
+      
+      console.log(`📊 Total events: ${originalAllEvents.length} from APIs + ${newPerplexityEvents.length} new from Perplexity = ${allEventsWithPerplexity.length} total (deduplicated by ID)`);
 
       const totalTime = Date.now() - startTime;
       console.log(`🎯 Conflict analysis completed in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`);
@@ -1022,9 +1039,34 @@ export class ConflictAnalysisService {
       }
 
       // Perplexity research enhancement (if enabled)
-      // CRITICAL: Do this BEFORE audience overlap calculation so Perplexity events are included
+      // OPTIMIZATION: Only call Perplexity for prioritized dates to reduce API calls
+      // Priority: 1) User's preferred dates (always), 2) Top high-risk future dates (max 5)
+      // Skip past dates - past events don't affect future attendance
       let perplexityResearch;
-      if (params.enablePerplexityResearch) {
+      const shouldCallPerplexity = params.enablePerplexityResearch && (() => {
+        // Always call for user's preferred dates
+        const isPreferredDate = dateRange.startDate === params.startDate && dateRange.endDate === params.endDate;
+        if (isPreferredDate) {
+          console.log(`🔍 Perplexity: Calling for user's preferred date ${dateRange.startDate}`);
+          return true;
+        }
+        
+        // Skip past dates - past events don't affect future attendance
+        const dateStart = new Date(dateRange.startDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (dateStart < today) {
+          console.log(`⏭️ Perplexity: Skipping past date ${dateRange.startDate}`);
+          return false;
+        }
+        
+        // For other dates, we'll determine priority after initial analysis
+        // This will be set in the second pass
+        return false;
+      })();
+      
+      // Call Perplexity if prioritized (user's preferred dates only in first pass)
+      if (shouldCallPerplexity) {
         try {
           perplexityResearch = await this.enhanceWithPerplexityResearch(
             dateRange.startDate,
@@ -1102,9 +1144,86 @@ export class ConflictAnalysisService {
       };
     });
 
-    // Wait for all date analyses to complete
+    // Wait for all date analyses to complete (first pass - without Perplexity for most dates)
     const results = await Promise.all(datePromises);
     recommendations.push(...results);
+
+    // OPTIMIZATION: Second pass - Call Perplexity for top high-risk future dates (max 5)
+    // This reduces API calls while still covering important dates
+    if (params.enablePerplexityResearch) {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Identify high-risk future dates that need Perplexity research
+      const highRiskFutureDates = recommendations
+        .filter(rec => {
+          const isPreferred = rec.startDate === params.startDate && rec.endDate === params.endDate;
+          const isFuture = rec.startDate >= today;
+          const hasConflicts = rec.competingEvents.length > 0;
+          const alreadyHasPerplexity = !!rec.perplexityResearch;
+          
+          // Skip if already has Perplexity or is preferred (already called)
+          if (alreadyHasPerplexity || isPreferred) return false;
+          
+          // Include if future date with conflicts
+          return isFuture && hasConflicts;
+        })
+        .sort((a, b) => {
+          // Sort by conflict score (descending) and competing events count
+          if (b.conflictScore !== a.conflictScore) {
+            return b.conflictScore - a.conflictScore;
+          }
+          return b.competingEvents.length - a.competingEvents.length;
+        })
+        .slice(0, 5); // Top 5 high-risk dates
+      
+      console.log(`🔍 Perplexity: Calling for ${highRiskFutureDates.length} high-risk future dates (top priority)`);
+      
+      // Call Perplexity for top high-risk dates in parallel
+      const perplexityPromises = highRiskFutureDates.map(async (rec) => {
+        try {
+          const perplexityResearch = await this.enhanceWithPerplexityResearch(
+            rec.startDate,
+            rec.endDate,
+            params
+          );
+          
+          if (perplexityResearch && perplexityResearch.conflictingEvents.length > 0) {
+            const perplexityEvents = this.convertPerplexityEventsToEvents(
+              perplexityResearch.conflictingEvents,
+              params,
+              rec.startDate,
+              rec.endDate,
+              true // lenientLocationFiltering = true for Perplexity events
+            );
+            
+            // Filter by relevance
+            const relevantPerplexityEvents = perplexityEvents.filter(event => {
+              return this.isPerplexityEventRelevant(event, params);
+            });
+            
+            // Merge Perplexity events with competing events
+            rec.competingEvents = [...rec.competingEvents, ...relevantPerplexityEvents];
+            
+            // Update conflict score if high risk
+            if (perplexityResearch.recommendations.riskLevel === 'high') {
+              rec.conflictScore = Math.min(20, rec.conflictScore + 2);
+              if (rec.conflictScore > 12) {
+                rec.riskLevel = 'High';
+              }
+            }
+            
+            // Add Perplexity research to recommendation
+            rec.perplexityResearch = perplexityResearch;
+            
+            console.log(`✅ Perplexity: Enhanced ${rec.startDate} with ${relevantPerplexityEvents.length} events`);
+          }
+        } catch (error) {
+          console.warn(`Perplexity research failed for ${rec.startDate}:`, error);
+        }
+      });
+      
+      await Promise.all(perplexityPromises);
+    }
 
     // Sort by conflict score (ascending for recommendations, descending for high risk)
     return recommendations.sort((a, b) => a.conflictScore - b.conflictScore);

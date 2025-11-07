@@ -467,23 +467,26 @@ export function ConflictAnalyzer() {
                     <CardContent>
                       <div className="space-y-3">
                         {analysisResult.highRiskDates.length > 0 ? (
-                          analysisResult.highRiskDates.map((recommendation, index) => (
+                          analysisResult.highRiskDates
+                            // Filter out user's preferred dates - they're shown in "Your Preferred Dates Analysis"
+                            .filter(rec => !(rec.startDate === analysisResult.userPreferredStartDate && rec.endDate === analysisResult.userPreferredEndDate))
+                            .map((recommendation, index) => (
                             <div 
                               key={index}
-                              className={`p-4 border rounded-lg ${getRiskBgColor(recommendation.riskLevel)}`}
+                              className="p-4 border rounded-lg bg-red-50 border-red-200"
                             >
                               <div className="flex items-center justify-between mb-2">
-                                <div className={`font-semibold ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                <div className="font-semibold text-red-900">
                                   {formatDateRange(recommendation.startDate, recommendation.endDate)}
                                 </div>
-                                <div className={`text-xs px-2 py-1 rounded-full ${getRiskBgColor(recommendation.riskLevel)} ${getRiskTextColor(recommendation.riskLevel)}`}>
+                                <div className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-900">
                                   {recommendation.riskLevel} Risk
                                 </div>
                               </div>
                               
                               {/* Aggregated Stats for Consolidated Ranges */}
                               {recommendation.aggregatedStats && recommendation.consolidatedRanges && recommendation.consolidatedRanges.count > 1 ? (
-                                <div className={`text-sm ${getRiskColor(recommendation.riskLevel)} mb-2 space-y-1`}>
+                                <div className="text-sm text-red-900 mb-2 space-y-1">
                                   <div>
                                     Conflict Score: {recommendation.conflictScore.toFixed(1)}/20 (Avg)
                                   </div>
@@ -494,12 +497,12 @@ export function ConflictAnalyzer() {
                                   </div>
                                 </div>
                               ) : (
-                                <div className={`text-sm ${getRiskColor(recommendation.riskLevel)} mb-2`}>
+                                <div className="text-sm text-red-900 mb-2">
                                   Conflict Score: {recommendation.conflictScore.toFixed(1)}/20
                                 </div>
                               )}
                               
-                              <div className={`text-xs ${getRiskDetailColor(recommendation.riskLevel)} mb-2`}>
+                              <div className="text-xs text-red-600 mb-2">
                                 {recommendation.reasons.join(' • ')}
                               </div>
                               
@@ -889,8 +892,10 @@ export function ConflictAnalyzer() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-2 max-h-40 overflow-y-auto">
-                          {analysisResult.allEvents.slice(0, 100).map((event, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          {Array.from(
+                            new Map(analysisResult.allEvents.map(e => [e.id, e])).values()
+                          ).slice(0, 100).map((event, index) => (
+                            <div key={event.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                               <div>
                                 <div className="font-medium text-sm">{event.title}</div>
                                 <div className="text-xs text-gray-600">
