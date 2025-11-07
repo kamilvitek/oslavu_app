@@ -449,16 +449,26 @@ export class ConflictAnalysisService {
         !(rec.startDate === params.startDate && rec.endDate === params.endDate)
       );
 
-      // Build recommended dates: user's preferred dates (if low risk) + other low risk dates
-      const userPreferredLowRisk = userPreferredDates.filter(rec => rec.riskLevel === 'Low');
-      const otherLowRiskDates = otherDates.filter(rec => rec.riskLevel === 'Low');
+      // Build recommended dates: user's preferred dates (if low risk AND no conflicts) + other low risk dates (no conflicts)
+      // FIXED: Exclude dates with conflicts from recommended dates
+      const userPreferredLowRisk = userPreferredDates.filter(rec => 
+        rec.riskLevel === 'Low' && 
+        rec.competingEvents.length === 0 && 
+        rec.conflictScore === 0
+      );
+      const otherLowRiskDates = otherDates.filter(rec => 
+        rec.riskLevel === 'Low' && 
+        rec.competingEvents.length === 0 && 
+        rec.conflictScore === 0
+      );
       
       const recommendedDates = [
-        ...userPreferredLowRisk, // Always include user's preferred dates if they're low risk
+        ...userPreferredLowRisk, // Only include user's preferred dates if they're low risk AND have no conflicts
         ...otherLowRiskDates
       ].slice(0, 3); // Top 3 recommendations
 
       // Build high risk dates: user's preferred dates (if medium/high risk OR have conflicts) + other high risk dates
+      // FIXED: Include dates with conflicts even if risk level is Low - user should be aware of all conflicts
       const userPreferredMediumHighRisk = userPreferredDates.filter(rec => 
         rec.riskLevel === 'Medium' || 
         rec.riskLevel === 'High' ||
@@ -467,15 +477,12 @@ export class ConflictAnalysisService {
       const otherHighRiskDates = otherDates.filter(rec => {
         // Include high risk dates
         if (rec.riskLevel === 'High') return true;
-        // Include medium risk dates with significant conflicts
-        if (rec.riskLevel === 'Medium' && rec.conflictScore > 6) return true;
-        // Include dates with conflicts (score > 0) even if Low risk - user should be aware
-        // But only if they have competing events
+        // Include medium risk dates with conflicts
+        if (rec.riskLevel === 'Medium' && rec.conflictScore > 0) return true;
+        // FIXED: Include dates with conflicts (score > 0) even if Low risk - user should be aware
+        // Changed from score >= 2 to score > 0 to catch all conflicts
         if (rec.conflictScore > 0 && rec.competingEvents.length > 0) {
-          // For Low risk dates with conflicts, only show if score >= 2 or has multiple events
-          if (rec.conflictScore >= 2 || rec.competingEvents.length >= 2) {
-            return true;
-          }
+          return true; // Show all dates with conflicts, regardless of risk level
         }
         return false;
       });
@@ -2041,6 +2048,7 @@ export class ConflictAnalysisService {
 
   /**
    * Calculate audience scaling factor based on event size and competing events
+   * FIXED: When competing events are much larger, increase the conflict score instead of reducing it
    */
   private calculateAudienceScalingFactor(expectedAttendees: number, competingEvents: Event[]): number {
     // Base scaling factor
@@ -2054,32 +2062,49 @@ export class ConflictAnalysisService {
     // Calculate market saturation factor
     const marketSaturation = totalCompetingAudience / (expectedAttendees + totalCompetingAudience);
     
-    // Apply scaling based on market saturation
-    if (marketSaturation < 0.1) {
-      // Low saturation: minimal impact
-      scalingFactor = 0.3;
-    } else if (marketSaturation < 0.3) {
-      // Moderate saturation: moderate impact
-      scalingFactor = 0.5;
-    } else if (marketSaturation < 0.6) {
-      // High saturation: significant impact
-      scalingFactor = 0.8;
+    // FIXED: When competing events are much larger than user's event, increase conflict score
+    // This ensures major festivals (5000+ attendees) competing with smaller events (500 attendees) get high scores
+    const maxCompetingEventSize = Math.max(...competingEvents.map(e => e.expectedAttendees || 100));
+    const sizeRatio = maxCompetingEventSize / expectedAttendees;
+    
+    // If competing event is 2x or larger, increase the scaling factor
+    if (sizeRatio >= 10) {
+      // Competing event is 10x+ larger - major conflict
+      scalingFactor = 1.5;
+    } else if (sizeRatio >= 5) {
+      // Competing event is 5x+ larger - high conflict
+      scalingFactor = 1.3;
+    } else if (sizeRatio >= 2) {
+      // Competing event is 2x+ larger - moderate conflict
+      scalingFactor = 1.1;
     } else {
-      // Very high saturation: maximum impact
-      scalingFactor = 1.0;
+      // Apply scaling based on market saturation for similar-sized events
+      if (marketSaturation < 0.1) {
+        // Low saturation: minimal impact
+        scalingFactor = 0.3;
+      } else if (marketSaturation < 0.3) {
+        // Moderate saturation: moderate impact
+        scalingFactor = 0.5;
+      } else if (marketSaturation < 0.6) {
+        // High saturation: significant impact
+        scalingFactor = 0.8;
+      } else {
+        // Very high saturation: maximum impact
+        scalingFactor = 1.0;
+      }
+      
+      // Adjust for event size - smaller events are less affected by conflicts (only for similar-sized events)
+      if (expectedAttendees < 100) {
+        scalingFactor *= 0.5; // Very small events
+      } else if (expectedAttendees < 500) {
+        scalingFactor *= 0.7; // Small events
+      } else if (expectedAttendees < 1000) {
+        scalingFactor *= 0.9; // Medium events
+      }
+      // Large events (1000+) keep full scaling factor
     }
     
-    // Adjust for event size - smaller events are less affected by conflicts
-    if (expectedAttendees < 100) {
-      scalingFactor *= 0.5; // Very small events
-    } else if (expectedAttendees < 500) {
-      scalingFactor *= 0.7; // Small events
-    } else if (expectedAttendees < 1000) {
-      scalingFactor *= 0.9; // Medium events
-    }
-    // Large events (1000+) keep full scaling factor
-    
-    console.log(`    Audience scaling: ${expectedAttendees} attendees, ${totalCompetingAudience} competing audience, saturation: ${(marketSaturation * 100).toFixed(1)}% -> factor: ${scalingFactor.toFixed(2)}`);
+    console.log(`    Audience scaling: ${expectedAttendees} attendees, ${totalCompetingAudience} competing audience (max: ${maxCompetingEventSize}), size ratio: ${sizeRatio.toFixed(2)}x, saturation: ${(marketSaturation * 100).toFixed(1)}% -> factor: ${scalingFactor.toFixed(2)}`);
     
     return Math.max(scalingFactor, 0.1); // Minimum 0.1 factor to prevent zero scores
   }
