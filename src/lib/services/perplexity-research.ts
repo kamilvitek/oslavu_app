@@ -64,7 +64,7 @@ const PerplexityConflictResearchSchema = z.object({
 
 export class PerplexityResearchService {
   private readonly baseUrl = 'https://api.perplexity.ai';
-  private readonly model = 'sonar-large-online';
+  private readonly model = 'pplx-70b-online'; // Perplexity Sonar Large (Online) - using pplx-70b-online model
   
   // Request cache with TTL
   private requestCache = new Map<string, { data: PerplexityConflictResearch; expiry: number }>();
