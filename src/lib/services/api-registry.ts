@@ -39,12 +39,12 @@ class APIRegistryService {
       coverage: ['Global'],
     },
     {
-      id: 'predicthq',
-      name: 'PredictHQ',
+      id: 'perplexity',
+      name: 'Perplexity AI',
       type: 'api',
       status: 'active',
-      description: 'Predictive intelligence for events, conferences, and gatherings',
-      endpoint: 'https://api.predicthq.com/v1/',
+      description: 'AI-powered online research for real-time event discovery, conflict detection, and comprehensive event intelligence',
+      endpoint: 'https://api.perplexity.ai/',
       coverage: ['Global'],
     },
     {
@@ -60,7 +60,7 @@ class APIRegistryService {
       name: 'Local Website Scraping',
       type: 'scraper',
       status: 'active',
-      description: 'Tens of local websites scraped for even more accurate predictions and comprehensive event coverage',
+      description: 'Automated web scraping from thousands of local event websites and calendars to capture comprehensive event coverage across Czech cities',
       coverage: ['Multiple Cities, Czech Republic'],
     },
     {

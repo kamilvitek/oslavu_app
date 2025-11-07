@@ -23,24 +23,24 @@ export function Features() {
       title: "Multi-Source Data Ingestion",
       description: isLoading 
         ? "Loading data sources..." 
-        : `Automatically pulls events from ${metrics?.activeAPIs || 0} APIs and over a thousand local sources`,
+        : `Automatically pulls events from ${metrics?.activeAPIs || 0} global APIs and hundreds of local event websites through automated web scraping`,
     },
     {
       icon: Shield,
-      title: "Smart Deduplication",
-      description: "Advanced algorithms detect and merge duplicate events across platforms for accurate analysis.",
+      title: "AI-Powered Deduplication",
+      description: "Advanced AI algorithms use semantic analysis to detect and merge duplicate events across platforms, ensuring accurate conflict detection.",
     },
     {
       icon: TrendingUp,
-      title: "Conflict Score Engine",
-      description: "Proprietary scoring system calculates risk levels based on audience overlap and event proximity.",
+      title: "Intelligent Conflict Scoring",
+      description: "AI-powered scoring system analyzes audience overlap, seasonality patterns, holiday impacts, and event proximity to calculate precise risk levels.",
     },
     {
       icon: Globe,
-      title: "Global City Coverage",
+      title: "Comprehensive Coverage",
       description: isLoading 
         ? "Loading coverage data..." 
-        : `Covering ${metrics?.coverage?.cities || 0} cities across ${metrics?.coverage?.countries || 0} regions with comprehensive data sources.`,
+        : `Covering ${metrics?.coverage?.cities || 0} cities across ${metrics?.coverage?.countries || 0} regions with real-time data from multiple sources.`,
     },
   ];
 

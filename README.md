@@ -37,7 +37,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the application.
 ## 🎯 Key Features
 
 - **AI-Powered Analysis**: Sub-10 second conflict detection with 1000+ events
-- **Multi-Source Data**: Ticketmaster, PredictHQ, and 400+ Czech event sources
+- **Multi-Source Data**: Ticketmaster, Perplexity AI, and thousands of Czech event sources
 - **Smart Normalization**: AI-powered event data processing and deduplication
 - **Real-time Monitoring**: Comprehensive observability and performance metrics
 - **Modern UI/UX**: Responsive design with dark mode support
