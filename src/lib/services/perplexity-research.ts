@@ -171,11 +171,27 @@ Provide structured JSON with:
 - holidaysAndCulturalEvents: Array with name, date (YYYY-MM-DD), type (holiday/cultural_event), impact (low/medium/high), description
 - recommendations: Object with shouldMoveDate (boolean), recommendedDates (array of YYYY-MM-DD if shouldMoveDate is true), reasoning (array of strings), riskLevel (low/medium/high)
 
+CRITICAL FOR RECOMMENDATIONS - Write in simple, direct language:
+- Use plain language that anyone can understand immediately
+- Start with the main problem or opportunity
+- Be specific about dates, names, and impacts
+- Use action verbs and clear implications
+- Avoid jargon like "saturate the market" - instead say "too many events competing for the same audience"
+- Format each reasoning point as: "What's happening" + "Why it matters" + "What to do"
+- Keep each point under 100 words
+- Focus on actionable insights, not just facts
+
+Example of good reasoning:
+- "Rock for People festival (June 10-14) will attract 20,000+ rock fans in Hradec Králové. This directly competes with your rock event and will reduce attendance. Consider moving your event to June 15-20 to avoid the conflict."
+
+Example of bad reasoning:
+- "International touring artists and large crowds will saturate the local market, making it difficult to attract attendees and secure resources."
+
 IMPORTANT: 
 - Use YYYY-MM-DD format for all dates
 - Be specific about dates and locations
 - Include source URLs when available
-- Provide actionable recommendations based on findings
+- Write recommendations in simple, conversational language
 - If no conflicts found, return empty arrays but still provide recommendations
 
 Return ONLY valid JSON, no markdown code blocks or additional text.`;
@@ -394,13 +410,86 @@ Return ONLY valid JSON, no markdown code blocks or additional text.`;
           date: this.normalizeDate(holiday.date),
           confidence: this.calculateHolidayConfidence(holiday),
         })),
-        recommendations: validated.recommendations,
+        recommendations: this.transformRecommendationsForUser(validated.recommendations),
       };
     } catch (error) {
       console.error('Failed to validate Perplexity response:', error);
       // Return safe default
       return this.getDefaultResponse();
     }
+  }
+
+  /**
+   * Transform recommendations into more user-friendly format
+   * Simplifies language, removes jargon, makes it more actionable
+   */
+  private transformRecommendationsForUser(recommendations: {
+    shouldMoveDate: boolean;
+    recommendedDates?: string[];
+    reasoning: string[];
+    riskLevel: 'low' | 'medium' | 'high';
+  }): {
+    shouldMoveDate: boolean;
+    recommendedDates?: string[];
+    reasoning: string[];
+    riskLevel: 'low' | 'medium' | 'high';
+  } {
+    // Transform each reasoning point to be more user-friendly
+    const transformedReasoning = recommendations.reasoning.map(reason => {
+      let transformed = reason;
+
+      // Replace jargon with plain language
+      const replacements: [RegExp, string][] = [
+        [/saturate the (local )?market/gi, 'too many events competing for the same audience'],
+        [/saturate the market/gi, 'too many events competing for the same audience'],
+        [/drawing away your target attendees/gi, 'will reduce your event attendance'],
+        [/drawing away attendees/gi, 'will reduce your event attendance'],
+        [/attract attendees/gi, 'get people to come'],
+        [/secure resources/gi, 'book venues and vendors'],
+        [/overlapping genre and audience/gi, 'same type of music and same fans'],
+        [/overlapping audience/gi, 'same target audience'],
+        [/reduce competition/gi, 'avoid competing events'],
+        [/will saturate/gi, 'will have too many'],
+        [/making it difficult to/gi, 'this makes it harder to'],
+        [/likely drawing away/gi, 'will likely reduce'],
+      ];
+
+      replacements.forEach(([pattern, replacement]) => {
+        transformed = transformed.replace(pattern, replacement);
+      });
+
+      // Ensure each point starts with a clear problem/opportunity
+      if (!transformed.match(/^(Major|Rock|Festival|International|No major|Consider|Move|Avoid)/i)) {
+        // Try to extract the main event/festival name and make it the focus
+        const eventMatch = transformed.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:is|will|festival|event)/);
+        if (eventMatch) {
+          const eventName = eventMatch[1];
+          transformed = transformed.replace(new RegExp(`^.*?${eventName}`, 'i'), `${eventName}`);
+        }
+      }
+
+      // Ensure actionable recommendations are clear
+      if (transformed.includes('moving outside') || transformed.includes('moving to')) {
+        transformed = transformed.replace(/moving (outside|to)/gi, 'Move your event');
+      }
+
+      // Add "What to do" if missing but shouldMoveDate is true
+      if (recommendations.shouldMoveDate && !transformed.match(/(Consider|Move|Avoid|Try|Recommend)/i)) {
+        if (recommendations.recommendedDates && recommendations.recommendedDates.length > 0) {
+          const dates = recommendations.recommendedDates.slice(0, 2).join(' or ');
+          transformed += ` Consider moving your event to ${dates} instead.`;
+        } else {
+          transformed += ' Consider choosing a different date to avoid this conflict.';
+        }
+      }
+
+      return transformed;
+    });
+
+    return {
+      ...recommendations,
+      reasoning: transformedReasoning,
+    };
   }
 
   /**

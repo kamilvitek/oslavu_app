@@ -806,15 +806,59 @@ export function ConflictAnalyzer() {
 
                                     {/* Recommendations */}
                                     {recommendation.perplexityResearch.recommendations && (
-                                      <div className="mt-2">
-                                        <div className="text-xs font-medium text-blue-700 mb-1">
-                                          Research Recommendation:
+                                      <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                                        <div className="flex items-center space-x-2 mb-2">
+                                          <span className="text-sm font-semibold text-blue-900">
+                                            💡 What This Means For You:
+                                          </span>
                                         </div>
-                                        <div className="text-xs text-blue-600">
-                                          {recommendation.perplexityResearch.recommendations.reasoning.map((reason, idx) => (
-                                            <div key={idx}>• {reason}</div>
-                                          ))}
+                                        <div className="space-y-2">
+                                          {recommendation.perplexityResearch.recommendations.reasoning.map((reason, idx) => {
+                                            // Detect if this is an actionable recommendation
+                                            const isActionable = reason.match(/(Consider|Move|Avoid|Try|Recommend|instead)/i);
+                                            const hasConflict = reason.match(/(festival|event|artist|tour|competition)/i);
+                                            
+                                            return (
+                                              <div 
+                                                key={idx} 
+                                                className={`text-sm ${
+                                                  isActionable 
+                                                    ? 'text-green-700 bg-green-50 p-2 rounded border-l-4 border-green-400' 
+                                                    : hasConflict
+                                                    ? 'text-orange-700 bg-orange-50 p-2 rounded border-l-4 border-orange-400'
+                                                    : 'text-blue-700'
+                                                }`}
+                                              >
+                                                {isActionable && <span className="font-semibold">✓ Action: </span>}
+                                                {hasConflict && !isActionable && <span className="font-semibold">⚠️ Conflict: </span>}
+                                                {reason}
+                                              </div>
+                                            );
+                                          })}
                                         </div>
+                                        
+                                        {/* Show recommended dates if available */}
+                                        {recommendation.perplexityResearch.recommendations.shouldMoveDate && 
+                                         recommendation.perplexityResearch.recommendations.recommendedDates && 
+                                         recommendation.perplexityResearch.recommendations.recommendedDates.length > 0 && (
+                                          <div className="mt-3 p-2 bg-green-100 rounded border border-green-300">
+                                            <div className="text-xs font-semibold text-green-900 mb-1">
+                                              📅 Better Dates:
+                                            </div>
+                                            <div className="text-xs text-green-800">
+                                              {recommendation.perplexityResearch.recommendations.recommendedDates.slice(0, 3).map((date, idx) => (
+                                                <div key={idx} className="font-medium">
+                                                  {new Date(date).toLocaleDateString('en-US', { 
+                                                    weekday: 'short', 
+                                                    year: 'numeric', 
+                                                    month: 'short', 
+                                                    day: 'numeric' 
+                                                  })}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </div>
