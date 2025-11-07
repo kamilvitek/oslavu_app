@@ -1228,16 +1228,28 @@ CRITICAL REMINDERS:
     let retryCount = 0;
 
     // Filter strictly to current/future dates to avoid storing past items
-    const todayIso = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
+    const todayIso = today.toISOString().split('T')[0];
+    
     const upcoming = events.filter(e => {
       try {
-        const d = new Date(e.date);
-        return !isNaN(d.getTime()) && e.date >= todayIso;
-      } catch {
+        if (!e.date) return false;
+        // Parse date and compare at day level (ignore time)
+        const eventDate = new Date(e.date);
+        if (isNaN(eventDate.getTime())) return false;
+        eventDate.setHours(0, 0, 0, 0);
+        return eventDate >= today;
+      } catch (error) {
+        console.warn(`⚠️ Error filtering event by date "${e.date}":`, error);
         return false;
       }
     });
 
+    const filteredOut = events.length - upcoming.length;
+    if (filteredOut > 0) {
+      console.log(`🔍 Filtered out ${filteredOut} past events (date < ${todayIso})`);
+    }
     console.log(`🔍 Processing ${upcoming.length}/${events.length} future events from ${sourceName}`);
 
     for (const event of upcoming) {
@@ -1362,17 +1374,19 @@ CRITICAL REMINDERS:
       }
     }
 
-    // Log quality metrics
-    const qualityScore = totalEvents > 0 
-      ? ((eventsWithCity + eventsWithValidTitle + eventsWithUrl) / (totalEvents * 3)) * 100 
+    // Log quality metrics (use processed events count, not total)
+    const processedEventsCount = upcoming.length;
+    const qualityScore = processedEventsCount > 0 
+      ? ((eventsWithCity + eventsWithValidTitle + eventsWithUrl) / (processedEventsCount * 3)) * 100 
       : 0;
-    const cityExtractionRate = totalEvents > 0 ? (eventsWithCity / totalEvents) * 100 : 0;
+    const cityExtractionRate = processedEventsCount > 0 ? (eventsWithCity / processedEventsCount) * 100 : 0;
     
     console.log(`📊 Extraction Quality Metrics:`);
-    console.log(`   - Total events: ${totalEvents}`);
-    console.log(`   - Events with city: ${eventsWithCity} (${cityExtractionRate.toFixed(1)}%)`);
-    console.log(`   - Events with valid title: ${eventsWithValidTitle} (${((eventsWithValidTitle / totalEvents) * 100).toFixed(1)}%)`);
-    console.log(`   - Events with URL: ${eventsWithUrl} (${((eventsWithUrl / totalEvents) * 100).toFixed(1)}%)`);
+    console.log(`   - Total events extracted: ${totalEvents}`);
+    console.log(`   - Future events processed: ${processedEventsCount}`);
+    console.log(`   - Events with city: ${eventsWithCity} (${processedEventsCount > 0 ? (cityExtractionRate.toFixed(1)) : 0}%)`);
+    console.log(`   - Events with valid title: ${eventsWithValidTitle} (${processedEventsCount > 0 ? ((eventsWithValidTitle / processedEventsCount) * 100).toFixed(1) : 0}%)`);
+    console.log(`   - Events with URL: ${eventsWithUrl} (${processedEventsCount > 0 ? ((eventsWithUrl / processedEventsCount) * 100).toFixed(1) : 0}%)`);
     console.log(`   - Auto-fix applied: ${autoFixCount}`);
     console.log(`   - Overall quality score: ${qualityScore.toFixed(1)}%`);
 
