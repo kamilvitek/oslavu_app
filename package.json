@@ -15,6 +15,7 @@
     "scrape": "tsx scripts/test-scraper.ts",
     "scrape:test": "tsx scripts/test-scraper.ts test",
     "scrape:run": "tsx scripts/test-scraper.ts sync",
+    "crawl:source": "tsx scripts/run-crawl-source.ts",
     "backfill-attendees": "tsx scripts/backfill-attendees.ts",
     "test-attendees": "tsx scripts/test-attendee-implementation.ts",
     "seed-venues": "tsx scripts/seed-venue-database.ts",
