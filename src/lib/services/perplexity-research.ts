@@ -178,13 +178,30 @@ CRITICAL LOCATION FLEXIBILITY FOR MAJOR EVENTS:
 - Include major festivals from nearby cities if they target the same audience and occur on the same date
 - For festivals with 1000+ expected attendees, consider them competing even if they're in a different city within Czech Republic
 
+CRITICAL CATEGORY/SUBCATEGORY FILTERING:
+- ONLY return events that match the target category "${category}"${subcategory ? ` and subcategory "${subcategory}"` : ''}
+- DO NOT include unrelated events (e.g., wine tours, business conferences, sports events for music/entertainment events)
+- For Entertainment category: ONLY include music, concerts, festivals, entertainment events
+- For ${subcategory ? `${subcategory} subcategory: ONLY include events that match this specific genre/style` : 'this category: ONLY include events that match this category'}
+- If an event doesn't clearly match the category/subcategory, DO NOT include it
+- Examples of events to EXCLUDE for Entertainment/Hip-Hop:
+  * Wine tours, food events, culinary events
+  * Business conferences, workshops, seminars
+  * Sports events, fitness events
+  * Educational events, lectures
+  * Healthcare events, wellness events
+  * Unrelated cultural events (unless they're music festivals)
+
 Search for:
 1. Other ${categoryEventTypes} in ${nearbyCities} ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
    - Include major festivals (1000+ attendees) from nearby cities even if not in the exact target city
    - Major festivals can compete across cities (e.g., Mikulov festival competes with Hradec Králové events)
+   - BUT: Only include festivals that match the target category/subcategory
 2. Major ${category} artists/events touring Czech Republic ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
+   - ONLY include artists/events that match the target category/subcategory
 3. Local festivals or cultural events targeting similar audiences ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
    - Pay special attention to major festivals (1000+ attendees) - they compete across cities
+   - BUT: Only include festivals that match the target category/subcategory
 4. Holidays or special events in Czech Republic ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
 
 Provide structured JSON with:

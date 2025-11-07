@@ -458,15 +458,25 @@ export class ConflictAnalysisService {
         ...otherLowRiskDates
       ].slice(0, 3); // Top 3 recommendations
 
-      // Build high risk dates: user's preferred dates (if medium/high risk) + other high risk dates
+      // Build high risk dates: user's preferred dates (if medium/high risk OR have conflicts) + other high risk dates
       const userPreferredMediumHighRisk = userPreferredDates.filter(rec => 
-        rec.riskLevel === 'Medium' || rec.riskLevel === 'High'
+        rec.riskLevel === 'Medium' || 
+        rec.riskLevel === 'High' ||
+        (rec.conflictScore > 0 && rec.competingEvents.length > 0) // Include user's preferred dates with any conflicts
       );
       const otherHighRiskDates = otherDates.filter(rec => {
         // Include high risk dates
         if (rec.riskLevel === 'High') return true;
         // Include medium risk dates with significant conflicts
         if (rec.riskLevel === 'Medium' && rec.conflictScore > 6) return true;
+        // Include dates with conflicts (score > 0) even if Low risk - user should be aware
+        // But only if they have competing events
+        if (rec.conflictScore > 0 && rec.competingEvents.length > 0) {
+          // For Low risk dates with conflicts, only show if score >= 2 or has multiple events
+          if (rec.conflictScore >= 2 || rec.competingEvents.length >= 2) {
+            return true;
+          }
+        }
         return false;
       });
       
@@ -1025,6 +1035,7 @@ export class ConflictAnalysisService {
           // Merge Perplexity events with competing events BEFORE calculating audience overlap
           // Pass date range to filter out events outside the requested range
           // Use lenient location filtering for major events (festivals can compete across cities)
+          // CRITICAL: Filter by category/subcategory relevance to avoid unrelated events (e.g., wine tours for Hip-Hop events)
           if (perplexityResearch && perplexityResearch.conflictingEvents.length > 0) {
             const perplexityEvents = this.convertPerplexityEventsToEvents(
               perplexityResearch.conflictingEvents, 
@@ -1033,8 +1044,19 @@ export class ConflictAnalysisService {
               dateRange.endDate,
               true // lenientLocationFiltering = true for Perplexity events
             );
-            competingEvents = [...competingEvents, ...perplexityEvents];
-            console.log(`✅ Added ${perplexityEvents.length} Perplexity events to competing events (total: ${competingEvents.length})`);
+            
+            // Filter Perplexity events by category/subcategory relevance
+            // Only include events that are actually relevant to the target category/subcategory
+            const relevantPerplexityEvents = perplexityEvents.filter(event => {
+              const isRelevant = this.isPerplexityEventRelevant(event, params);
+              if (!isRelevant) {
+                console.log(`🚫 Filtering out irrelevant Perplexity event "${event.title}" - category mismatch (${event.category} vs ${params.category})`);
+              }
+              return isRelevant;
+            });
+            
+            competingEvents = [...competingEvents, ...relevantPerplexityEvents];
+            console.log(`✅ Added ${relevantPerplexityEvents.length} relevant Perplexity events to competing events (filtered out ${perplexityEvents.length - relevantPerplexityEvents.length} irrelevant events, total: ${competingEvents.length})`);
           }
           
           // Update conflict score based on Perplexity findings if high risk
@@ -3471,6 +3493,11 @@ export class ConflictAnalysisService {
           .substring(0, 16);
         const deterministicId = `perplexity-${hash}`;
         
+        // Infer actual category from Perplexity event type and description
+        // This prevents wine tours from being categorized as Hip-Hop events
+        const inferredCategory = this.inferCategoryFromPerplexityEvent(pe, params.category);
+        const inferredSubcategory = this.inferSubcategoryFromPerplexityEvent(pe, params.subcategory, inferredCategory);
+        
         return {
           id: deterministicId,
           title: pe.name,
@@ -3478,8 +3505,8 @@ export class ConflictAnalysisService {
           date: normalizedDate,
           city: pe.location,
           venue: undefined,
-          category: params.category,
-          subcategory: params.subcategory,
+          category: inferredCategory, // Use inferred category, not params.category
+          subcategory: inferredSubcategory, // Use inferred subcategory, not params.subcategory
           expectedAttendees: pe.expectedAttendance,
           source: 'online_research' as const,
           sourceId: pe.source,
@@ -3489,6 +3516,183 @@ export class ConflictAnalysisService {
           updatedAt: new Date().toISOString(),
         };
       });
+  }
+
+  /**
+   * Infer category from Perplexity event based on type, name, and description
+   * This prevents wine tours from being categorized as Hip-Hop events
+   */
+  private inferCategoryFromPerplexityEvent(
+    pe: { name: string; type: string; description?: string },
+    defaultCategory: string
+  ): string {
+    const nameLower = pe.name.toLowerCase();
+    const descLower = (pe.description || '').toLowerCase();
+    const typeLower = pe.type.toLowerCase();
+    const combined = `${nameLower} ${descLower} ${typeLower}`;
+    
+    // Entertainment/Music events
+    if (combined.match(/\b(concert|festival|music|band|dj|hip.?hop|rap|rock|pop|jazz|electronic|edm|techno|house|trance|dubstep|metal|punk|indie|alternative|singer|artist|musician|gig|show|performance|live music)\b/)) {
+      return 'Entertainment';
+    }
+    
+    // Sports events
+    if (combined.match(/\b(sport|football|soccer|basketball|tennis|running|marathon|race|match|game|tournament|championship|league|cup|athletic|fitness|gym|workout)\b/)) {
+      return 'Sports';
+    }
+    
+    // Business events
+    if (combined.match(/\b(business|conference|meeting|networking|workshop|seminar|summit|expo|trade show|exhibition|marketing|sales|finance|investment|banking|startup|entrepreneur|vc|venture capital)\b/)) {
+      return 'Business';
+    }
+    
+    // Technology events
+    if (combined.match(/\b(tech|technology|ai|ml|machine learning|artificial intelligence|programming|coding|software|developer|hackathon|devops|cloud|cybersecurity|security|data science|big data|analytics|blockchain|crypto|bitcoin|web3|fintech)\b/)) {
+      return 'Technology';
+    }
+    
+    // Arts & Culture events
+    if (combined.match(/\b(art|gallery|museum|exhibition|theater|theatre|drama|play|musical|opera|ballet|dance|photography|film|movie|cinema|screening|premiere|cultural|heritage|tradition|folklore|fashion|design|creative)\b/)) {
+      return 'Arts & Culture';
+    }
+    
+    // Food & Wine events (should NOT be Entertainment)
+    if (combined.match(/\b(wine|wine.?tour|wine.?tasting|vinařství|viniculture|vineyard|wineyard|food|culinary|restaurant|dining|gastronomy|chef|cooking|brewery|beer|tasting|degustace)\b/)) {
+      return 'Business'; // Food/wine events are more business/cultural than entertainment
+    }
+    
+    // Education events
+    if (combined.match(/\b(education|school|university|college|academic|lecture|course|training|learning|workshop|seminar|class|study)\b/)) {
+      return 'Education';
+    }
+    
+    // Health/Wellness events
+    if (combined.match(/\b(health|wellness|medical|healthcare|fitness|yoga|meditation|therapy|treatment|clinic|hospital)\b/)) {
+      return 'Healthcare';
+    }
+    
+    // Default to the provided category if we can't infer
+    return defaultCategory;
+  }
+
+  /**
+   * Infer subcategory from Perplexity event based on name and description
+   */
+  private inferSubcategoryFromPerplexityEvent(
+    pe: { name: string; type: string; description?: string },
+    defaultSubcategory: string | undefined,
+    inferredCategory: string
+  ): string | undefined {
+    const nameLower = pe.name.toLowerCase();
+    const descLower = (pe.description || '').toLowerCase();
+    const typeLower = pe.type.toLowerCase();
+    const combined = `${nameLower} ${descLower} ${typeLower}`;
+    
+    // Only infer subcategory for Entertainment category
+    if (inferredCategory === 'Entertainment') {
+      // Hip-Hop/Rap
+      if (combined.match(/\b(hip.?hop|rap|urban|r&b|trap|drill|old school|hiphop)\b/)) {
+        return 'Hip-Hop';
+      }
+      
+      // Rock
+      if (combined.match(/\b(rock|metal|punk|alternative|indie|grunge|hard rock|classic rock|heavy metal)\b/)) {
+        return 'Rock';
+      }
+      
+      // Pop
+      if (combined.match(/\b(pop|mainstream|top 40|radio|chart|hit|single)\b/)) {
+        return 'Pop';
+      }
+      
+      // Electronic
+      if (combined.match(/\b(electronic|edm|techno|house|trance|dubstep|ambient|synth|electronic music)\b/)) {
+        return 'Electronic';
+      }
+      
+      // Jazz
+      if (combined.match(/\b(jazz|blues|soul|funk|bebop|swing|fusion|smooth jazz)\b/)) {
+        return 'Jazz';
+      }
+      
+      // Classical
+      if (combined.match(/\b(classical|orchestra|symphony|chamber|opera|piano|violin|concerto)\b/)) {
+        return 'Classical';
+      }
+      
+      // Festival
+      if (combined.match(/\b(festival|fest|music festival|cultural festival)\b/)) {
+        return 'Festival';
+      }
+    }
+    
+    // Return default subcategory if we can't infer
+    return defaultSubcategory;
+  }
+
+  /**
+   * Check if a Perplexity event is relevant to the target category/subcategory
+   * Filters out unrelated events (e.g., wine tours for Hip-Hop events)
+   */
+  private isPerplexityEventRelevant(event: Event, params: ConflictAnalysisParams): boolean {
+    // Same category is always relevant
+    if (event.category === params.category) {
+      // For same category, check subcategory relevance
+      if (params.subcategory && event.subcategory) {
+        // Same subcategory is highly relevant
+        if (event.subcategory === params.subcategory) {
+          return true;
+        }
+        
+        // Check if subcategories are related using taxonomy
+        const { calculateSubcategoryOverlap } = require('@/lib/constants/subcategory-taxonomy');
+        const overlap = calculateSubcategoryOverlap(
+          params.category,
+          params.subcategory,
+          event.category,
+          event.subcategory
+        );
+        
+        // Only include if overlap is significant (>20%)
+        if (overlap > 0.2) {
+          return true;
+        }
+        
+        // Different subcategories in same category might still be relevant
+        // But be more strict - only if it's a major event
+        if (event.expectedAttendees && event.expectedAttendees >= 1000) {
+          return true; // Major events can compete even with different subcategories
+        }
+        
+        return false; // Different subcategories with low overlap are not relevant
+      }
+      
+      // Same category without subcategory is relevant
+      return true;
+    }
+    
+    // Different categories - check if they're related
+    if (this.isRelatedCategory(event.category, params.category)) {
+      // Related categories might be relevant for major events
+      if (event.expectedAttendees && event.expectedAttendees >= 1000) {
+        return true; // Major events can compete across related categories
+      }
+      
+      // For smaller events, only if they're very closely related
+      const { calculateSubcategoryOverlap } = require('@/lib/constants/subcategory-taxonomy');
+      const overlap = calculateSubcategoryOverlap(
+        params.category,
+        params.subcategory || null,
+        event.category,
+        event.subcategory || null
+      );
+      
+      // Only include if overlap is significant (>30%)
+      return overlap > 0.3;
+    }
+    
+    // Unrelated categories are not relevant
+    return false;
   }
 
   /**
