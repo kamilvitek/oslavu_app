@@ -911,7 +911,7 @@ export class ConflictAnalysisService {
       console.log(`Analyzing date range ${index + 1}/${potentialDates.length}: ${dateRange.startDate} to ${dateRange.endDate}`);
       
       // Use optimized conflict detection
-      const competingEvents = await this.findCompetingEventsOptimized(
+      let competingEvents = await this.findCompetingEventsOptimized(
         dateRange.startDate,
         dateRange.endDate,
         params
@@ -921,7 +921,7 @@ export class ConflictAnalysisService {
       const severityLevel = this.determineSeverityLevel(competingEvents.length);
       const config = this.severityConfigs[severityLevel];
 
-      const conflictScore = await this.calculateConflictScoreOptimized(
+      let conflictScore = await this.calculateConflictScoreOptimized(
         competingEvents,
         params.expectedAttendees,
         params.category,
@@ -930,7 +930,7 @@ export class ConflictAnalysisService {
         dateRange.holidayRestrictions
       );
 
-      const riskLevel = this.determineRiskLevel(conflictScore);
+      let riskLevel = this.determineRiskLevel(conflictScore);
       const reasons = this.generateReasons(competingEvents, conflictScore);
 
       // Advanced analysis features
@@ -1029,7 +1029,7 @@ export class ConflictAnalysisService {
         audienceOverlap,
         holidayRestrictions: dateRange.holidayRestrictions,
         seasonalFactors,
-        perplexityResearch
+        perplexityResearch: perplexityResearch || undefined // Convert null to undefined for type compatibility
       };
     });
 
