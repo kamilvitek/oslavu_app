@@ -10,6 +10,8 @@ import { HolidayServiceConfig } from '@/types/holidays';
 import { seasonalityEngine } from './seasonality-engine';
 import { holidayConflictDetector } from './holiday-conflict-detector';
 import { aiCategoryMatcher } from './ai-category-matcher';
+import { perplexityResearchService } from './perplexity-research';
+import { PerplexityConflictResearch } from '@/types/perplexity';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -80,6 +82,7 @@ export interface DateRecommendation {
     optimalityScore: number; // 0-1 score for how optimal this date is
     venueAvailability: number;
   };
+  perplexityResearch?: PerplexityConflictResearch;
   consolidatedRanges?: {
     count: number; // Number of ranges consolidated
     originalRanges: Array<{ startDate: string; endDate: string; conflictScore: number }>; // Original ranges
@@ -101,6 +104,7 @@ export interface ConflictAnalysisParams {
   dateRangeStart: string; // analysis range start (auto-calculated)
   dateRangeEnd: string; // analysis range end (auto-calculated)
   enableAdvancedAnalysis?: boolean; // enable audience overlap analysis (defaults to true)
+  enablePerplexityResearch?: boolean; // enable Perplexity online research (defaults to false)
   searchRadius?: string; // search radius for geographic coverage (e.g., "50km", "25miles")
   useComprehensiveFallback?: boolean; // use comprehensive fallback strategies
 }
@@ -984,6 +988,34 @@ export class ConflictAnalysisService {
 
       }
 
+      // Perplexity research enhancement (if enabled)
+      let perplexityResearch;
+      if (params.enablePerplexityResearch) {
+        try {
+          perplexityResearch = await this.enhanceWithPerplexityResearch(
+            dateRange.startDate,
+            params
+          );
+          
+          // Update conflict score based on Perplexity findings if high risk
+          if (perplexityResearch && perplexityResearch.recommendations.riskLevel === 'high') {
+            conflictScore = Math.min(20, conflictScore + 2); // Increase conflict score
+            if (conflictScore > 12) {
+              riskLevel = 'High';
+            }
+          }
+          
+          // Merge Perplexity events with competing events
+          if (perplexityResearch && perplexityResearch.conflictingEvents.length > 0) {
+            const perplexityEvents = this.convertPerplexityEventsToEvents(perplexityResearch.conflictingEvents, params);
+            competingEvents = [...competingEvents, ...perplexityEvents];
+          }
+        } catch (error) {
+          console.warn(`Perplexity research failed for ${dateRange.startDate}:`, error);
+          // Continue without Perplexity research - don't break analysis
+        }
+      }
+
       const dateTime = Date.now() - dateStartTime;
       console.log(`✅ Date range ${index + 1} analyzed in ${dateTime}ms (Score: ${conflictScore}, Risk: ${riskLevel}, Events: ${competingEvents.length})`);
 
@@ -996,7 +1028,8 @@ export class ConflictAnalysisService {
         reasons,
         audienceOverlap,
         holidayRestrictions: dateRange.holidayRestrictions,
-        seasonalFactors
+        seasonalFactors,
+        perplexityResearch
       };
     });
 
@@ -3242,6 +3275,68 @@ export class ConflictAnalysisService {
     }
     
     return consolidated;
+  }
+
+  /**
+   * Enhance date recommendations with Perplexity research
+   */
+  private async enhanceWithPerplexityResearch(
+    date: string,
+    params: ConflictAnalysisParams
+  ): Promise<PerplexityConflictResearch | null> {
+    try {
+      const perplexityParams = {
+        city: params.city,
+        category: params.category,
+        subcategory: params.subcategory,
+        date: date,
+        expectedAttendees: params.expectedAttendees,
+        dateRange: {
+          start: params.dateRangeStart,
+          end: params.dateRangeEnd,
+        },
+      };
+
+      const research = await perplexityResearchService.researchEventConflicts(perplexityParams);
+      return research;
+    } catch (error) {
+      console.error('Error enhancing with Perplexity research:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Convert Perplexity events to Event format for integration
+   */
+  private convertPerplexityEventsToEvents(
+    perplexityEvents: Array<{
+      name: string;
+      date: string;
+      location: string;
+      type: string;
+      expectedAttendance?: number;
+      description?: string;
+      source?: string;
+    }>,
+    params: ConflictAnalysisParams
+  ): Event[] {
+    return perplexityEvents.map((pe, index) => ({
+      id: `perplexity-${Date.now()}-${index}`,
+      title: pe.name,
+      description: pe.description,
+      date: pe.date,
+      city: pe.location,
+      venue: undefined,
+      category: params.category,
+      subcategory: params.subcategory,
+      expectedAttendees: pe.expectedAttendance,
+      source: 'online_research' as const,
+      sourceId: pe.source,
+      url: pe.source,
+      imageUrl: undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
   }
 
   /**

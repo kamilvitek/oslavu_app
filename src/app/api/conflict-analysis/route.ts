@@ -13,7 +13,8 @@ const ConflictAnalysisSchema = z.object({
     start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
   }).optional(),
-  enable_advanced_analysis: z.boolean().optional().default(false)
+  enable_advanced_analysis: z.boolean().optional().default(false),
+  enable_perplexity_research: z.boolean().optional().default(false)
 });
 
 /**
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = ConflictAnalysisSchema.parse(body);
 
-    const { city, category, preferred_dates, expected_attendees, date_range, enable_advanced_analysis } = validatedData;
+    const { city, category, preferred_dates, expected_attendees, date_range, enable_advanced_analysis, enable_perplexity_research } = validatedData;
 
     // Determine date range for analysis
     const startDate = date_range?.start || preferred_dates[0];
@@ -146,7 +147,8 @@ export async function POST(request: NextRequest) {
         events_analyzed: events.length,
         date_range: { start: startDate, end: endDate },
         analysis_timestamp: new Date().toISOString(),
-        advanced_analysis_enabled: enable_advanced_analysis
+        advanced_analysis_enabled: enable_advanced_analysis,
+        perplexity_research_enabled: enable_perplexity_research
       }
     };
 

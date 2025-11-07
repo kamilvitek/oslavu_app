@@ -9,7 +9,7 @@ export interface Event {
   category: string;
   subcategory?: string;
   expectedAttendees?: number;
-  source: 'ticketmaster' | 'meetup' | 'predicthq' | 'manual' | 'brno';
+  source: 'ticketmaster' | 'meetup' | 'predicthq' | 'manual' | 'brno' | 'online_research';
   sourceId?: string;
   url?: string;
   imageUrl?: string;
@@ -63,6 +63,7 @@ export interface AnalysisRequest {
     end: string;
   };
   enableAdvancedAnalysis?: boolean;
+  enablePerplexityResearch?: boolean;
 }
 
 export interface User {

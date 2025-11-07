@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       dateRangeStart: sanitizedBody.dateRange.start,
       dateRangeEnd: sanitizedBody.dateRange.end,
       enableAdvancedAnalysis: true, // ENABLED for audience overlap analysis
+      enablePerplexityResearch: sanitizedBody.enablePerplexityResearch || false, // Optional Perplexity research
       useComprehensiveFallback: false, // DISABLED for performance - was causing 5min delays
     });
     

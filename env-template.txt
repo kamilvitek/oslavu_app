@@ -22,3 +22,6 @@ TICKETMASTER_API_KEY=your_ticketmaster_api_key_here
 
 # Cron Job Security (for automated scraping and backfill)
 CRON_SECRET=your_secure_random_string_here
+
+# Perplexity Configuration (for online event research)
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
