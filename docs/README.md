@@ -11,7 +11,7 @@ Welcome to the comprehensive documentation for Oslavu - AI-Powered Event Date Op
   - [Web Scraping](features/web-scraping.md) - Data collection infrastructure
   - [AI Normalization](features/ai-normalization.md) - AI-powered data processing
   - [Performance](features/performance.md) - Optimization and monitoring
-  - [Date Range Fix](features/date-range-fix.md) - Duplication issue resolution
+  - [Seasonality](features/seasonality.md) - Seasonal patterns and holiday impact detection
 
 ## 🎯 Project Overview
 

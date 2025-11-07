@@ -33,6 +33,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the application.
   - [Web Scraping](docs/features/web-scraping.md) - Data collection infrastructure
   - [AI Normalization](docs/features/ai-normalization.md) - AI-powered data processing
   - [Performance](docs/features/performance.md) - Optimization and monitoring
+  - [Seasonality](docs/features/seasonality.md) - Seasonal patterns and holiday impact
 
 ## 🎯 Key Features
 
@@ -63,6 +64,8 @@ Open [http://localhost:3000](http://localhost:3000) to see the application.
 - **AI-First Normalization**: Multi-strategy event data processing
 - **Performance Optimization**: Batch processing with 10x cost reduction
 - **Enhanced Coverage**: Comprehensive Czech event data collection
+- **Seasonality System**: Expert seasonal rules and holiday impact detection
+- **Temporal Proximity**: Enhanced audience overlap with date proximity analysis
 - **Monitoring**: Real-time observability and automated alerts
 
 ## 🤝 Contributing

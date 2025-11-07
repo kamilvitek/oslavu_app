@@ -2,9 +2,11 @@
 
 All notable changes to the Oslavu project are documented in this file.
 
-## [Unreleased] - 2024-01-XX
+## [Unreleased] - 2025-01-XX
 
 ### Added
+- Seasonality system with expert seasonal rules and holiday impact detection
+- Enhanced audience overlap analysis with temporal proximity adjustments
 - Comprehensive documentation structure in `docs/` folder
 - Architecture overview with system diagrams
 - Detailed feature documentation for all major components
@@ -15,12 +17,16 @@ All notable changes to the Oslavu project are documented in this file.
 - Reorganized documentation from root-level files to structured `docs/` folder
 - Updated main README.md to point to documentation structure
 - Consolidated scattered documentation into logical sections
+- Moved seasonality documentation to features directory
 
 ### Removed
-- Empty test directories (11 directories)
+- Temporary documentation files (AUDIENCE_OVERLAP_ANALYSIS.md, AUDIENCE_OVERLAP_FIXES_SUMMARY.md, CODE_REVIEW_FIXES.md, CRAWLING_FIXES_SUMMARY.md, date-range-fix.md)
+- Test files from scripts/ directory (all test-*.ts and test-*.js files)
+- Debug/test API endpoints (check-*, test-*, debug-* routes)
+- Build artifacts (`tsconfig.tsbuildinfo`)
+- Empty test directories
 - Research CSV files from `czech-event-data-sources/`
 - Temporary analysis files (`unique_urls.txt`)
-- Build artifacts (`tsconfig.tsbuildinfo`)
 
 ## [Latest] - 2024-01-XX
 

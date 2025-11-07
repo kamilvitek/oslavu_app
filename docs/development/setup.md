@@ -105,9 +105,6 @@ npm run build
 
 # Run linting
 npm run lint
-
-# Test specific functionality
-node scripts/test-ai-improvements.js
 ```
 
 ## Project Structure
@@ -192,6 +189,6 @@ This will show detailed console output for debugging.
 ## Next Steps
 
 1. **Explore the Codebase**: Start with `src/lib/services/` for core functionality
-2. **Test Features**: Use the test pages in `src/app/test-*` directories
-3. **Read Documentation**: Check `docs/` folder for detailed guides
-4. **Join Development**: Follow contributing guidelines in `docs/development/contributing.md`
+2. **Read Documentation**: Check `docs/` folder for detailed guides
+3. **Review Features**: See `docs/features/` for detailed feature documentation
+4. **Check Architecture**: Review `docs/architecture/` for system design
