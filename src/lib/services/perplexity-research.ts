@@ -63,7 +63,6 @@ const PerplexityConflictResearchSchema = z.object({
 });
 
 export class PerplexityResearchService {
-  private readonly apiKey: string;
   private readonly baseUrl = 'https://api.perplexity.ai';
   private readonly model = 'sonar-large-online';
   
@@ -72,17 +71,32 @@ export class PerplexityResearchService {
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
-    this.apiKey = process.env.PERPLEXITY_API_KEY || '';
-    if (!this.apiKey) {
-      console.warn('Perplexity API key not found. Perplexity research will be disabled.');
-    }
+    // Don't store API key in constructor - read it at runtime
+    // This ensures environment variables are loaded when needed
+  }
+
+  /**
+   * Get API key at runtime (ensures env vars are loaded)
+   */
+  private getApiKey(): string {
+    return process.env.PERPLEXITY_API_KEY || '';
   }
 
   /**
    * Main research method for event conflicts
    */
   async researchEventConflicts(params: PerplexityResearchParams): Promise<PerplexityConflictResearch | null> {
-    if (!this.apiKey) {
+    const apiKey = this.getApiKey();
+    
+    // Debug logging
+    console.log('🔍 Perplexity API Key Check:', {
+      hasKey: !!apiKey,
+      keyLength: apiKey.length,
+      keyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : 'none',
+      envVar: process.env.PERPLEXITY_API_KEY ? 'SET' : 'NOT SET',
+    });
+    
+    if (!apiKey) {
       console.warn('Perplexity API key not configured. Skipping research.');
       return null;
     }
@@ -271,10 +285,12 @@ Return ONLY valid JSON, no markdown code blocks or additional text.`;
         required: ['conflictingEvents', 'touringArtists', 'localFestivals', 'holidaysAndCulturalEvents', 'recommendations'],
       };
 
+      const apiKey = this.getApiKey();
+      
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
