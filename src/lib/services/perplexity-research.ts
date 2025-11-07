@@ -171,10 +171,20 @@ ${exactDateConstraint}
 - For holidaysAndCulturalEvents: ONLY include holidays/events on the EXACT date(s) specified
 - If an event spans multiple days, ONLY include it if it overlaps with the specified date(s)
 
+CRITICAL LOCATION FLEXIBILITY FOR MAJOR EVENTS:
+- Major festivals (1000+ attendees) can compete across cities and regions
+- For example: MKLV Fest in Mikulov competes with events in Hradec Králové, Prague, Brno, and nearby cities
+- Large music festivals draw audiences from a wide geographic area (50-200km radius)
+- Include major festivals from nearby cities if they target the same audience and occur on the same date
+- For festivals with 1000+ expected attendees, consider them competing even if they're in a different city within Czech Republic
+
 Search for:
 1. Other ${categoryEventTypes} in ${nearbyCities} ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
+   - Include major festivals (1000+ attendees) from nearby cities even if not in the exact target city
+   - Major festivals can compete across cities (e.g., Mikulov festival competes with Hradec Králové events)
 2. Major ${category} artists/events touring Czech Republic ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
 3. Local festivals or cultural events targeting similar audiences ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
+   - Pay special attention to major festivals (1000+ attendees) - they compete across cities
 4. Holidays or special events in Czech Republic ${dateRange ? `on dates ${dateRange.start} to ${dateRange.end}` : `on date ${date}`}
 
 Provide structured JSON with:

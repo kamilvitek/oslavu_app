@@ -8,16 +8,17 @@ export function getNearbyCities(city: string): string[] {
   const normalizedCity = city.toLowerCase().trim();
   
   const cityMap: Record<string, string[]> = {
-    'prague': ['Brno', 'Pardubice', 'Hradec Králové', 'České Budějovice', 'Plzeň'],
-    'brno': ['Prague', 'Pardubice', 'Olomouc', 'Zlín', 'Ostrava'],
-    'hradec králové': ['Prague', 'Pardubice', 'Brno', 'Liberec'],
-    'pardubice': ['Prague', 'Hradec Králové', 'Brno', 'Olomouc'],
+    'prague': ['Brno', 'Pardubice', 'Hradec Králové', 'České Budějovice', 'Plzeň', 'Mikulov'],
+    'brno': ['Prague', 'Pardubice', 'Olomouc', 'Zlín', 'Ostrava', 'Mikulov'],
+    'hradec králové': ['Prague', 'Pardubice', 'Brno', 'Liberec', 'Mikulov'],
+    'pardubice': ['Prague', 'Hradec Králové', 'Brno', 'Olomouc', 'Mikulov'],
     'ostrava': ['Brno', 'Prague', 'Olomouc', 'Zlín'],
     'olomouc': ['Brno', 'Ostrava', 'Pardubice', 'Zlín'],
     'plzeň': ['Prague', 'České Budějovice'],
     'české budějovice': ['Prague', 'Plzeň', 'Brno'],
     'liberec': ['Prague', 'Hradec Králové'],
     'zlín': ['Brno', 'Olomouc', 'Ostrava'],
+    'mikulov': ['Brno', 'Prague', 'Hradec Králové', 'Pardubice'],
   };
   
   // Try exact match first

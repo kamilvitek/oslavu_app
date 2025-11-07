@@ -804,23 +804,24 @@ export function ConflictAnalyzer() {
                                         </div>
                                         <div className="space-y-2">
                                           {recommendation.perplexityResearch.recommendations.reasoning.map((reason, idx) => {
-                                            // Detect if this is an actionable recommendation
-                                            const isActionable = reason.match(/(Consider|Move|Avoid|Try|Recommend|instead)/i);
-                                            const hasConflict = reason.match(/(festival|event|artist|tour|competition)/i);
+                                            // Detect if this is a conflict/warning or a positive recommendation
+                                            const hasConflict = reason.match(/(compete|conflict|reduce|avoid|move|clash|competition|festival|event|artist|tour|hurt|impact|attendance)/i);
+                                            const isPositive = reason.match(/(good|great|excellent|optimal|perfect|ideal|recommended|best)/i) && !hasConflict;
                                             
                                             return (
                                               <div 
                                                 key={idx} 
                                                 className={`text-sm ${
-                                                  isActionable 
-                                                    ? 'text-green-700 bg-green-50 p-2 rounded border-l-4 border-green-400' 
-                                                    : hasConflict
-                                                    ? 'text-orange-700 bg-orange-50 p-2 rounded border-l-4 border-orange-400'
-                                                    : 'text-blue-700'
+                                                  hasConflict
+                                                    ? 'text-orange-700 bg-orange-50 p-2 rounded border-l-4 border-orange-400' 
+                                                    : isPositive
+                                                    ? 'text-green-700 bg-green-50 p-2 rounded border-l-4 border-green-400'
+                                                    : 'text-blue-700 bg-blue-50 p-2 rounded border-l-4 border-blue-400'
                                                 }`}
                                               >
-                                                {isActionable && <span className="font-semibold">✓ Action: </span>}
-                                                {hasConflict && !isActionable && <span className="font-semibold">⚠️ Conflict: </span>}
+                                                {hasConflict && <span className="font-semibold">⚠️ Conflict: </span>}
+                                                {isPositive && <span className="font-semibold">✓ Good: </span>}
+                                                {!hasConflict && !isPositive && <span className="font-semibold">ℹ️ Info: </span>}
                                                 {reason}
                                               </div>
                                             );

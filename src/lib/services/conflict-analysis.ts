@@ -568,7 +568,8 @@ export class ConflictAnalysisService {
               rec.perplexityResearch.conflictingEvents,
               params,
               rec.startDate,
-              rec.endDate
+              rec.endDate,
+              true // lenientLocationFiltering = true for Perplexity events
             );
             allPerplexityEvents.push(...perplexityEvents);
           }
@@ -1010,19 +1011,8 @@ export class ConflictAnalysisService {
         };
       }
 
-      // Advanced analysis is disabled for performance reasons
-      // Audience overlap analysis causes 70+ second delays due to sequential OpenAI API calls
-      // This feature will be re-enabled in a higher-tier plan with optimized implementation
-      if (params.enableAdvancedAnalysis !== false) {
-        // Calculate audience overlap analysis
-        audienceOverlap = await this.calculateAudienceOverlapAnalysis(
-          competingEvents,
-          params
-        );
-
-      }
-
       // Perplexity research enhancement (if enabled)
+      // CRITICAL: Do this BEFORE audience overlap calculation so Perplexity events are included
       let perplexityResearch;
       if (params.enablePerplexityResearch) {
         try {
@@ -1032,6 +1022,21 @@ export class ConflictAnalysisService {
             params
           );
           
+          // Merge Perplexity events with competing events BEFORE calculating audience overlap
+          // Pass date range to filter out events outside the requested range
+          // Use lenient location filtering for major events (festivals can compete across cities)
+          if (perplexityResearch && perplexityResearch.conflictingEvents.length > 0) {
+            const perplexityEvents = this.convertPerplexityEventsToEvents(
+              perplexityResearch.conflictingEvents, 
+              params,
+              dateRange.startDate,
+              dateRange.endDate,
+              true // lenientLocationFiltering = true for Perplexity events
+            );
+            competingEvents = [...competingEvents, ...perplexityEvents];
+            console.log(`✅ Added ${perplexityEvents.length} Perplexity events to competing events (total: ${competingEvents.length})`);
+          }
+          
           // Update conflict score based on Perplexity findings if high risk
           if (perplexityResearch && perplexityResearch.recommendations.riskLevel === 'high') {
             conflictScore = Math.min(20, conflictScore + 2); // Increase conflict score
@@ -1039,22 +1044,23 @@ export class ConflictAnalysisService {
               riskLevel = 'High';
             }
           }
-          
-          // Merge Perplexity events with competing events
-          // Pass date range to filter out events outside the requested range
-          if (perplexityResearch && perplexityResearch.conflictingEvents.length > 0) {
-            const perplexityEvents = this.convertPerplexityEventsToEvents(
-              perplexityResearch.conflictingEvents, 
-              params,
-              dateRange.startDate,
-              dateRange.endDate
-            );
-            competingEvents = [...competingEvents, ...perplexityEvents];
-          }
         } catch (error) {
           console.warn(`Perplexity research failed for ${dateRange.startDate}:`, error);
           // Continue without Perplexity research - don't break analysis
         }
+      }
+
+      // Advanced analysis is disabled for performance reasons
+      // Audience overlap analysis causes 70+ second delays due to sequential OpenAI API calls
+      // This feature will be re-enabled in a higher-tier plan with optimized implementation
+      // CRITICAL: Perplexity events are now included in competingEvents before this calculation
+      if (params.enableAdvancedAnalysis !== false) {
+        // Calculate audience overlap analysis (now includes Perplexity events)
+        audienceOverlap = await this.calculateAudienceOverlapAnalysis(
+          competingEvents,
+          params
+        );
+
       }
 
       const dateTime = Date.now() - dateStartTime;
@@ -3351,6 +3357,7 @@ export class ConflictAnalysisService {
   /**
    * Convert Perplexity events to Event format for integration
    * Filters out events outside the requested date range and uses deterministic IDs
+   * @param lenientLocationFiltering - If true, allows events from nearby cities for major events (festivals)
    */
   private convertPerplexityEventsToEvents(
     perplexityEvents: Array<{
@@ -3364,7 +3371,8 @@ export class ConflictAnalysisService {
     }>,
     params: ConflictAnalysisParams,
     requestedStartDate?: string,
-    requestedEndDate?: string
+    requestedEndDate?: string,
+    lenientLocationFiltering: boolean = false
   ): Event[] {
     const { createHash } = require('crypto');
     
@@ -3392,6 +3400,59 @@ export class ConflictAnalysisService {
           if (eventDate < startDate || eventDate > endDate) {
             console.log(`🚫 Filtering out Perplexity event "${pe.name}" on ${normalizedDate} - outside requested range ${requestedStartDate} to ${requestedEndDate}`);
             return false; // Filter out events outside the range
+          }
+        }
+        
+        // Location filtering: For Perplexity events, be more lenient for major events
+        // Major festivals can compete across cities (e.g., MKLV Fest in Mikulov competes with events in Hradec Králové)
+        if (lenientLocationFiltering) {
+          const eventLocation = pe.location?.toLowerCase().trim() || '';
+          const targetCity = params.city?.toLowerCase().trim() || '';
+          
+          // Check if event is in target city
+          const isInTargetCity = eventLocation === targetCity || 
+                                 eventLocation.includes(targetCity) || 
+                                 targetCity.includes(eventLocation);
+          
+          if (isInTargetCity) {
+            return true; // Same city - always include
+          }
+          
+          // For major events (festivals with high attendance), consider nearby cities
+          const isMajorEvent = pe.type === 'festival' || 
+                              (pe.expectedAttendance && pe.expectedAttendance >= 1000);
+          
+          if (isMajorEvent) {
+            // Import city proximity utility
+            const { getNearbyCities } = require('@/lib/utils/city-proximity');
+            const nearbyCities = getNearbyCities(params.city);
+            const isInNearbyCity = nearbyCities.some((nearbyCity: string) => 
+              eventLocation === nearbyCity.toLowerCase() ||
+              eventLocation.includes(nearbyCity.toLowerCase()) ||
+              nearbyCity.toLowerCase().includes(eventLocation)
+            );
+            
+            if (isInNearbyCity) {
+              console.log(`✅ Including major Perplexity event "${pe.name}" from nearby city "${pe.location}" (target: "${params.city}")`);
+              return true;
+            }
+            
+            // Also check if it's a Czech city (major festivals can compete across Czech Republic)
+            const isCzechCity = eventLocation.includes('czech') || 
+                               ['prague', 'brno', 'ostrava', 'olomouc', 'plzen', 'liberec', 'ceske', 'hradec', 'pardubice', 'zlin', 'mikulov'].some(city => 
+                                 eventLocation.includes(city)
+                               );
+            
+            if (isCzechCity && isMajorEvent) {
+              console.log(`✅ Including major Czech Perplexity event "${pe.name}" from "${pe.location}" (target: "${params.city}") - festivals can compete across cities`);
+              return true;
+            }
+          }
+          
+          // For non-major events, only include if in target city
+          if (!isInTargetCity) {
+            console.log(`🚫 Filtering out Perplexity event "${pe.name}" from "${pe.location}" - not in target city "${params.city}" and not a major event`);
+            return false;
           }
         }
         
