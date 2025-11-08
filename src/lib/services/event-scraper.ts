@@ -207,24 +207,46 @@ export class EventScraperService {
    * Uses crawlUrl for multi-page sites to discover all events
    */
   private async scrapeWithFirecrawl(source: ScraperSource, syncLogId?: string): Promise<CreateEventData[]> {
-    const useCrawl = !!source.use_crawl && !!source.crawl_config;
+    // Phase 3: Auto-Configuration - Default to crawl mode unless explicitly disabled
+    // Auto-generate crawl_config if missing to enable crawl mode by default
+    let useCrawl = source.use_crawl !== false; // Default to true unless explicitly false
+    let crawlConfig = source.crawl_config;
+    
+    // If crawl mode should be used but config is missing, auto-generate it
+    if (useCrawl && !crawlConfig) {
+      console.log(`🤖 Auto-generating crawl_config for ${source.name} (crawl mode enabled by default)`);
+      const hostname = new URL(source.url).hostname;
+      const presetKey = CrawlConfigurationService.getPresetForHost(hostname);
+      const preset = CrawlConfigurationService.buildPreset(presetKey);
+      crawlConfig = {
+        startUrls: [source.url],
+        maxDepth: preset.maxDepth ?? 2,
+        maxPages: source.max_pages_per_crawl ?? preset.maxPages ?? 50,
+        allowList: preset.allowList ?? [`${new URL(source.url).origin}/*`],
+        denyList: preset.denyList ?? [],
+        actions: preset.actions ?? [],
+        listingSelectors: preset.listingSelectors,
+        detailUrlPatterns: preset.detailUrlPatterns
+      };
+      useCrawl = true; // Ensure crawl mode is enabled
+    }
     
     // Phase 2: Enhanced Diagnostic Logging - Log source configuration
     console.log(`🔍 Scraping with Firecrawl (${useCrawl ? 'crawl' : 'scrape'}): ${source.url}`);
     console.log(`📋 Source Configuration:`);
-    console.log(`   - use_crawl: ${source.use_crawl}`);
+    console.log(`   - use_crawl: ${source.use_crawl ?? 'auto (default: true)'}`);
     console.log(`   - max_pages_per_crawl: ${source.max_pages_per_crawl || 'not set'}`);
-    console.log(`   - crawl_config: ${source.crawl_config ? JSON.stringify(source.crawl_config).substring(0, 200) + '...' : 'not set'}`);
+    console.log(`   - crawl_config: ${crawlConfig ? 'auto-generated or configured' : 'not set (using scrape mode)'}`);
 
     try {
       await this.enforceRateLimit(source.name);
 
-      if (useCrawl) {
+      if (useCrawl && crawlConfig) {
         const hostname = new URL(source.url).hostname;
         const presetKey = CrawlConfigurationService.getPresetForHost(hostname);
         const preset = CrawlConfigurationService.buildPreset(presetKey);
         const merged: CrawlConfig = CrawlConfigurationService.mergeConfig(
-          (source.crawl_config as any) ?? null,
+          (crawlConfig as any) ?? null,
           preset
         );
         if (!merged.startUrls || merged.startUrls.length === 0) {
