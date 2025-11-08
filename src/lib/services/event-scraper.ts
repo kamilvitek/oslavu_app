@@ -1588,27 +1588,100 @@ CRITICAL REMINDERS:
     let m = trimmed.match(/^(\d{1,2})[\.](\d{1,2})[\.](\d{4})$/);
     if (m) {
       const [_, d, mo, y] = m;
+      const monthNum = parseInt(mo, 10);
+      const dayNum = parseInt(d, 10);
+      const yearNum = parseInt(y, 10);
+      
+      // Validate month (1-12) and day (1-31) ranges
+      if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+        return null; // Invalid date values
+      }
+      
       const day = d.padStart(2, '0');
       const month = mo.padStart(2, '0');
-      return `${y}-${month}-${day}`;
+      const dateString = `${y}-${month}-${day}`;
+      
+      // Comprehensive validation: check if the date actually exists (e.g., not Feb 30)
+      const dateObj = new Date(dateString + 'T00:00:00');
+      if (isNaN(dateObj.getTime())) {
+        return null; // Invalid date
+      }
+      
+      // Verify the date components match (handles cases like Feb 30, which would be parsed as Mar 2)
+      if (dateObj.getFullYear() !== yearNum || 
+          dateObj.getMonth() + 1 !== monthNum || 
+          dateObj.getDate() !== dayNum) {
+        return null; // Date does not exist (e.g., Feb 30)
+      }
+      
+      return dateString;
     }
 
     // dd/mm/yyyy or d/m/yyyy
     m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) {
       const [_, d, mo, y] = m;
+      const monthNum = parseInt(mo, 10);
+      const dayNum = parseInt(d, 10);
+      const yearNum = parseInt(y, 10);
+      
+      // Validate month (1-12) and day (1-31) ranges
+      if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+        return null; // Invalid date values
+      }
+      
       const day = d.padStart(2, '0');
       const month = mo.padStart(2, '0');
-      return `${y}-${month}-${day}`;
+      const dateString = `${y}-${month}-${day}`;
+      
+      // Comprehensive validation: check if the date actually exists (e.g., not Feb 30)
+      const dateObj = new Date(dateString + 'T00:00:00');
+      if (isNaN(dateObj.getTime())) {
+        return null; // Invalid date
+      }
+      
+      // Verify the date components match (handles cases like Feb 30, which would be parsed as Mar 2)
+      if (dateObj.getFullYear() !== yearNum || 
+          dateObj.getMonth() + 1 !== monthNum || 
+          dateObj.getDate() !== dayNum) {
+        return null; // Date does not exist (e.g., Feb 30)
+      }
+      
+      return dateString;
     }
 
-    // yyyy.mm.dd or yyyy/mm/dd
-    m = trimmed.match(/^(\d{4})[\.\/]?(\d{1,2})[\.\/]?(\d{1,2})$/);
-    if (m && trimmed.includes('.') || trimmed.includes('/')) {
+    // yyyy.mm.dd or yyyy/mm/dd (REQUIRES separators to avoid false matches)
+    // Match only if separators are present to prevent matching strings like "202609"
+    m = trimmed.match(/^(\d{4})[\.\/](\d{1,2})[\.\/](\d{1,2})$/);
+    if (m) {
       const [_, y, mo, d] = m as any;
+      const monthNum = parseInt(mo, 10);
+      const dayNum = parseInt(d, 10);
+      const yearNum = parseInt(y, 10);
+      
+      // Validate month (1-12) and day (1-31) ranges
+      if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+        return null; // Invalid date values
+      }
+      
       const day = String(d).padStart(2, '0');
       const month = String(mo).padStart(2, '0');
-      return `${y}-${month}-${day}`;
+      const dateString = `${y}-${month}-${day}`;
+      
+      // Comprehensive validation: check if the date actually exists (e.g., not Feb 30)
+      const dateObj = new Date(dateString + 'T00:00:00');
+      if (isNaN(dateObj.getTime())) {
+        return null; // Invalid date
+      }
+      
+      // Verify the date components match (handles cases like Feb 30, which would be parsed as Mar 2)
+      if (dateObj.getFullYear() !== yearNum || 
+          dateObj.getMonth() + 1 !== monthNum || 
+          dateObj.getDate() !== dayNum) {
+        return null; // Date does not exist (e.g., Feb 30)
+      }
+      
+      return dateString;
     }
 
     // Fallback to Date parser if it produces a valid ISO date

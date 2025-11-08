@@ -205,10 +205,47 @@ export class EventStorageService {
     
     if (normalizedNewDate !== normalizedExistingDate) {
       // Convert date string to ISO timestamp format for TIMESTAMP WITH TIME ZONE column
-      const dateValue = newEvent.date.includes('T') 
-        ? newEvent.date 
-        : new Date(newEvent.date + 'T00:00:00').toISOString();
-      updateData.date = dateValue;
+      if (newEvent.date.includes('T')) {
+        // Already a timestamp, validate it
+        const dateObj = new Date(newEvent.date);
+        if (isNaN(dateObj.getTime())) {
+          throw new Error(`Invalid date format: ${newEvent.date}`);
+        }
+        updateData.date = newEvent.date;
+      } else {
+        // Date-only string, validate format and values
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(newEvent.date)) {
+          throw new Error(`Invalid date format: ${newEvent.date}`);
+        }
+        
+        // Validate date components (month 01-12, day 01-31)
+        const dateParts = newEvent.date.split('-');
+        const year = parseInt(dateParts[0], 10);
+        const month = parseInt(dateParts[1], 10);
+        const day = parseInt(dateParts[2], 10);
+        
+        if (month < 1 || month > 12) {
+          throw new Error(`Invalid date value: ${newEvent.date} (month must be 01-12)`);
+        }
+        if (day < 1 || day > 31) {
+          throw new Error(`Invalid date value: ${newEvent.date} (day must be 01-31)`);
+        }
+        
+        // Additional validation: check if the date is actually valid
+        const dateObj = new Date(newEvent.date + 'T00:00:00');
+        if (isNaN(dateObj.getTime())) {
+          throw new Error(`Invalid date value: ${newEvent.date}`);
+        }
+        
+        // Verify the date components match (handles cases like Feb 30)
+        if (dateObj.getFullYear() !== year || 
+            dateObj.getMonth() + 1 !== month || 
+            dateObj.getDate() !== day) {
+          throw new Error(`Invalid date value: ${newEvent.date} (date does not exist)`);
+        }
+        
+        updateData.date = dateObj.toISOString();
+      }
     }
     
     // Only update end_date if it's explicitly provided (not undefined)
@@ -219,7 +256,49 @@ export class EventStorageService {
       const normalizedExistingEndDate = this.normalizeDateForComparison(existingEvent.end_date);
       
       if (normalizedNewEndDate !== normalizedExistingEndDate) {
-        updateData.end_date = newEvent.end_date ? new Date(newEvent.end_date).toISOString() : null;
+        if (!newEvent.end_date) {
+          updateData.end_date = null;
+        } else if (newEvent.end_date.includes('T')) {
+          // Already a timestamp, validate it
+          const endDateObj = new Date(newEvent.end_date);
+          if (isNaN(endDateObj.getTime())) {
+            throw new Error(`Invalid end_date format: ${newEvent.end_date}`);
+          }
+          updateData.end_date = newEvent.end_date;
+        } else {
+          // Date-only string, validate format and values
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(newEvent.end_date)) {
+            throw new Error(`Invalid end_date format: ${newEvent.end_date}`);
+          }
+          
+          // Validate end_date components (month 01-12, day 01-31)
+          const endDateParts = newEvent.end_date.split('-');
+          const endYear = parseInt(endDateParts[0], 10);
+          const endMonth = parseInt(endDateParts[1], 10);
+          const endDay = parseInt(endDateParts[2], 10);
+          
+          if (endMonth < 1 || endMonth > 12) {
+            throw new Error(`Invalid end_date value: ${newEvent.end_date} (month must be 01-12)`);
+          }
+          if (endDay < 1 || endDay > 31) {
+            throw new Error(`Invalid end_date value: ${newEvent.end_date} (day must be 01-31)`);
+          }
+          
+          // Additional validation: check if the date is actually valid
+          const endDateObj = new Date(newEvent.end_date + 'T00:00:00');
+          if (isNaN(endDateObj.getTime())) {
+            throw new Error(`Invalid end_date value: ${newEvent.end_date}`);
+          }
+          
+          // Verify the date components match (handles cases like Feb 30)
+          if (endDateObj.getFullYear() !== endYear || 
+              endDateObj.getMonth() + 1 !== endMonth || 
+              endDateObj.getDate() !== endDay) {
+            throw new Error(`Invalid end_date value: ${newEvent.end_date} (date does not exist)`);
+          }
+          
+          updateData.end_date = endDateObj.toISOString();
+        }
       }
     }
     if (newEvent.city !== existingEvent.city) updateData.city = newEvent.city;
@@ -268,10 +347,33 @@ export class EventStorageService {
               if (!/^\d{4}-\d{2}-\d{2}$/.test(event.date)) {
                 throw new Error(`Invalid date format: ${event.date}`);
               }
+              
+              // Validate date components (month 01-12, day 01-31)
+              const dateParts = event.date.split('-');
+              const year = parseInt(dateParts[0], 10);
+              const month = parseInt(dateParts[1], 10);
+              const day = parseInt(dateParts[2], 10);
+              
+              if (month < 1 || month > 12) {
+                throw new Error(`Invalid date value: ${event.date} (month must be 01-12)`);
+              }
+              if (day < 1 || day > 31) {
+                throw new Error(`Invalid date value: ${event.date} (day must be 01-31)`);
+              }
+              
+              // Additional validation: check if the date is actually valid (e.g., not Feb 30)
               const dateObj = new Date(event.date + 'T00:00:00');
               if (isNaN(dateObj.getTime())) {
                 throw new Error(`Invalid date value: ${event.date}`);
               }
+              
+              // Verify the date components match (handles cases like Feb 30)
+              if (dateObj.getFullYear() !== year || 
+                  dateObj.getMonth() + 1 !== month || 
+                  dateObj.getDate() !== day) {
+                throw new Error(`Invalid date value: ${event.date} (date does not exist)`);
+              }
+              
               dateValue = dateObj.toISOString();
             }
             
@@ -288,10 +390,33 @@ export class EventStorageService {
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(event.end_date)) {
                   throw new Error(`Invalid end_date format: ${event.end_date}`);
                 }
+                
+                // Validate end_date components (month 01-12, day 01-31)
+                const endDateParts = event.end_date.split('-');
+                const endYear = parseInt(endDateParts[0], 10);
+                const endMonth = parseInt(endDateParts[1], 10);
+                const endDay = parseInt(endDateParts[2], 10);
+                
+                if (endMonth < 1 || endMonth > 12) {
+                  throw new Error(`Invalid end_date value: ${event.end_date} (month must be 01-12)`);
+                }
+                if (endDay < 1 || endDay > 31) {
+                  throw new Error(`Invalid end_date value: ${event.end_date} (day must be 01-31)`);
+                }
+                
+                // Additional validation: check if the date is actually valid
                 const endDateObj = new Date(event.end_date + 'T00:00:00');
                 if (isNaN(endDateObj.getTime())) {
                   throw new Error(`Invalid end_date value: ${event.end_date}`);
                 }
+                
+                // Verify the date components match (handles cases like Feb 30)
+                if (endDateObj.getFullYear() !== endYear || 
+                    endDateObj.getMonth() + 1 !== endMonth || 
+                    endDateObj.getDate() !== endDay) {
+                  throw new Error(`Invalid end_date value: ${event.end_date} (date does not exist)`);
+                }
+                
                 endDateValue = endDateObj.toISOString();
               }
             }
