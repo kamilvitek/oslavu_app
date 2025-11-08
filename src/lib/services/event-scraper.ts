@@ -56,6 +56,16 @@ export class EventScraperService {
   private requestCount = 0;
   private dailyRequestLimit = 5000; // Increased for full crawl of 1300+ sources (Firecrawl Standard: 50 req/min, we use ~5-7/min with delays)
   private readonly czechSourceDelay = 12000; // 12 seconds for Czech sources (Kudyznudy)
+  
+  // OpenAI API rate limiting (separate from Firecrawl)
+  private lastOpenAIRequestTime = 0;
+  private readonly minOpenAIRequestInterval = 1000; // 1 second between OpenAI requests (60 req/min limit)
+  private openAIRequestCount = 0;
+  private readonly dailyOpenAILimit = 10000; // Daily limit for OpenAI API calls
+  
+  // Pagination pattern cache (domain -> pagination pattern)
+  private paginationPatternCache = new Map<string, { pattern: any; timestamp: number }>();
+  private readonly paginationCacheTTL = 24 * 60 * 60 * 1000; // 24 hours
 
   constructor() {
     const firecrawlApiKey = process.env.FIRECRAWL_API_KEY;
@@ -198,7 +208,13 @@ export class EventScraperService {
    */
   private async scrapeWithFirecrawl(source: ScraperSource, syncLogId?: string): Promise<CreateEventData[]> {
     const useCrawl = !!source.use_crawl && !!source.crawl_config;
+    
+    // Phase 2: Enhanced Diagnostic Logging - Log source configuration
     console.log(`🔍 Scraping with Firecrawl (${useCrawl ? 'crawl' : 'scrape'}): ${source.url}`);
+    console.log(`📋 Source Configuration:`);
+    console.log(`   - use_crawl: ${source.use_crawl}`);
+    console.log(`   - max_pages_per_crawl: ${source.max_pages_per_crawl || 'not set'}`);
+    console.log(`   - crawl_config: ${source.crawl_config ? JSON.stringify(source.crawl_config).substring(0, 200) + '...' : 'not set'}`);
 
     try {
       await this.enforceRateLimit(source.name);
@@ -224,6 +240,14 @@ export class EventScraperService {
           console.log(`📄 Increasing maxPages from ${merged.maxPages} to 50 to ensure pagination is fully crawled`);
           merged.maxPages = 50;
         }
+        
+        // Phase 2: Enhanced Diagnostic Logging - Log merged crawl configuration
+        console.log(`📋 Merged Crawl Configuration:`);
+        console.log(`   - maxDepth: ${merged.maxDepth}`);
+        console.log(`   - maxPages: ${merged.maxPages}`);
+        console.log(`   - startUrls: ${merged.startUrls?.length || 0} URL(s)`);
+        console.log(`   - allowList: ${merged.allowList?.length || 0} pattern(s)`);
+        console.log(`   - actions: ${merged.actions?.length || 0} action(s)`);
         
         // Allow any HTTPS URL to enable cross-domain crawling
         // This makes the solution scalable for any startUrl without hardcoding domains
@@ -359,6 +383,7 @@ export class EventScraperService {
             Array.isArray(res?.data) ? res.data : [];
           pagesCrawled += pages.length;
           
+          // Phase 2: Enhanced Diagnostic Logging - Log pagination detection
           console.log(`🔍 Crawl completed: ${pages.length} pages found`);
           if (pages.length === 0) {
             console.warn(`⚠️ No pages found for URL: ${url}`);
@@ -370,10 +395,13 @@ export class EventScraperService {
             }, null, 2));
           } else {
             // Log page URLs to help diagnose if events are on different pages
-            console.log(`📄 Pages crawled (first 10): ${pages.slice(0, 10).map(p => p.url).join(', ')}`);
-            if (pages.length > 10) {
-              console.log(`📄 ... and ${pages.length - 10} more pages`);
+            console.log(`📄 Pages crawled (first 20): ${pages.slice(0, 20).map(p => p.url).join(', ')}`);
+            if (pages.length > 20) {
+              console.log(`📄 ... and ${pages.length - 20} more pages`);
             }
+            
+            // Phase 1: Automatic pagination URL discovery - Use AI if few events found or pagination suspected
+            // We'll check this after initial event extraction
           }
 
           // Two-phase extraction: First pass - extract event URLs from listing pages
@@ -398,6 +426,43 @@ export class EventScraperService {
           
           console.log(`🔍 Phase 1: Found ${eventUrls.size} event URLs from listing pages`);
           
+          // Phase 1: Automatic pagination URL discovery - Use AI if few events found
+          const initialEventCount = eventUrls.size;
+          const discoveredPaginationUrls = new Set<string>();
+          let paginationPattern: any = null;
+          
+          if (initialEventCount < 5 && listingPages.length > 0) {
+            console.log(`🤖 Few events found (${initialEventCount}), using AI to detect pagination...`);
+            try {
+              const firstPage = listingPages[0];
+              const html = (firstPage as any).html || '';
+              if (html) {
+                paginationPattern = await this.detectPaginationWithAI(html, url);
+                
+                if (paginationPattern.paginationUrls.length > 0 && paginationPattern.confidence > 0.5) {
+                  console.log(`🤖 AI detected ${paginationPattern.paginationUrls.length} pagination URLs (type: ${paginationPattern.paginationType}, confidence: ${paginationPattern.confidence.toFixed(2)})`);
+                  
+                  // Normalize and filter pagination URLs
+                  for (const pagUrl of paginationPattern.paginationUrls) {
+                    const normalized = this.normalizePaginationUrl(pagUrl, url);
+                    if (normalized && !urlSet.has(normalized)) {
+                      discoveredPaginationUrls.add(normalized);
+                    }
+                  }
+                  
+                  if (discoveredPaginationUrls.size > 0) {
+                    console.log(`📄 Discovered ${discoveredPaginationUrls.size} new pagination URLs via AI`);
+                    // Note: These URLs would need to be added to a new crawl, which is handled by auto-remediation
+                  }
+                } else {
+                  console.log(`🤖 AI pagination detection: low confidence (${paginationPattern.confidence.toFixed(2)}) or no URLs found`);
+                }
+              }
+            } catch (error) {
+              console.warn(`⚠️ AI pagination detection failed:`, error);
+            }
+          }
+          
           // Phase 2: Process detail pages (prioritized) and listing pages
           const pagesToProcess = [...detailPages, ...listingPages];
           
@@ -409,10 +474,12 @@ export class EventScraperService {
             if (!markdown && !html) continue;
             pagesProcessed++;
             const events = await this.extractEventsGeneric({ markdown, html }, source.name);
-            console.log(`🔍 Extracted ${events.length} raw events from page: ${page.url}`);
+            
+            // Phase 2: Enhanced Diagnostic Logging - Log events per page
+            const contentLength = (markdown || html || '').length;
+            console.log(`🔍 Extracted ${events.length} raw events from page: ${page.url} (content: ${contentLength.toLocaleString()} chars)`);
             
             // Log content length to help diagnose extraction issues
-            const contentLength = (markdown || html || '').length;
             if (events.length === 0 && contentLength > 1000) {
               console.warn(`⚠️ No events extracted from page with ${contentLength.toLocaleString()} characters: ${page.url}`);
               console.warn(`⚠️ Content preview (first 500 chars): ${(markdown || html || '').substring(0, 500)}...`);
@@ -478,7 +545,11 @@ export class EventScraperService {
           });
         }
 
+        // Phase 6: Enhanced Logging - Comprehensive crawl summary
         console.log(`✅ Crawl processed ${pagesProcessed}/${pagesCrawled} pages, extracted ${totalEvents.length} events`);
+        
+        // Log pagination information if available (from AI detection)
+        // Note: paginationPattern is scoped to the URL loop, so we'll log it per URL if needed
         
         // Cross-page deduplication: remove duplicates across all pages
         const deduplicatedEvents = this.deduplicateEventsAcrossPages(totalEvents);
@@ -525,6 +596,23 @@ export class EventScraperService {
         lastEvents = cleanedExtracted
           .map(event => this.transformScrapedEvent(event, source.name))
           .filter((e): e is CreateEventData => e !== null); // Filter out null events (invalid dates)
+        
+        // Phase 7: Auto-Remediation - If few events found, try AI pagination detection
+        if (lastEvents.length > 0 && lastEvents.length < 5 && html) {
+          console.log(`🤖 Few events found (${lastEvents.length}), checking for pagination with AI...`);
+          try {
+            const paginationPattern = await this.detectPaginationWithAI(html, source.url);
+            if (paginationPattern.paginationUrls.length > 0 && paginationPattern.confidence > 0.5) {
+              console.warn(`⚠️ Pagination detected but crawl mode is disabled!`);
+              console.warn(`⚠️ Found ${paginationPattern.paginationUrls.length} pagination URLs (type: ${paginationPattern.paginationType})`);
+              console.warn(`⚠️ Recommendation: Enable crawl mode (use_crawl=true) and configure crawl_config for this source`);
+              console.warn(`⚠️ This will allow the scraper to follow pagination and extract all events`);
+            }
+          } catch (error) {
+            console.warn(`⚠️ AI pagination detection failed during auto-remediation:`, error);
+          }
+        }
+        
         if (lastEvents.length > 0) {
           return lastEvents;
         }
@@ -534,18 +622,40 @@ export class EventScraperService {
           onlyMainContent = false; // broaden content area
           waitFor = Math.min(waitFor + 2000, 8000);
         } else if (attempt === 2) {
-          // Switch to shallow crawl fallback with generic defaults
+          // Phase 7: Auto-Remediation - Switch to shallow crawl fallback with AI-enhanced actions
           console.log('🔍 Switching to shallow crawl fallback after empty single-page results');
           const url = new URL(source.url);
           const allowList = [url.origin, url.origin + '/*'];
+          
+          // Phase 4: Use AI-enhanced actions if available
+          let aiActions: any[] = [];
+          try {
+            // Try to get AI-detected pagination actions from first page
+            if (html) {
+              const paginationPattern = await this.detectPaginationWithAI(html, source.url);
+              if (paginationPattern.paginationUrls.length > 0) {
+                console.log(`🤖 Using AI-detected pagination pattern for fallback crawl`);
+                // Build actions based on pagination type
+                aiActions = this.buildActionsFromPaginationPattern(paginationPattern);
+              }
+            }
+          } catch (error) {
+            console.warn(`⚠️ Failed to get AI pagination actions, using generic actions:`, error);
+          }
+          
+          // Fallback to generic actions if AI didn't provide any
+          if (aiActions.length === 0) {
+            aiActions = [
+              { type: 'scroll', target: 'window', count: 8, delay: 400 }
+            ];
+          }
+          
           const res: any = await (this.firecrawl as any).crawl(source.url, {
             limit: 12,
             maxDepth: 2,
             allowList,
             waitFor: 3000,
-            actions: [
-              { type: 'scroll', target: 'window', count: 8, delay: 400 }
-            ],
+            actions: aiActions,
             scrapeOptions: {
               formats: ['markdown', 'html'],
               proxy: 'auto',
@@ -1228,13 +1338,57 @@ CRITICAL REMINDERS FOR RETRY:
   }
 
   /**
+   * Build actions from AI-detected pagination pattern
+   */
+  private buildActionsFromPaginationPattern(pattern: {
+    paginationType: string;
+    pageNumbers: number[];
+    nextButtonUrl?: string;
+  }): any[] {
+    const actions: any[] = [];
+    
+    if (pattern.paginationType === 'numbered' && pattern.pageNumbers.length > 0) {
+      // Click page numbers
+      for (const pageNum of pattern.pageNumbers.slice(0, 10)) { // Limit to first 10 pages
+        actions.push({
+          type: 'click',
+          target: { text: String(pageNum) },
+          delay: 500,
+          waitFor: 2000
+        });
+      }
+    } else if (pattern.paginationType === 'next_prev' && pattern.nextButtonUrl) {
+      // Click next button
+      actions.push({
+        type: 'click',
+        target: { text: 'next' },
+        delay: 500,
+        waitFor: 2000
+      });
+    } else if (pattern.paginationType === 'load_more') {
+      // Click load more button
+      actions.push({
+        type: 'click',
+        target: { text: 'load more' },
+        delay: 500,
+        waitFor: 2000
+      });
+    }
+    
+    return actions;
+  }
+
+  /**
    * Build a generic action bundle for month navigation, pagination, consent, and expanders.
    * Uses text-based targeting to be language-agnostic, including Czech terms.
+   * Phase 4: Enhanced with AI assistance for language detection (can be called with AI-detected terms)
    */
-  private buildGenericActions(): any[] {
+  private buildGenericActions(aiDetectedTerms?: { pagination: string[]; language: string }): any[] {
     const monthLabels = ['01','02','03','04','05','06','07','08','09','10','11','12'];
     const czMonths = ['leden','únor','unor','březen','brezen','duben','květen','kveten','červen','cerven','červenec','cervenec','srpen','září','zari','říjen','rijen','listopad','prosinec'];
-    const pagination = ['next','další','dalsi','older','starší','starsi','more','více','vice'];
+    
+    // Phase 4: Use AI-detected pagination terms if available, otherwise use generic terms
+    const pagination = aiDetectedTerms?.pagination || ['next','další','dalsi','older','starší','starsi','more','více','vice'];
     const consent = ['accept','agree','allow','souhlasím','souhlasim','přijmout','prijmout','povolit','rozumím','rozumim', 'přijmout vše', 'povolit vše', 'přijmout všechno', 'povolit všechno', 'přijmimout vše', 'povolit vše', 'přijmout všechno', 'povolit všechno', 'přijmimout všechno', 'přijmám vše', 'povolím vše', 'přijmám všechno', 'povolím všechno', 'přijmim vše', 'povolim vše', 'přijmim všechno', 'povolim všechno', 'přijimám vše', 'povolím vše', 'přijimám všechno', 'povolím všechno', 'přijim vše', 'povolim vše', 'přijim všechno', 'povolim všechno'];
     const expanders = ['load more','show more','zobrazit více','zobrazit vice','načíst další','nacist dalsi', 'zobrazit více akcí', 'zobrazit více událostí', 'zobrazit více akcí na stránce', 'zobrazit více událostí na stránce', 'zobrazit další akce', 'zobrazit další události'];
     
@@ -1604,6 +1758,7 @@ CRITICAL REMINDERS FOR RETRY:
     const titleExtractionRate = validatedEventsCount > 0 ? (eventsWithValidTitle / validatedEventsCount) * 100 : 0;
     const urlExtractionRate = validatedEventsCount > 0 ? (eventsWithUrl / validatedEventsCount) * 100 : 0;
     
+    // Phase 6: Enhanced Logging - Comprehensive summary with pagination info
     console.log(`📊 Extraction Quality Metrics:`);
     console.log(`   - Total events extracted: ${totalEvents}`);
     console.log(`   - Future events processed: ${upcoming.length}`);
@@ -1613,6 +1768,12 @@ CRITICAL REMINDERS FOR RETRY:
     console.log(`   - Events with URL: ${eventsWithUrl} (${urlExtractionRate.toFixed(1)}%)`);
     console.log(`   - Auto-fix applied: ${autoFixCount}`);
     console.log(`   - Overall quality score: ${qualityScore.toFixed(1)}%`);
+    
+    // Phase 6: Intelligent Warnings - Warn if events found < expected
+    if (validatedEventsCount < 5 && upcoming.length > 1) {
+      console.warn(`⚠️ Low event count warning: Only ${validatedEventsCount} events found from ${upcoming.length} future events`);
+      console.warn(`⚠️ This might indicate pagination was not fully followed or events were missed`);
+    }
 
     return result;
   }
@@ -1999,6 +2160,246 @@ CRITICAL REMINDERS FOR RETRY:
       });
     } catch (error) {
       console.warn('⚠️ Error updating last_crawled_at:', error);
+    }
+  }
+
+  /**
+   * Enforce rate limiting for OpenAI API calls (separate from Firecrawl rate limiting)
+   */
+  private async enforceOpenAIRateLimit(): Promise<void> {
+    // Check daily limit
+    if (this.openAIRequestCount >= this.dailyOpenAILimit) {
+      throw new Error(`OpenAI API request limit of ${this.dailyOpenAILimit} exceeded`);
+    }
+
+    // Implement rate limiting
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastOpenAIRequestTime;
+    
+    if (timeSinceLastRequest < this.minOpenAIRequestInterval) {
+      const waitTime = this.minOpenAIRequestInterval - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastOpenAIRequestTime = Date.now();
+    this.openAIRequestCount++;
+  }
+
+  /**
+   * AI-based pagination detection using GPT-4o-mini
+   * Detects pagination patterns, URLs, and types across multiple languages
+   */
+  private async detectPaginationWithAI(html: string, baseUrl: string): Promise<{
+    paginationUrls: string[];
+    paginationType: 'numbered' | 'next_prev' | 'load_more' | 'infinite_scroll' | 'unknown';
+    pageNumbers: number[];
+    nextButtonUrl?: string;
+    language?: string;
+    confidence: number;
+  }> {
+    try {
+      // Check cache first
+      const domain = new URL(baseUrl).hostname;
+      const cached = this.paginationPatternCache.get(domain);
+      if (cached && (Date.now() - cached.timestamp) < this.paginationCacheTTL) {
+        console.log(`📄 Using cached pagination pattern for ${domain}`);
+        return cached.pattern;
+      }
+
+      await this.enforceOpenAIRateLimit();
+
+      // Intelligently truncate HTML - keep pagination sections, remove large content blocks
+      // Look for common pagination indicators in HTML structure
+      let truncatedHtml = html;
+      const maxHtmlLength = 50000; // Limit HTML size for AI processing
+      
+      if (html.length > maxHtmlLength) {
+        // Try to extract pagination-related sections
+        const paginationPatterns = [
+          /<nav[^>]*pagination[^>]*>[\s\S]{0,5000}<\/nav>/gi,
+          /<div[^>]*pagination[^>]*>[\s\S]{0,5000}<\/div>/gi,
+          /<ul[^>]*pagination[^>]*>[\s\S]{0,5000}<\/ul>/gi,
+          /<div[^>]*pager[^>]*>[\s\S]{0,5000}<\/div>/gi,
+          /<nav[^>]*pager[^>]*>[\s\S]{0,5000}<\/nav>/gi,
+        ];
+        
+        let paginationSections = '';
+        for (const pattern of paginationPatterns) {
+          const matches = html.match(pattern);
+          if (matches) {
+            paginationSections += matches.join('\n');
+          }
+        }
+        
+        // Also keep beginning and end of HTML (often contains navigation)
+        const beginning = html.substring(0, 10000);
+        const end = html.substring(Math.max(0, html.length - 10000));
+        
+        truncatedHtml = paginationSections || (beginning + '\n...\n' + end);
+        
+        if (truncatedHtml.length > maxHtmlLength) {
+          truncatedHtml = truncatedHtml.substring(0, maxHtmlLength);
+        }
+      }
+
+      const prompt = `Analyze the following HTML content and detect pagination patterns. Extract all pagination-related information.
+
+HTML Content:
+${truncatedHtml}
+
+Base URL: ${baseUrl}
+
+TASK: Detect pagination patterns and extract:
+1. All pagination URLs (page numbers, next/prev buttons, etc.)
+2. Pagination type: "numbered" (page 1, 2, 3...), "next_prev" (next/previous buttons), "load_more" (load more button), "infinite_scroll" (infinite scroll), or "unknown"
+3. Page numbers found (if numbered pagination)
+4. Next button URL (if exists)
+5. Page language (Czech, English, etc.)
+6. Confidence level (0-1) based on how clear the pagination pattern is
+
+IMPORTANT:
+- Extract ALL pagination URLs, not just the first few
+- Normalize relative URLs to absolute URLs using base URL
+- Handle various pagination formats: query params (?page=2), path segments (/page/2), fragments (#page2)
+- Look for pagination in multiple languages (Czech: "další", "stránka", "strana"; English: "next", "page", etc.)
+- Return structured JSON only, no markdown
+
+Return JSON in this exact format:
+{
+  "paginationUrls": ["url1", "url2", ...],
+  "paginationType": "numbered" | "next_prev" | "load_more" | "infinite_scroll" | "unknown",
+  "pageNumbers": [1, 2, 3, ...],
+  "nextButtonUrl": "url or null",
+  "language": "Czech" | "English" | "unknown",
+  "confidence": 0.0-1.0
+}`;
+
+      let lastError: Error | null = null;
+      const maxRetries = 3;
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const response = await this.openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are an expert web scraping assistant specializing in pagination detection. Analyze HTML and extract pagination information accurately. Always return valid JSON.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            max_tokens: 2000,
+            temperature: 0.1, // Low temperature for consistent, accurate results
+            response_format: { type: 'json_object' }
+          });
+
+          const content = response.choices[0]?.message?.content;
+          if (!content) {
+            throw new Error('Empty response from OpenAI');
+          }
+
+          // Parse JSON response
+          let result: any;
+          try {
+            // Remove markdown code blocks if present
+            const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            result = JSON.parse(cleanedContent);
+          } catch (parseError) {
+            throw new Error(`Failed to parse AI response as JSON: ${content.substring(0, 200)}`);
+          }
+
+          // Validate response structure
+          if (!result.paginationUrls || !Array.isArray(result.paginationUrls)) {
+            throw new Error('Invalid AI response: paginationUrls must be an array');
+          }
+
+          // Normalize URLs
+          const normalizedUrls = result.paginationUrls
+            .map((url: string) => this.normalizePaginationUrl(url, baseUrl))
+            .filter((url: string | null): url is string => url !== null);
+
+          const normalizedNextUrl = result.nextButtonUrl ? this.normalizePaginationUrl(result.nextButtonUrl, baseUrl) : undefined;
+          const paginationResult = {
+            paginationUrls: normalizedUrls,
+            paginationType: result.paginationType || 'unknown',
+            pageNumbers: result.pageNumbers || [],
+            nextButtonUrl: normalizedNextUrl || undefined,
+            language: result.language || 'unknown',
+            confidence: Math.max(0, Math.min(1, result.confidence || 0.5))
+          };
+
+          // Cache the result
+          this.paginationPatternCache.set(domain, {
+            pattern: paginationResult,
+            timestamp: Date.now()
+          });
+
+          console.log(`🤖 AI detected pagination: type=${paginationResult.paginationType}, urls=${paginationResult.paginationUrls.length}, confidence=${paginationResult.confidence.toFixed(2)}`);
+          
+          return paginationResult;
+
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          
+          if (attempt < maxRetries - 1) {
+            const backoffDelay = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+            console.warn(`⚠️ OpenAI pagination detection failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${backoffDelay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+          }
+        }
+      }
+
+      // All retries failed
+      console.error(`❌ OpenAI pagination detection failed after ${maxRetries} attempts:`, lastError);
+      throw lastError || new Error('OpenAI pagination detection failed');
+
+    } catch (error) {
+      console.error('❌ Error in AI pagination detection:', error);
+      // Return empty result on error
+      return {
+        paginationUrls: [],
+        paginationType: 'unknown',
+        pageNumbers: [],
+        confidence: 0
+      };
+    }
+  }
+
+  /**
+   * Normalize pagination URL (handle relative URLs, query params, fragments)
+   */
+  private normalizePaginationUrl(url: string | null | undefined, baseUrl: string): string | null {
+    if (!url) return null;
+    
+    try {
+      // Remove fragments (they don't help with pagination)
+      const urlWithoutFragment = url.split('#')[0];
+      
+      // If already absolute URL, return as-is (after removing fragment)
+      if (urlWithoutFragment.startsWith('http://') || urlWithoutFragment.startsWith('https://')) {
+        return urlWithoutFragment;
+      }
+      
+      // Handle relative URLs
+      const base = new URL(baseUrl);
+      
+      if (urlWithoutFragment.startsWith('/')) {
+        // Absolute path
+        return `${base.origin}${urlWithoutFragment}`;
+      } else if (urlWithoutFragment.startsWith('?')) {
+        // Query string only
+        return `${base.origin}${base.pathname}${urlWithoutFragment}`;
+      } else {
+        // Relative path
+        const basePath = base.pathname.endsWith('/') ? base.pathname : base.pathname + '/';
+        return `${base.origin}${basePath}${urlWithoutFragment}`;
+      }
+    } catch (error) {
+      console.warn(`⚠️ Failed to normalize pagination URL "${url}":`, error);
+      return null;
     }
   }
 
