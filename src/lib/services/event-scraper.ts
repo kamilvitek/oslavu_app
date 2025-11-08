@@ -1287,9 +1287,15 @@ CRITICAL REMINDERS:
     let retryCount = 0;
 
     // Filter strictly to current/future dates to avoid storing past items
+    // FIX: Use string-based comparison to avoid timezone issues
+    // ISO date strings (YYYY-MM-DD) can be compared lexicographically, which is timezone-independent
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
-    const todayIso = today.toISOString().split('T')[0];
+    // Get today's date in LOCAL timezone as ISO string (YYYY-MM-DD)
+    // Using local date methods to avoid UTC conversion issues
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayIso = `${year}-${month}-${day}`;
     
     const upcoming: CreateEventData[] = [];
     const pastEvents: Array<{ title: string; date: string }> = [];
@@ -1302,15 +1308,16 @@ CRITICAL REMINDERS:
           continue;
         }
         
-        // Parse date and compare at day level (ignore time)
-        const eventDate = new Date(e.date);
-        if (isNaN(eventDate.getTime())) {
+        // Validate date format (should be YYYY-MM-DD)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date)) {
           invalidDates.push({ title: e.title || 'Unknown', date: e.date });
           continue;
         }
-        eventDate.setHours(0, 0, 0, 0);
         
-        if (eventDate >= today) {
+        // String-based comparison: ISO date strings can be compared lexicographically
+        // This is timezone-independent and avoids Date object timezone conversion issues
+        // Example: "2024-11-15" >= "2024-11-14" works correctly regardless of timezone
+        if (e.date >= todayIso) {
           upcoming.push(e);
         } else {
           pastEvents.push({ title: e.title || 'Unknown', date: e.date });
