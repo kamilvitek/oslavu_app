@@ -315,6 +315,9 @@ export class EventScraperService {
         const startUrls = (merged.startUrls || []).filter(u => typeof u === 'string' && u.trim().length > 0);
         if (startUrls.length === 0) startUrls.push(source.url);
 
+        // Collect discovered pagination URLs to crawl after initial crawl
+        const discoveredPaginationUrlsToCrawl: string[] = [];
+
         let totalEvents: CreateEventData[] = [];
         let pagesProcessed = 0;
         let pagesCrawled = 0;
@@ -337,6 +340,27 @@ export class EventScraperService {
         const alreadyCrawledUrls = await this.getCrawledUrls(source.id);
         const urlSet = new Set(alreadyCrawledUrls);
 
+        // Build crawl options once (shared across all URLs)
+        // Calculate timeout based on maxPages: 30 seconds per page, minimum 120 seconds, maximum 600 seconds (10 minutes)
+        const estimatedPages = perUrlPageCap ?? merged.maxPages ?? 50;
+        const timeoutMs = Math.min(Math.max(estimatedPages * 30000, 120000), 600000); // 30s per page, min 2min, max 10min
+        
+        const baseCrawlOptions: any = {
+          maxDepth: merged.maxDepth,
+          denyList: merged.denyList,
+          limit: perUrlPageCap ?? merged.maxPages,
+          actions: merged.actions as any,
+          waitFor: merged.waitFor as any,
+          timeout: timeoutMs,
+          scrapeOptions: {
+            formats: ['markdown', 'html'],
+            proxy: 'auto',
+            maxAge: 600000,
+            onlyMainContent: false,
+            timeout: timeoutMs
+          }
+        };
+
         for (const url of startUrls) {
           const startedAt = Date.now();
           
@@ -348,11 +372,8 @@ export class EventScraperService {
           
           // Use SDK signature: crawl(url: string, options?: object)
           // Build crawl options - handle allowList for cross-domain crawling
-          // Calculate timeout based on maxPages: 30 seconds per page, minimum 120 seconds, maximum 600 seconds (10 minutes)
-          const estimatedPages = perUrlPageCap ?? merged.maxPages ?? 50;
-          const timeoutMs = Math.min(Math.max(estimatedPages * 30000, 120000), 600000); // 30s per page, min 2min, max 10min
-          
           const crawlOptions: any = {
+            ...baseCrawlOptions,
             maxDepth: merged.maxDepth,
             denyList: merged.denyList,
             limit: perUrlPageCap ?? merged.maxPages,
@@ -457,9 +478,96 @@ export class EventScraperService {
                 eventUrls.add(e.url);
               }
             });
+            
+            // Also extract event links directly from HTML (for better coverage)
+            const htmlLinks = this.extractEventLinksFromHTML(html, url);
+            htmlLinks.forEach(link => {
+              if (link) {
+                eventUrls.add(link);
+              }
+            });
           }
           
           console.log(`🔍 Phase 1: Found ${eventUrls.size} event URLs from listing pages`);
+          
+          // Phase 1.5: Follow event URLs to extract full details (even if cross-domain)
+          if (eventUrls.size > 0) {
+            console.log(`🔍 Phase 1.5: Following ${eventUrls.size} event URLs to extract full details...`);
+            const eventUrlsArray = Array.from(eventUrls);
+            const followedEvents: CreateEventData[] = [];
+            
+            // Process event URLs in batches to avoid overwhelming the API
+            const batchSize = 10;
+            for (let i = 0; i < eventUrlsArray.length; i += batchSize) {
+              const batch = eventUrlsArray.slice(i, i + batchSize);
+              console.log(`🔍 Following event URLs batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(eventUrlsArray.length / batchSize)} (${batch.length} URLs)`);
+              
+              const batchPromises = batch.map(async (eventUrl) => {
+                try {
+                  // Rate limiting
+                  await this.enforceRateLimit();
+                  
+                  // Scrape the event detail page
+                  const scrapeResult: any = await this.firecrawl.scrape(eventUrl, {
+                    formats: ['markdown', 'html'],
+                    onlyMainContent: false,
+                    waitFor: 3000,
+                    proxy: 'auto',
+                    timeout: 60000
+                  });
+                  
+                  const markdown: string = (scrapeResult?.markdown) || (scrapeResult?.data?.markdown) || '';
+                  const html: string = (scrapeResult?.html) || (scrapeResult?.data?.html) || '';
+                  
+                  if (!markdown && !html) {
+                    console.warn(`⚠️ No content extracted from event URL: ${eventUrl}`);
+                    return null;
+                  }
+                  
+                  // Extract events from the detail page
+                  const extracted = await this.extractEventsGeneric({ markdown, html }, source.name);
+                  if (extracted.length === 0) {
+                    console.warn(`⚠️ No events extracted from event detail page: ${eventUrl}`);
+                    return null;
+                  }
+                  
+                  // Use the first extracted event (detail pages usually have one event)
+                  const event = extracted[0];
+                  
+                  // Ensure the URL is set to the detail page URL
+                  if (!event.url) {
+                    event.url = eventUrl;
+                  }
+                  
+                  // Clean and transform the event
+                  const cleanedEvent = eventCleaningService.cleanEvent(event, source.name);
+                  const transformedEvent = this.transformScrapedEvent(cleanedEvent, source.name);
+                  
+                  if (transformedEvent) {
+                    console.log(`✅ Extracted full details from event URL: ${eventUrl}`);
+                    return transformedEvent;
+                  }
+                  
+                  return null;
+                } catch (error) {
+                  console.warn(`⚠️ Error following event URL ${eventUrl}:`, error instanceof Error ? error.message : 'Unknown error');
+                  return null;
+                }
+              });
+              
+              const batchResults = await Promise.all(batchPromises);
+              const validEvents = batchResults.filter((e): e is CreateEventData => e !== null);
+              followedEvents.push(...validEvents);
+              
+              // Small delay between batches
+              if (i + batchSize < eventUrlsArray.length) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+              }
+            }
+            
+            console.log(`✅ Phase 1.5: Extracted full details from ${followedEvents.length}/${eventUrls.size} event URLs`);
+            totalEvents.push(...followedEvents);
+          }
           
           // Phase 1: Automatic pagination URL discovery - Use AI if few events found
           const initialEventCount = eventUrls.size;
@@ -487,7 +595,14 @@ export class EventScraperService {
                   
                   if (discoveredPaginationUrls.size > 0) {
                     console.log(`📄 Discovered ${discoveredPaginationUrls.size} new pagination URLs via AI`);
-                    // Note: These URLs would need to be added to a new crawl, which is handled by auto-remediation
+                    // Collect discovered pagination URLs to crawl after initial crawl
+                    for (const pagUrl of discoveredPaginationUrls) {
+                      if (!urlSet.has(pagUrl)) {
+                        discoveredPaginationUrlsToCrawl.push(pagUrl);
+                        urlSet.add(pagUrl);
+                        console.log(`📄 Added pagination URL to crawl queue: ${pagUrl}`);
+                      }
+                    }
                   }
                 } else {
                   console.log(`🤖 AI pagination detection: low confidence (${paginationPattern.confidence.toFixed(2)}) or no URLs found`);
@@ -561,6 +676,87 @@ export class EventScraperService {
           if (pagesProcessed >= lookbackWindow && eventsPerPageHistory.length >= lookbackWindow) {
             const avgEventsPerPage = eventsPerPageHistory.reduce((a, b) => a + b, 0) / eventsPerPageHistory.length;
             if (avgEventsPerPage < minEventsPerPage && pagesProcessed >= 20) break;
+          }
+        }
+        
+        // Phase 3: Crawl discovered pagination URLs
+        if (discoveredPaginationUrlsToCrawl.length > 0) {
+          console.log(`📄 Crawling ${discoveredPaginationUrlsToCrawl.length} discovered pagination URLs...`);
+          for (const pagUrl of discoveredPaginationUrlsToCrawl) {
+            try {
+              console.log(`📄 Crawling pagination URL: ${pagUrl}`);
+              // Build crawl options for pagination URL (use base options with allowList for cross-domain)
+              const pagCrawlOptions: any = {
+                ...baseCrawlOptions,
+                allowList: ['https://*'] // Allow all HTTPS URLs for cross-domain crawling
+              };
+              const pagRes: any = await (this.firecrawl as any).crawl(pagUrl, pagCrawlOptions);
+              const pagPages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> =
+                Array.isArray(pagRes?.data) ? pagRes.data : [];
+              pagesCrawled += pagPages.length;
+              
+              // Extract events from pagination pages
+              for (const page of pagPages) {
+                const markdown = (page as any).markdown || (page as any).content || '';
+                const html = (page as any).html || '';
+                if (!markdown && !html) continue;
+                pagesProcessed++;
+                
+                // Extract event URLs from pagination pages
+                const extracted = await this.extractEventsGeneric({ markdown, html }, source.name);
+                const htmlLinks = this.extractEventLinksFromHTML(html, pagUrl);
+                const eventUrlsFromPage = new Set<string>();
+                extracted.forEach(e => {
+                  if (e.url) eventUrlsFromPage.add(e.url);
+                });
+                htmlLinks.forEach(link => {
+                  if (link) eventUrlsFromPage.add(link);
+                });
+                
+                // Follow event URLs to get full details
+                if (eventUrlsFromPage.size > 0) {
+                  for (const eventUrl of eventUrlsFromPage) {
+                    try {
+                      await this.enforceRateLimit();
+                      const scrapeResult: any = await this.firecrawl.scrape(eventUrl, {
+                        formats: ['markdown', 'html'],
+                        onlyMainContent: false,
+                        waitFor: 3000,
+                        proxy: 'auto',
+                        timeout: 60000
+                      });
+                      
+                      const eventMarkdown: string = (scrapeResult?.markdown) || (scrapeResult?.data?.markdown) || '';
+                      const eventHtml: string = (scrapeResult?.html) || (scrapeResult?.data?.html) || '';
+                      
+                      if (eventMarkdown || eventHtml) {
+                        const eventExtracted = await this.extractEventsGeneric({ markdown: eventMarkdown, html: eventHtml }, source.name);
+                        if (eventExtracted.length > 0) {
+                          const event = eventExtracted[0];
+                          if (!event.url) event.url = eventUrl;
+                          const cleanedEvent = eventCleaningService.cleanEvent(event, source.name);
+                          const transformedEvent = this.transformScrapedEvent(cleanedEvent, source.name);
+                          if (transformedEvent) {
+                            totalEvents.push(transformedEvent);
+                          }
+                        }
+                      }
+                    } catch (error) {
+                      console.warn(`⚠️ Error following event URL ${eventUrl} from pagination page:`, error);
+                    }
+                  }
+                }
+                
+                // Also extract events directly from pagination pages
+                const cleanedEvents = extracted.map(e => eventCleaningService.cleanEvent(e, source.name));
+                const transformedEvents = cleanedEvents
+                  .map(e => this.transformScrapedEvent(e, source.name))
+                  .filter((e): e is CreateEventData => e !== null);
+                totalEvents.push(...transformedEvents);
+              }
+            } catch (error) {
+              console.warn(`⚠️ Error crawling pagination URL ${pagUrl}:`, error);
+            }
           }
         }
 
@@ -1429,12 +1625,21 @@ CRITICAL REMINDERS FOR RETRY:
     
     // Page number clicks (1, 2, 3, etc.) - critical for pagination
     // These are common pagination patterns where clicking page numbers loads more events
-    const pageNumbers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+    // Include both single digits and common pagination patterns
+    const pageNumbers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'];
     const pageNumberClicks = pageNumbers.map(text => ({ 
       type: 'click', 
       target: { text }, 
       delay: 500,  // Longer delay for page navigation
       waitFor: 2000  // Wait for page to load after clicking
+    }));
+    
+    // Also try clicking by role (button) with text matching page numbers
+    const pageNumberButtonClicks = pageNumbers.map(text => ({
+      type: 'click',
+      target: { role: 'button', text },
+      delay: 500,
+      waitFor: 2000
     }));
 
     // Click consent once
@@ -1458,6 +1663,7 @@ CRITICAL REMINDERS FOR RETRY:
       { type: 'scroll', target: 'window', count: 4, delay: 350 },
       // Page number clicks - try clicking page numbers to navigate pagination
       ...pageNumberClicks,
+      ...pageNumberButtonClicks,
       { type: 'scroll', target: 'window', count: 4, delay: 350 },
       ...paginationClicks,
       { type: 'scroll', target: 'window', count: 4, delay: 350 }
@@ -2648,6 +2854,123 @@ Return JSON in this exact format:
         pageNumbers: [],
         confidence: 0
       };
+    }
+  }
+
+  /**
+   * Extract event links directly from HTML
+   * Looks for links within event cards, event listings, and common event link patterns
+   */
+  private extractEventLinksFromHTML(html: string, baseUrl: string): string[] {
+    const links: string[] = [];
+    if (!html) return links;
+    
+    try {
+      // Pattern 1: Links within event cards/items (common class names)
+      const eventCardPatterns = [
+        /<[^>]*class=["'][^"']*event[^"']*["'][^>]*>[\s\S]*?<a[^>]*href=["']([^"']+)["'][^>]*>/gi,
+        /<[^>]*class=["'][^"']*akce[^"']*["'][^>]*>[\s\S]*?<a[^>]*href=["']([^"']+)["'][^>]*>/gi, // Czech: "akce" = event
+        /<article[^>]*>[\s\S]*?<a[^>]*href=["']([^"']+)["'][^>]*>/gi,
+        /<div[^>]*class=["'][^"']*card[^"']*["'][^>]*>[\s\S]*?<a[^>]*href=["']([^"']+)["'][^>]*>/gi,
+      ];
+      
+      for (const pattern of eventCardPatterns) {
+        const matches = [...html.matchAll(pattern)];
+        for (const match of matches) {
+          if (match[1]) {
+            const url = this.normalizeEventLink(match[1], baseUrl);
+            if (url && !links.includes(url)) {
+              links.push(url);
+            }
+          }
+        }
+      }
+      
+      // Pattern 2: Links with event-related text (title, heading, etc.)
+      const eventTextPatterns = [
+        /<a[^>]*href=["']([^"']+)["'][^>]*>[\s\S]*?<h[1-6][^>]*>[\s\S]*?(?:event|akce|workshop|konference|seminář|seminar|meetup|přednáška|prednaska)[\s\S]*?<\/h[1-6]>/gi,
+        /<h[1-6][^>]*>[\s\S]*?<a[^>]*href=["']([^"']+)["'][^>]*>/gi,
+      ];
+      
+      for (const pattern of eventTextPatterns) {
+        const matches = [...html.matchAll(pattern)];
+        for (const match of matches) {
+          if (match[1]) {
+            const url = this.normalizeEventLink(match[1], baseUrl);
+            if (url && !links.includes(url)) {
+              links.push(url);
+            }
+          }
+        }
+      }
+      
+      // Pattern 3: Links that look like event detail pages (common URL patterns)
+      const eventUrlPatterns = [
+        /<a[^>]*href=["']([^"']*\/(?:event|akce|detail|detail-akce|event-detail|workshop|konference)[^"']*)["'][^>]*>/gi,
+        /<a[^>]*href=["']([^"']*\/(?:cz|en)\/akce\/[^"']+)["'][^>]*>/gi, // JIC.cz pattern: /cz/akce/...
+      ];
+      
+      for (const pattern of eventUrlPatterns) {
+        const matches = [...html.matchAll(pattern)];
+        for (const match of matches) {
+          if (match[1]) {
+            const url = this.normalizeEventLink(match[1], baseUrl);
+            if (url && !links.includes(url)) {
+              links.push(url);
+            }
+          }
+        }
+      }
+      
+      // Filter out pagination links, navigation links, and other non-event links
+      return links.filter(link => {
+        const lowerLink = link.toLowerCase();
+        // Exclude pagination, navigation, and common non-event paths
+        return !lowerLink.includes('/page/') &&
+               !lowerLink.includes('?page=') &&
+               !lowerLink.includes('/pagination/') &&
+               !lowerLink.includes('/nav/') &&
+               !lowerLink.includes('/menu/') &&
+               !lowerLink.includes('/header/') &&
+               !lowerLink.includes('/footer/') &&
+               !lowerLink.includes('/about/') &&
+               !lowerLink.includes('/contact/') &&
+               !lowerLink.includes('/privacy/') &&
+               !lowerLink.includes('/terms/') &&
+               !lowerLink.includes('/cookie/') &&
+               !lowerLink.includes('/gdpr/') &&
+               !lowerLink.includes('#') &&
+               link.length > 5; // Filter out very short links
+      });
+    } catch (error) {
+      console.warn('⚠️ Error extracting event links from HTML:', error);
+      return links;
+    }
+  }
+  
+  /**
+   * Normalize event link URL (handle relative URLs, make absolute)
+   */
+  private normalizeEventLink(url: string, baseUrl: string): string | null {
+    if (!url) return null;
+    
+    try {
+      // Remove fragments
+      const urlWithoutFragment = url.split('#')[0];
+      if (!urlWithoutFragment) return null;
+      
+      // If already absolute, return as is
+      if (/^https?:\/\//i.test(urlWithoutFragment)) {
+        return urlWithoutFragment;
+      }
+      
+      // Make relative URL absolute
+      const base = new URL(baseUrl);
+      const absoluteUrl = new URL(urlWithoutFragment, base.origin);
+      return absoluteUrl.toString();
+    } catch (error) {
+      console.warn(`⚠️ Error normalizing event link "${url}":`, error);
+      return null;
     }
   }
 
