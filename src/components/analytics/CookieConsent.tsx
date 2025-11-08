@@ -1,0 +1,147 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+
+interface ConsentRecord {
+  status: 'granted' | 'denied';
+  timestamp: string;
+  version: string;
+}
+
+const CONSENT_VERSION = '1.0';
+
+export function CookieConsentBanner() {
+  const [show, setShow] = useState(false);
+  const declineButtonRef = useRef<HTMLButtonElement>(null);
+  const acceptButtonRef = useRef<HTMLButtonElement>(null);
+
+  const updateConsentMode = useCallback((value: 'granted' | 'denied') => {
+    if (typeof window === 'undefined') return;
+    
+    // Ensure dataLayer exists
+    if (!window.dataLayer) {
+      window.dataLayer = [];
+    }
+    
+    // Update Google Consent Mode v2 using gtag
+    if (window.gtag) {
+      window.gtag('consent', 'update', {
+        analytics_storage: value,
+        ad_storage: value
+      });
+    }
+    
+    // Push event to dataLayer for GTM tracking (both granted and denied)
+    if (window.dataLayer) {
+      window.dataLayer.push({
+        event: value === 'granted' ? 'cookie_consent_granted' : 'cookie_consent_denied',
+        consent_status: value,
+        consent_timestamp: new Date().toISOString()
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    // Check if user has already made a choice
+    const consentStr = localStorage.getItem('cookieConsent');
+    
+    if (!consentStr) {
+      setShow(true);
+      // Focus management for accessibility
+      setTimeout(() => {
+        declineButtonRef.current?.focus();
+      }, 100);
+    } else {
+      // Parse stored consent record
+      try {
+        const consent: ConsentRecord = JSON.parse(consentStr);
+        if (consent.status === 'granted') {
+          updateConsentMode('granted');
+        }
+      } catch {
+        // Fallback for old format
+        if (consentStr === 'granted') {
+          updateConsentMode('granted');
+        }
+      }
+    }
+  }, [updateConsentMode]);
+
+  const saveConsent = (status: 'granted' | 'denied') => {
+    const consentRecord: ConsentRecord = {
+      status,
+      timestamp: new Date().toISOString(),
+      version: CONSENT_VERSION
+    };
+    localStorage.setItem('cookieConsent', JSON.stringify(consentRecord));
+    updateConsentMode(status);
+    setShow(false);
+  };
+
+  const handleAccept = () => {
+    saveConsent('granted');
+  };
+
+  const handleDecline = () => {
+    saveConsent('denied');
+  };
+
+  // Keyboard navigation handler
+  const handleKeyDown = (e: React.KeyboardEvent, action: () => void) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      action();
+    }
+  };
+
+  if (!show) return null;
+
+  return (
+    <div 
+      className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-sm text-white p-4 md:p-6 z-50 border-t border-white/10 shadow-lg"
+      role="dialog"
+      aria-live="polite"
+      aria-label="Cookie consent banner"
+      aria-modal="true"
+    >
+      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex-1">
+          <p className="text-sm md:text-base">
+            We use cookies to analyze site usage and improve your experience.{' '}
+            <a 
+              href="/privacy-policy" 
+              className="underline hover:text-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black rounded"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Learn more
+            </a>
+          </p>
+        </div>
+        <div className="flex gap-3 shrink-0 w-full sm:w-auto">
+          <Button 
+            ref={declineButtonRef}
+            variant="outline" 
+            onClick={handleDecline}
+            onKeyDown={(e) => handleKeyDown(e, handleDecline)}
+            className="flex-1 sm:flex-none bg-transparent border-white/20 hover:bg-white/10 text-white hover:text-white focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black"
+            aria-label="Decline cookies"
+          >
+            Decline
+          </Button>
+          <Button 
+            ref={acceptButtonRef}
+            onClick={handleAccept}
+            onKeyDown={(e) => handleKeyDown(e, handleAccept)}
+            className="flex-1 sm:flex-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black"
+            aria-label="Accept cookies"
+          >
+            Accept
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

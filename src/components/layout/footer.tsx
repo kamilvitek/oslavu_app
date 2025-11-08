@@ -1,7 +1,13 @@
+'use client';
+
 import { Calendar, Mail, Twitter, Linkedin, Instagram } from "lucide-react";
 import Link from "next/link";
 
 export function Footer() {
+  const handleCookieSettings = () => {
+    localStorage.removeItem('cookieConsent');
+    window.location.reload();
+  };
   return (
     <footer className="bg-gray-50 border-t">
       <div className="container mx-auto px-4 py-12">
@@ -30,6 +36,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link href="https://kamilvitek.cz/kdo-jsem" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Who's behind Oslavu</Link></li>
               <li><Link href="https://kamilvitek.cz/kontakt" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Contact</Link></li>
+              <li><Link href="/privacy-policy" className="hover:text-primary">Privacy Policy</Link></li>
               {/* <li><Link href="#careers" className="hover:text-primary">Careers</Link></li> */}
             </ul>
           </div>
@@ -50,8 +57,14 @@ export function Footer() {
           </div>
         </div>
         
-        <div className="border-t mt-8 pt-8 text-center text-sm text-muted-foreground">
+        <div className="border-t mt-8 pt-8 text-center text-sm text-muted-foreground space-y-2">
           <p>Proudly vibecoded by <Link href="https://kamilvitek.cz" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Kamil Vitek</Link>.</p>
+          <button
+            onClick={handleCookieSettings}
+            className="text-sm text-muted-foreground hover:text-primary underline transition-colors"
+          >
+            Cookie Settings
+          </button>
         </div>
       </div>
     </footer>

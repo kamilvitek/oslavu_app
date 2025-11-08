@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Toaster } from "@/components/ui/toaster";
+import { GTM } from "@/components/analytics/GTM";
+import { CookieConsentBanner } from "@/components/analytics/CookieConsent";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -30,12 +32,16 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID || '';
+
   return (
     <html lang="en">
       <body className={inter.className}>
+        {GTM_ID && <GTM gtmId={GTM_ID} />}
         <QueryProvider>
           {children}
           <Toaster />
+          <CookieConsentBanner />
         </QueryProvider>
       </body>
     </html>
