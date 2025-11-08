@@ -219,20 +219,37 @@ export class EventScraperService {
         
         // Allow any HTTPS URL to enable cross-domain crawling
         // This makes the solution scalable for any startUrl without hardcoding domains
-        // Firecrawl's allowList supports patterns - we'll add a wildcard for HTTPS URLs
-        // If allowList is empty or only contains path patterns, add wildcard for external domains
-        const hasFullUrlPattern = merged.allowList?.some(pattern => 
-          pattern.startsWith('https://') || pattern.startsWith('http://')
+        // IMPORTANT: Only HTTPS (with 's') is allowed, HTTP (without 's') is explicitly blocked
+        // Firecrawl's allowList supports patterns - we'll add a wildcard for HTTPS URLs only
+        
+        // Filter out any HTTP (non-secure) patterns from allowList
+        if (merged.allowList) {
+          merged.allowList = merged.allowList.filter(pattern => 
+            !pattern.startsWith('http://') && pattern !== 'http://*'
+          );
+        }
+        
+        // Ensure HTTP URLs are explicitly denied
+        if (!merged.denyList) {
+          merged.denyList = [];
+        }
+        if (!merged.denyList.includes('http://*')) {
+          merged.denyList.push('http://*');
+        }
+        
+        // Check if allowList has HTTPS URL patterns (not HTTP)
+        const hasHttpsUrlPattern = merged.allowList?.some(pattern => 
+          pattern.startsWith('https://')
         );
         
         if (!merged.allowList || merged.allowList.length === 0) {
-          // No restrictions - allow all HTTPS URLs
+          // No restrictions - allow all HTTPS URLs only
           merged.allowList = ['https://*'];
-        } else if (!hasFullUrlPattern) {
-          // Has path patterns but no full URL patterns - add wildcard to allow external domains
+        } else if (!hasHttpsUrlPattern) {
+          // Has path patterns but no HTTPS URL patterns - add wildcard to allow external HTTPS domains
           merged.allowList.push('https://*');
         }
-        // If it already has full URL patterns, keep them as-is
+        // If it already has HTTPS URL patterns, keep them as-is
 
         // Crawl each start URL individually (SDK expects a single string `url`)
         const startUrls = (merged.startUrls || []).filter(u => typeof u === 'string' && u.trim().length > 0);
@@ -286,18 +303,25 @@ export class EventScraperService {
           };
           
           // Handle allowList for cross-domain crawling
-          // If allowList contains 'https://*', omit allowList to allow all domains
-          // Otherwise, use the configured allowList
+          // IMPORTANT: Only HTTPS URLs are allowed, HTTP URLs are explicitly denied
+          // If allowList contains 'https://*', omit allowList to allow all HTTPS domains
+          // Otherwise, use the configured allowList patterns
           if (merged.allowList && merged.allowList.length > 0) {
             const hasWildcard = merged.allowList.some(p => p === 'https://*');
             if (hasWildcard) {
-              // Don't set allowList - this allows Firecrawl to crawl any domain
+              // Don't set allowList - this allows Firecrawl to crawl any HTTPS domain
               // Firecrawl by default allows all domains if allowList is not specified
-              console.log(`🌐 Allowing all HTTPS URLs for cross-domain crawling`);
+              // HTTP URLs are already blocked via denyList
+              console.log(`🌐 Allowing all HTTPS URLs (only) for cross-domain crawling`);
             } else {
-              // Use the configured allowList patterns
+              // Use the configured allowList patterns (already filtered to HTTPS only)
               crawlOptions.allowList = merged.allowList;
             }
+          }
+          
+          // Ensure denyList includes HTTP URLs to explicitly block non-secure connections
+          if (merged.denyList && merged.denyList.length > 0) {
+            crawlOptions.denyList = merged.denyList;
           }
           
           const res: any = await (this.firecrawl as any).crawl(url, crawlOptions);
