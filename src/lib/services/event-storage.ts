@@ -253,14 +253,19 @@ export class EventStorageService {
     
     // Only update end_date if it's explicitly provided (not undefined)
     // undefined means "no change", null means "clear the value"
+    // Empty strings are invalid and should be rejected
     if (newEvent.end_date !== undefined) {
       // Normalize both end_date values for comparison
       const normalizedNewEndDate = this.normalizeDateForComparison(newEvent.end_date);
       const normalizedExistingEndDate = this.normalizeDateForComparison(existingEvent.end_date);
       
       if (normalizedNewEndDate !== normalizedExistingEndDate) {
-        if (!newEvent.end_date) {
+        // Explicitly check for null to clear the value
+        if (newEvent.end_date === null) {
           updateData.end_date = null;
+        } else if (newEvent.end_date === '') {
+          // Empty strings are invalid - reject them
+          throw new Error(`Invalid end_date: empty string is not allowed. Use null to clear the value or provide a valid date.`);
         } else if (newEvent.end_date.includes('T')) {
           // Already a timestamp, validate it
           const endDateObj = new Date(newEvent.end_date);

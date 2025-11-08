@@ -1465,26 +1465,119 @@ CRITICAL REMINDERS FOR RETRY:
   }
 
   /**
-   * Regex-assisted minimal extraction when LLM returns nothing. Best-effort.
+   * Enhanced regex-assisted fallback extraction when GPT fails
+   * Extracts events from HTML tables, lists, and structured text
    */
   private regexAssistExtract(text: string): ScrapedEvent[] {
-    const lines = text.split(/\r?\n/);
     const events: ScrapedEvent[] = [];
-    const dateRe = /(\b\d{1,2}[\.\/]\d{1,2}[\.\/]\d{4}\b)|\b(\d{4}-\d{2}-\d{2})\b/;
-    for (let i = 0; i < lines.length; i++) {
-      const m = lines[i].match(dateRe);
+    
+    // Method 1: Extract from HTML tables (common in event listings)
+    const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+    let tableMatch;
+    while ((tableMatch = tableRegex.exec(text)) !== null && events.length < 50) {
+      const tableContent = tableMatch[1];
+      const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+      let rowMatch;
+      while ((rowMatch = rowRegex.exec(tableContent)) !== null && events.length < 50) {
+        const rowContent = rowMatch[1];
+        // Extract text from cells
+        const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+        const cells: string[] = [];
+        let cellMatch;
+        while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
+          const cellText = cellMatch[1]
+            .replace(/<[^>]+>/g, ' ') // Remove HTML tags
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (cellText) cells.push(cellText);
+        }
+        if (cells.length >= 2) {
+          // Look for date in cells
+          const dateRe = /(\b\d{1,2}[\.\/]\d{1,2}[\.\/]\d{4}\b)|(\b\d{4}-\d{2}-\d{2}\b)|(\d{1,2}\.\s*(leden|únor|březen|duben|květen|červen|červenec|srpen|září|říjen|listopad|prosinec))/i;
+          let dateIndex = -1;
+          let titleIndex = -1;
+          for (let i = 0; i < cells.length; i++) {
+            if (dateRe.test(cells[i])) {
+              dateIndex = i;
+              // Title is usually before or after date
+              if (i > 0 && cells[i - 1].length > 5) titleIndex = i - 1;
+              else if (i < cells.length - 1 && cells[i + 1].length > 5) titleIndex = i + 1;
+              break;
+            }
+          }
+          if (dateIndex >= 0 && titleIndex >= 0) {
+            const rawDate = cells[dateIndex].match(dateRe)?.[0] || '';
+            const title = cells[titleIndex];
+            if (title && rawDate) {
+              events.push({ title, description: '', date: rawDate, city: '', url: undefined });
+            }
+          }
+        }
+      }
+    }
+    
+    // Method 2: Extract from HTML lists (ul/ol)
+    const listRegex = /<[uo]l[^>]*>([\s\S]*?)<\/[uo]l>/gi;
+    let listMatch;
+    while ((listMatch = listRegex.exec(text)) !== null && events.length < 50) {
+      const listContent = listMatch[1];
+      const itemRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+      let itemMatch;
+      while ((itemMatch = itemRegex.exec(listContent)) !== null && events.length < 50) {
+        const itemText = itemMatch[1]
+          .replace(/<[^>]+>/g, ' ') // Remove HTML tags
+          .replace(/\s+/g, ' ')
+          .trim();
+        const dateRe = /(\b\d{1,2}[\.\/]\d{1,2}[\.\/]\d{4}\b)|(\b\d{4}-\d{2}-\d{2}\b)|(\d{1,2}\.\s*(leden|únor|březen|duben|květen|červen|červenec|srpen|září|říjen|listopad|prosinec))/i;
+        const dateMatch = itemText.match(dateRe);
+        if (dateMatch) {
+          const rawDate = dateMatch[0];
+          // Extract title (text before or after date)
+          const parts = itemText.split(dateMatch[0]);
+          const title = (parts[0] || parts[1] || '').trim();
+          if (title && title.length > 3) {
+            events.push({ title, description: '', date: rawDate, city: '', url: undefined });
+          }
+        }
+      }
+    }
+    
+    // Method 3: Extract from structured text lines (original method, enhanced)
+    const lines = text.split(/\r?\n/);
+    const dateRe = /(\b\d{1,2}[\.\/]\d{1,2}[\.\/]\d{4}\b)|(\b\d{4}-\d{2}-\d{2}\b)|(\d{1,2}\.\s*(leden|únor|březen|duben|květen|červen|červenec|srpen|září|říjen|listopad|prosinec))/i;
+    for (let i = 0; i < lines.length && events.length < 50; i++) {
+      const line = lines[i].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const m = line.match(dateRe);
       if (!m) continue;
+      
       // Take nearby non-empty line as title
       let title = '';
-      for (let j = Math.max(0, i - 2); j <= Math.min(lines.length - 1, i + 2); j++) {
-        const t = lines[j].trim();
-        if (t && !dateRe.test(t) && t.length >= 3) { title = t; break; }
+      for (let j = Math.max(0, i - 3); j <= Math.min(lines.length - 1, i + 3); j++) {
+        const t = lines[j].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (t && !dateRe.test(t) && t.length >= 3 && t !== line) { 
+          title = t; 
+          break; 
+        }
       }
-      if (!title) continue;
-      const rawDate = (m[0] || '').trim();
-      events.push({ title, description: '', date: rawDate, city: '', url: undefined });
-      if (events.length >= 20) break;
+      
+      // If no title found nearby, try extracting from the same line
+      if (!title) {
+        const parts = line.split(m[0]);
+        title = (parts[0] || parts[1] || '').trim();
+      }
+      
+      if (!title || title.length < 3) continue;
+      
+      const rawDate = m[0].trim();
+      // Check if we already have this event (avoid duplicates)
+      const isDuplicate = events.some(e => 
+        e.title.toLowerCase() === title.toLowerCase() && e.date === rawDate
+      );
+      if (!isDuplicate) {
+        events.push({ title, description: '', date: rawDate, city: '', url: undefined });
+      }
     }
+    
     return events;
   }
 
@@ -1838,15 +1931,48 @@ CRITICAL REMINDERS FOR RETRY:
   /**
    * Parse various common date formats to ISO YYYY-MM-DD
    * Supports: ISO, dd.mm.yyyy, d.m.yyyy, dd/mm/yyyy, d/m/yyyy, yyyy.mm.dd, yyyy/mm/dd
+   * Also handles: dates without year, relative dates, dates with time, Czech month names
    */
   private parseDateFlexible(input: string): string | null {
     const trimmed = (input || '').toString().trim();
     if (!trimmed) return null;
 
-    // Already ISO date
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    // Remove time component if present (e.g., "4.12.2024 19:00" -> "4.12.2024")
+    const withoutTime = trimmed.replace(/\s+\d{1,2}:\d{2}(?::\d{2})?\s*$/i, '').trim();
+    const workingInput = withoutTime;
 
-    // Czech month names (short and full)
+    // Already ISO date
+    if (/^\d{4}-\d{2}-\d{2}$/.test(workingInput)) return workingInput;
+
+    // Handle relative dates
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const currentDay = now.getDate();
+    
+    const lowerInput = workingInput.toLowerCase();
+    if (lowerInput.includes('zítra') || lowerInput.includes('tomorrow')) {
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return tomorrow.toISOString().split('T')[0];
+    }
+    if (lowerInput.includes('pozítří') || lowerInput.includes('day after tomorrow')) {
+      const dayAfter = new Date(now);
+      dayAfter.setDate(dayAfter.getDate() + 2);
+      return dayAfter.toISOString().split('T')[0];
+    }
+    if (lowerInput.includes('příští týden') || lowerInput.includes('next week')) {
+      const nextWeek = new Date(now);
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      return nextWeek.toISOString().split('T')[0];
+    }
+    if (lowerInput.includes('příští měsíc') || lowerInput.includes('next month')) {
+      const nextMonth = new Date(now);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      return nextMonth.toISOString().split('T')[0];
+    }
+
+    // Czech month names (short and full, with and without accents)
     const czMonths: Record<string, string> = {
       'led': '01', 'leden': '01',
       'úno': '02', 'únor': '02', 'unor': '02',
@@ -1861,17 +1987,60 @@ CRITICAL REMINDERS FOR RETRY:
       'lis': '11', 'listopad': '11',
       'pro': '12', 'prosinec': '12'
     };
-    const czMonthRegex = new RegExp(`^\\s*(\\d{1,2})\\.?(?:\\s*)(` + Object.keys(czMonths).join('|') + `)(?:\\s*)(\\d{4})\\s*$`, 'i');
-    let mcz = trimmed.match(czMonthRegex);
+    
+    // Match Czech month names with year: "4. prosince 2024" or "4. prosince" (without year)
+    const czMonthRegexWithYear = new RegExp(`^\\s*(\\d{1,2})\\.?\\s+(` + Object.keys(czMonths).join('|') + `)\\s+(\\d{4})\\s*$`, 'i');
+    let mcz = workingInput.match(czMonthRegexWithYear);
     if (mcz) {
       const day = mcz[1].padStart(2, '0');
       const mon = czMonths[mcz[2].toLowerCase()];
       const year = mcz[3];
-      return `${year}-${mon}-${day}`;
+      const dateString = `${year}-${mon}-${day}`;
+      // Validate date
+      const dateObj = new Date(dateString + 'T00:00:00Z');
+      if (!isNaN(dateObj.getTime()) && 
+          dateObj.getUTCFullYear() === parseInt(year, 10) && 
+          dateObj.getUTCMonth() + 1 === parseInt(mon, 10) && 
+          dateObj.getUTCDate() === parseInt(day, 10)) {
+        return dateString;
+      }
+    }
+    
+    // Match Czech month names without year: "4. prosince" -> assume current or next year
+    const czMonthRegexNoYear = new RegExp(`^\\s*(\\d{1,2})\\.?\\s+(` + Object.keys(czMonths).join('|') + `)\\s*$`, 'i');
+    mcz = workingInput.match(czMonthRegexNoYear);
+    if (mcz) {
+      const day = parseInt(mcz[1], 10);
+      const mon = czMonths[mcz[2].toLowerCase()];
+      const monthNum = parseInt(mon, 10);
+      
+      // Try current year first
+      let year = currentYear;
+      let dateString = `${year}-${mon}-${mcz[1].padStart(2, '0')}`;
+      let dateObj = new Date(dateString + 'T00:00:00Z');
+      
+      // If date has passed this year, try next year
+      if (isNaN(dateObj.getTime()) || 
+          dateObj.getUTCFullYear() !== year || 
+          dateObj.getUTCMonth() + 1 !== monthNum || 
+          dateObj.getUTCDate() !== day ||
+          (monthNum < currentMonth || (monthNum === currentMonth && day < currentDay))) {
+        year = currentYear + 1;
+        dateString = `${year}-${mon}-${mcz[1].padStart(2, '0')}`;
+        dateObj = new Date(dateString + 'T00:00:00Z');
+      }
+      
+      // Validate date
+      if (!isNaN(dateObj.getTime()) && 
+          dateObj.getUTCFullYear() === year && 
+          dateObj.getUTCMonth() + 1 === monthNum && 
+          dateObj.getUTCDate() === day) {
+        return dateString;
+      }
     }
 
     // dd.mm.yyyy or d.m.yyyy
-    let m = trimmed.match(/^(\d{1,2})[\.](\d{1,2})[\.](\d{4})$/);
+    let m = workingInput.match(/^(\d{1,2})[\.](\d{1,2})[\.](\d{4})$/);
     if (m) {
       const [_, d, mo, y] = m;
       const monthNum = parseInt(mo, 10);
@@ -1888,8 +2057,8 @@ CRITICAL REMINDERS FOR RETRY:
       const dateString = `${y}-${month}-${day}`;
       
       // Comprehensive validation: check if the date actually exists (e.g., not Feb 30)
-      // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
-      const dateObj = new Date(dateString + 'T00:00:00');
+      // Use UTC methods to avoid timezone issues: 'T00:00:00Z' is interpreted as UTC
+      const dateObj = new Date(dateString + 'T00:00:00Z');
       if (isNaN(dateObj.getTime())) {
         return null; // Invalid date
       }
@@ -1904,9 +2073,46 @@ CRITICAL REMINDERS FOR RETRY:
       
       return dateString;
     }
+    
+    // dd.mm or d.m (without year) - assume current or next year
+    m = workingInput.match(/^(\d{1,2})[\.](\d{1,2})$/);
+    if (m) {
+      const [_, d, mo] = m;
+      const monthNum = parseInt(mo, 10);
+      const dayNum = parseInt(d, 10);
+      
+      // Validate month (1-12) and day (1-31) ranges
+      if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+        return null; // Invalid date values
+      }
+      
+      // Try current year first
+      let year = currentYear;
+      let dateString = `${year}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      let dateObj = new Date(dateString + 'T00:00:00Z');
+      
+      // If date has passed this year, try next year
+      if (isNaN(dateObj.getTime()) || 
+          dateObj.getUTCFullYear() !== year || 
+          dateObj.getUTCMonth() + 1 !== monthNum || 
+          dateObj.getUTCDate() !== dayNum ||
+          (monthNum < currentMonth || (monthNum === currentMonth && dayNum < currentDay))) {
+        year = currentYear + 1;
+        dateString = `${year}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        dateObj = new Date(dateString + 'T00:00:00Z');
+      }
+      
+      // Validate date
+      if (!isNaN(dateObj.getTime()) && 
+          dateObj.getUTCFullYear() === year && 
+          dateObj.getUTCMonth() + 1 === monthNum && 
+          dateObj.getUTCDate() === dayNum) {
+        return dateString;
+      }
+    }
 
     // dd/mm/yyyy or d/m/yyyy
-    m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    m = workingInput.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) {
       const [_, d, mo, y] = m;
       const monthNum = parseInt(mo, 10);
@@ -1923,8 +2129,8 @@ CRITICAL REMINDERS FOR RETRY:
       const dateString = `${y}-${month}-${day}`;
       
       // Comprehensive validation: check if the date actually exists (e.g., not Feb 30)
-      // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
-      const dateObj = new Date(dateString + 'T00:00:00');
+      // Use UTC methods to avoid timezone issues: 'T00:00:00Z' is interpreted as UTC
+      const dateObj = new Date(dateString + 'T00:00:00Z');
       if (isNaN(dateObj.getTime())) {
         return null; // Invalid date
       }
@@ -1938,11 +2144,48 @@ CRITICAL REMINDERS FOR RETRY:
       }
       
       return dateString;
+    }
+    
+    // dd/mm or d/m (without year) - assume current or next year
+    m = workingInput.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (m) {
+      const [_, d, mo] = m;
+      const monthNum = parseInt(mo, 10);
+      const dayNum = parseInt(d, 10);
+      
+      // Validate month (1-12) and day (1-31) ranges
+      if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+        return null; // Invalid date values
+      }
+      
+      // Try current year first
+      let year = currentYear;
+      let dateString = `${year}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      let dateObj = new Date(dateString + 'T00:00:00Z');
+      
+      // If date has passed this year, try next year
+      if (isNaN(dateObj.getTime()) || 
+          dateObj.getUTCFullYear() !== year || 
+          dateObj.getUTCMonth() + 1 !== monthNum || 
+          dateObj.getUTCDate() !== dayNum ||
+          (monthNum < currentMonth || (monthNum === currentMonth && dayNum < currentDay))) {
+        year = currentYear + 1;
+        dateString = `${year}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        dateObj = new Date(dateString + 'T00:00:00Z');
+      }
+      
+      // Validate date
+      if (!isNaN(dateObj.getTime()) && 
+          dateObj.getUTCFullYear() === year && 
+          dateObj.getUTCMonth() + 1 === monthNum && 
+          dateObj.getUTCDate() === dayNum) {
+        return dateString;
+      }
     }
 
     // yyyy.mm.dd or yyyy/mm/dd (REQUIRES separators to avoid false matches)
     // Match only if separators are present to prevent matching strings like "202609"
-    m = trimmed.match(/^(\d{4})[\.\/](\d{1,2})[\.\/](\d{1,2})$/);
+    m = workingInput.match(/^(\d{4})[\.\/](\d{1,2})[\.\/](\d{1,2})$/);
     if (m) {
       const [_, y, mo, d] = m as any;
       const monthNum = parseInt(mo, 10);
@@ -1959,8 +2202,8 @@ CRITICAL REMINDERS FOR RETRY:
       const dateString = `${y}-${month}-${day}`;
       
       // Comprehensive validation: check if the date actually exists (e.g., not Feb 30)
-      // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
-      const dateObj = new Date(dateString + 'T00:00:00');
+      // Use UTC methods to avoid timezone issues: 'T00:00:00Z' is interpreted as UTC
+      const dateObj = new Date(dateString + 'T00:00:00Z');
       if (isNaN(dateObj.getTime())) {
         return null; // Invalid date
       }
@@ -1977,9 +2220,14 @@ CRITICAL REMINDERS FOR RETRY:
     }
 
     // Fallback to Date parser if it produces a valid ISO date
-    const parsed = new Date(trimmed);
+    const parsed = new Date(workingInput);
     if (!isNaN(parsed.getTime())) {
-      return parsed.toISOString().split('T')[0];
+      const isoDate = parsed.toISOString().split('T')[0];
+      // Validate that the parsed date makes sense (not too far in past/future)
+      const parsedYear = parsed.getFullYear();
+      if (parsedYear >= currentYear - 1 && parsedYear <= currentYear + 2) {
+        return isoDate;
+      }
     }
 
     return null;
