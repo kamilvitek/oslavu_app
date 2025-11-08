@@ -99,46 +99,48 @@ export function CookieConsentBanner() {
 
   return (
     <div 
-      className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-sm text-white p-4 md:p-6 z-50 border-t border-white/10 shadow-lg"
+      className="fixed bottom-0 left-0 right-0 z-50 p-4 md:p-6 animate-fade-in-up"
       role="dialog"
       aria-live="polite"
       aria-label="Cookie consent banner"
       aria-modal="true"
     >
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex-1">
-          <p className="text-sm md:text-base">
-            We use cookies to analyze site usage and improve your experience.{' '}
-            <a 
-              href="/privacy-policy" 
-              className="underline hover:text-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black rounded"
-              target="_blank"
-              rel="noopener noreferrer"
+      <div className="max-w-7xl mx-auto glass-effect-subtle border rounded-xl shadow-lg p-4 md:p-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex-1">
+            <p className="text-sm md:text-base text-foreground">
+              We use cookies to analyze site usage and improve your experience.{' '}
+              <a 
+                href="/privacy-policy" 
+                className="text-primary underline hover:text-primary/80 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Learn more
+              </a>
+            </p>
+          </div>
+          <div className="flex gap-3 shrink-0 w-full sm:w-auto">
+            <Button 
+              ref={declineButtonRef}
+              variant="outline" 
+              onClick={handleDecline}
+              onKeyDown={(e) => handleKeyDown(e, handleDecline)}
+              className="flex-1 sm:flex-none"
+              aria-label="Decline cookies"
             >
-              Learn more
-            </a>
-          </p>
-        </div>
-        <div className="flex gap-3 shrink-0 w-full sm:w-auto">
-          <Button 
-            ref={declineButtonRef}
-            variant="outline" 
-            onClick={handleDecline}
-            onKeyDown={(e) => handleKeyDown(e, handleDecline)}
-            className="flex-1 sm:flex-none bg-transparent border-white/20 hover:bg-white/10 text-white hover:text-white focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black"
-            aria-label="Decline cookies"
-          >
-            Decline
-          </Button>
-          <Button 
-            ref={acceptButtonRef}
-            onClick={handleAccept}
-            onKeyDown={(e) => handleKeyDown(e, handleAccept)}
-            className="flex-1 sm:flex-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black"
-            aria-label="Accept cookies"
-          >
-            Accept
-          </Button>
+              Decline
+            </Button>
+            <Button 
+              ref={acceptButtonRef}
+              onClick={handleAccept}
+              onKeyDown={(e) => handleKeyDown(e, handleAccept)}
+              className="flex-1 sm:flex-none"
+              aria-label="Accept cookies"
+            >
+              Accept
+            </Button>
+          </div>
         </div>
       </div>
     </div>
