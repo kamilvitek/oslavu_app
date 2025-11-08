@@ -360,6 +360,12 @@ export class EventScraperService {
               dataLength: Array.isArray(res?.data) ? res.data.length : 'N/A',
               keys: res ? Object.keys(res) : []
             }, null, 2));
+          } else {
+            // Log page URLs to help diagnose if events are on different pages
+            console.log(`📄 Pages crawled (first 10): ${pages.slice(0, 10).map(p => p.url).join(', ')}`);
+            if (pages.length > 10) {
+              console.log(`📄 ... and ${pages.length - 10} more pages`);
+            }
           }
 
           // Two-phase extraction: First pass - extract event URLs from listing pages
@@ -396,6 +402,13 @@ export class EventScraperService {
             pagesProcessed++;
             const events = await this.extractEventsGeneric({ markdown, html }, source.name);
             console.log(`🔍 Extracted ${events.length} raw events from page: ${page.url}`);
+            
+            // Log content length to help diagnose extraction issues
+            const contentLength = (markdown || html || '').length;
+            if (events.length === 0 && contentLength > 1000) {
+              console.warn(`⚠️ No events extracted from page with ${contentLength.toLocaleString()} characters: ${page.url}`);
+              console.warn(`⚠️ Content preview (first 500 chars): ${(markdown || html || '').substring(0, 500)}...`);
+            }
             
             // Clean events before transformation
             const cleanedEvents = events.map(e => eventCleaningService.cleanEvent(e, source.name));
@@ -646,7 +659,12 @@ export class EventScraperService {
 ${isCzechSource ? 'LANGUAGE NOTE: This content is in Czech. Translate all titles and descriptions to English, but preserve Czech city names (Praha, Brno, Ostrava, Plzeň, etc.).' : ''}
 
 EXTRACTION REQUIREMENTS:
-1. Extract EVERY event that appears in the content (completeness is critical)
+1. Extract EVERY event that appears in the content (completeness is CRITICAL - do not skip any events)
+   - Scan the entire content systematically
+   - Look for event listings, cards, tables, lists, and any structured event data
+   - Extract events even if some fields are missing (we can infer them later)
+   - If you see "15 events" mentioned, extract all 15, not just a few
+   - Count events as you extract to ensure completeness
 2. Only include events with dates on or after ${currentDate} (skip past events)
 3. Parse dates carefully - handle formats like:
    - "4. prosince" / "4.12." → 2024-12-04
@@ -744,21 +762,39 @@ CONTENT TO EXTRACT FROM:
 ${(() => {
         // Truncate content if extremely long to avoid token limits
         // GPT-4o models have 128k input tokens (~512k characters)
-        // We keep 400k chars (~100k tokens) for content, leaving room for prompt and output
-        const maxContentLength = 400000;
+        // We keep 450k chars (~112k tokens) for content, leaving room for prompt and output
+        const maxContentLength = 450000;
         if (content.length > maxContentLength) {
-          // Try to keep the beginning (often has event listings) and a sample from middle
-          const firstHalf = content.substring(0, maxContentLength * 0.6);
-          const middleStart = Math.floor(content.length * 0.4);
-          const middleEnd = Math.min(middleStart + maxContentLength * 0.4, content.length);
-          const middleSection = content.substring(middleStart, middleEnd);
-          return `${firstHalf}\n\n[... middle section ...]\n\n${middleSection}\n\n[Content truncated from ${content.length.toLocaleString()} to ${(firstHalf.length + middleSection.length).toLocaleString()} characters - focus on events in visible portions]`;
+          // Improved truncation strategy: prioritize event-rich sections
+          // 1. Keep the beginning (often has event listings/table of contents)
+          // 2. Keep the end (often has more events or pagination)
+          // 3. Sample from middle sections
+          const beginningPortion = Math.floor(maxContentLength * 0.4); // 40% for beginning
+          const endPortion = Math.floor(maxContentLength * 0.3); // 30% for end
+          const middlePortion = maxContentLength - beginningPortion - endPortion; // 30% for middle
+          
+          const firstSection = content.substring(0, beginningPortion);
+          const lastSection = content.substring(Math.max(0, content.length - endPortion));
+          
+          // Sample from middle: take chunks from different parts of the middle section
+          const middleStart = beginningPortion;
+          const middleEnd = content.length - endPortion;
+          const middleChunkSize = Math.floor(middlePortion / 3); // 3 chunks from middle
+          const middleChunk1 = content.substring(middleStart, middleStart + middleChunkSize);
+          const middleChunk2 = content.substring(
+            Math.floor((middleStart + middleEnd) / 2) - Math.floor(middleChunkSize / 2),
+            Math.floor((middleStart + middleEnd) / 2) + Math.floor(middleChunkSize / 2)
+          );
+          const middleChunk3 = content.substring(middleEnd - middleChunkSize, middleEnd);
+          
+          return `${firstSection}\n\n[... middle section 1 ...]\n\n${middleChunk1}\n\n[... middle section 2 ...]\n\n${middleChunk2}\n\n[... middle section 3 ...]\n\n${middleChunk3}\n\n[... end section ...]\n\n${lastSection}\n\n[Content truncated from ${content.length.toLocaleString()} to ${maxContentLength.toLocaleString()} characters - extract ALL events from all visible portions]`;
         }
         return content;
       })()}
 
-QUALITY CHECKLIST:
-✓ Did I extract ALL events from the content?
+QUALITY CHECKLIST (VERIFY BEFORE RETURNING):
+✓ Did I extract ALL events from the content? (Count them - if content mentions "15 events", extract all 15)
+✓ Did I scan the entire content systematically, including all sections?
 ✓ Are all titles CLEAN (no markdown, no URLs, no images, no HTML)?
 ✓ Are all dates >= ${currentDate}?
 ✓ Are all dates in YYYY-MM-DD format?
@@ -769,6 +805,9 @@ QUALITY CHECKLIST:
 ✓ Did I provide expectedAttendees for every event?
 ✓ Are categories correctly mapped?
 ✓ Are URLs and image URLs included when available?
+
+FINAL VERIFICATION:
+Before returning, count the number of events you extracted. If the content mentions a specific number of events (e.g., "15 upcoming events"), ensure you extracted that many or more. If you extracted fewer, review the content again to find the missing events.
 
 Return a JSON object with an "events" key containing the array: {"events": [...]}`;
 
@@ -787,10 +826,16 @@ Return a JSON object with an "events" key containing the array: {"events": [...]
 - Multi-language content processing (Czech ↔ English)
 - Structured data extraction from web pages, including HTML, markdown, and list formats
 
-Your task is to extract structured event information from web content with high accuracy.
+Your task is to extract structured event information from web content with high accuracy and COMPLETE coverage.
 
-CRITICAL REQUIREMENTS:
-1. Extract ALL events present in the content - do not skip any unless they are clearly historical
+CRITICAL REQUIREMENTS (PRIORITY ORDER):
+1. COMPLETENESS IS PARAMOUNT - Extract ALL events present in the content
+   - Scan the entire content systematically from start to finish
+   - Count events as you extract them
+   - If content mentions "X events" or shows a list, extract ALL of them
+   - Do not skip events even if some fields are missing
+   - Look for event patterns: dates, titles, venues, cities, URLs
+   - Check all sections: headers, lists, tables, cards, paragraphs
 2. Extract CLEAN titles - remove ALL markdown, URLs, images, HTML tags - only plain text
 3. City is MANDATORY for every event - extract from venue name, URL path, or title if not explicitly stated
 4. Parse dates accurately - handle various formats (DD.MM.YYYY, DD/MM/YYYY, "tomorrow", "next week", etc.)
@@ -801,11 +846,17 @@ CRITICAL REQUIREMENTS:
 9. Return valid JSON only - no markdown code blocks, no explanations
 
 QUALITY STANDARDS:
-- Be thorough: extract every event, even if some fields are missing
-- Be accurate: validate dates against ${currentDate}, skip past events
-- Be consistent: use the same format for all dates (YYYY-MM-DD)
-- Be smart: infer missing information from context (venue type, event category, location)
-- Be precise: extract exact numbers for attendees when available, estimate intelligently when not`
+- Be THOROUGH: extract every event, even if some fields are missing - completeness is more important than perfection
+- Be SYSTEMATIC: scan content in order, don't skip sections
+- Be ACCURATE: validate dates against ${currentDate}, skip past events
+- Be CONSISTENT: use the same format for all dates (YYYY-MM-DD)
+- Be SMART: infer missing information from context (venue type, event category, location)
+- Be PRECISE: extract exact numbers for attendees when available, estimate intelligently when not
+
+VERIFICATION BEFORE RETURNING:
+- Count the events you extracted
+- If content mentions a number of events, verify you extracted that many or more
+- If you extracted fewer events than expected, review the content again`
           },
           {
             role: 'user',
@@ -893,6 +944,12 @@ QUALITY STANDARDS:
         return hasMarkdown || missingCity;
       });
 
+      // Log extraction statistics for debugging
+      console.log(`📊 Extraction stats for ${sourceName}: ${events.length} events extracted, content length: ${content.length.toLocaleString()} chars`);
+      if (content.length > 100000 && events.length < 5) {
+        console.warn(`⚠️ Low extraction rate: ${events.length} events from ${content.length.toLocaleString()} chars (${(events.length / (content.length / 1000)).toFixed(2)} events per 1k chars)`);
+      }
+
       // Retry logic: if 0 events, missing city, or markdown in titles
       if (events.length === 0 || hasInvalidEvents) {
         const retryReason = events.length === 0 
@@ -907,10 +964,15 @@ QUALITY STANDARDS:
         const retryPrompt = `${prompt}
 
 RETRY INSTRUCTIONS - Previous extraction had issues:
-${events.length === 0 ? '- No events were extracted - ensure you extract ALL events from the content' : ''}
+${events.length === 0 ? '- No events were extracted - ensure you extract ALL events from the content. Scan the entire content systematically. Look for event listings, cards, tables, and any structured event data. If content mentions a number of events, extract that many.' : ''}
 ${hasInvalidEvents ? '- Some events had issues: missing city or markdown in titles - fix these issues' : ''}
 
-CRITICAL REMINDERS:
+CRITICAL REMINDERS FOR RETRY:
+- Extract EVERY event visible in the content - be thorough and systematic
+- Count events as you extract to ensure completeness
+- If content mentions "X events", extract at least X events
+- Scan all sections: beginning, middle, and end of content
+- Look for event patterns: dates, titles, venues, cities
 - Extract EVERY event visible in the content
 - City is MANDATORY - extract from venue name, URL, or title if not explicitly stated
 - Titles must be CLEAN - remove ALL markdown, URLs, images, HTML tags
@@ -1327,6 +1389,7 @@ CRITICAL REMINDERS:
     let eventsWithUrl = 0;
     let autoFixCount = 0;
     let retryCount = 0;
+    let validatedEventsCount = 0; // Track events that passed validation (for quality metrics denominator)
 
     // Filter strictly to current/future dates to avoid storing past items
     // FIX: Use string-based comparison to avoid timezone issues
@@ -1464,7 +1527,10 @@ CRITICAL REMINDERS:
         // Use sanitized data from validation
         const finalEvent = validation.sanitizedData;
         
-        // Track quality metrics (after validation)
+        // Event passed validation - count it for quality metrics denominator
+        validatedEventsCount++;
+        
+        // Track quality metrics (after validation - only for validated events)
         if (finalEvent.city && finalEvent.city.trim().length > 0) eventsWithCity++;
         if (finalEvent.title && !finalEvent.title.includes('**') && !finalEvent.title.includes('[')) eventsWithValidTitle++;
         if (finalEvent.url) eventsWithUrl++;
@@ -1508,19 +1574,22 @@ CRITICAL REMINDERS:
       }
     }
 
-    // Log quality metrics (use processed events count, not total)
-    const processedEventsCount = upcoming.length;
-    const qualityScore = processedEventsCount > 0 
-      ? ((eventsWithCity + eventsWithValidTitle + eventsWithUrl) / (processedEventsCount * 3)) * 100 
+    // Log quality metrics (use validated events count as denominator, not all upcoming events)
+    // Quality counters are only incremented for validated events, so denominator must match
+    const qualityScore = validatedEventsCount > 0 
+      ? ((eventsWithCity + eventsWithValidTitle + eventsWithUrl) / (validatedEventsCount * 3)) * 100 
       : 0;
-    const cityExtractionRate = processedEventsCount > 0 ? (eventsWithCity / processedEventsCount) * 100 : 0;
+    const cityExtractionRate = validatedEventsCount > 0 ? (eventsWithCity / validatedEventsCount) * 100 : 0;
+    const titleExtractionRate = validatedEventsCount > 0 ? (eventsWithValidTitle / validatedEventsCount) * 100 : 0;
+    const urlExtractionRate = validatedEventsCount > 0 ? (eventsWithUrl / validatedEventsCount) * 100 : 0;
     
     console.log(`📊 Extraction Quality Metrics:`);
     console.log(`   - Total events extracted: ${totalEvents}`);
-    console.log(`   - Future events processed: ${processedEventsCount}`);
-    console.log(`   - Events with city: ${eventsWithCity} (${processedEventsCount > 0 ? (cityExtractionRate.toFixed(1)) : 0}%)`);
-    console.log(`   - Events with valid title: ${eventsWithValidTitle} (${processedEventsCount > 0 ? ((eventsWithValidTitle / processedEventsCount) * 100).toFixed(1) : 0}%)`);
-    console.log(`   - Events with URL: ${eventsWithUrl} (${processedEventsCount > 0 ? ((eventsWithUrl / processedEventsCount) * 100).toFixed(1) : 0}%)`);
+    console.log(`   - Future events processed: ${upcoming.length}`);
+    console.log(`   - Events validated (passed validation): ${validatedEventsCount}`);
+    console.log(`   - Events with city: ${eventsWithCity} (${cityExtractionRate.toFixed(1)}%)`);
+    console.log(`   - Events with valid title: ${eventsWithValidTitle} (${titleExtractionRate.toFixed(1)}%)`);
+    console.log(`   - Events with URL: ${eventsWithUrl} (${urlExtractionRate.toFixed(1)}%)`);
     console.log(`   - Auto-fix applied: ${autoFixCount}`);
     console.log(`   - Overall quality score: ${qualityScore.toFixed(1)}%`);
 
@@ -1602,15 +1671,17 @@ CRITICAL REMINDERS:
       const dateString = `${y}-${month}-${day}`;
       
       // Comprehensive validation: check if the date actually exists (e.g., not Feb 30)
+      // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
       const dateObj = new Date(dateString + 'T00:00:00');
       if (isNaN(dateObj.getTime())) {
         return null; // Invalid date
       }
       
       // Verify the date components match (handles cases like Feb 30, which would be parsed as Mar 2)
-      if (dateObj.getFullYear() !== yearNum || 
-          dateObj.getMonth() + 1 !== monthNum || 
-          dateObj.getDate() !== dayNum) {
+      // Use UTC methods since we're creating the date in UTC
+      if (dateObj.getUTCFullYear() !== yearNum || 
+          dateObj.getUTCMonth() + 1 !== monthNum || 
+          dateObj.getUTCDate() !== dayNum) {
         return null; // Date does not exist (e.g., Feb 30)
       }
       
@@ -1635,15 +1706,17 @@ CRITICAL REMINDERS:
       const dateString = `${y}-${month}-${day}`;
       
       // Comprehensive validation: check if the date actually exists (e.g., not Feb 30)
+      // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
       const dateObj = new Date(dateString + 'T00:00:00');
       if (isNaN(dateObj.getTime())) {
         return null; // Invalid date
       }
       
       // Verify the date components match (handles cases like Feb 30, which would be parsed as Mar 2)
-      if (dateObj.getFullYear() !== yearNum || 
-          dateObj.getMonth() + 1 !== monthNum || 
-          dateObj.getDate() !== dayNum) {
+      // Use UTC methods since we're creating the date in UTC
+      if (dateObj.getUTCFullYear() !== yearNum || 
+          dateObj.getUTCMonth() + 1 !== monthNum || 
+          dateObj.getUTCDate() !== dayNum) {
         return null; // Date does not exist (e.g., Feb 30)
       }
       
@@ -1669,15 +1742,17 @@ CRITICAL REMINDERS:
       const dateString = `${y}-${month}-${day}`;
       
       // Comprehensive validation: check if the date actually exists (e.g., not Feb 30)
+      // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
       const dateObj = new Date(dateString + 'T00:00:00');
       if (isNaN(dateObj.getTime())) {
         return null; // Invalid date
       }
       
       // Verify the date components match (handles cases like Feb 30, which would be parsed as Mar 2)
-      if (dateObj.getFullYear() !== yearNum || 
-          dateObj.getMonth() + 1 !== monthNum || 
-          dateObj.getDate() !== dayNum) {
+      // Use UTC methods since we're creating the date in UTC
+      if (dateObj.getUTCFullYear() !== yearNum || 
+          dateObj.getUTCMonth() + 1 !== monthNum || 
+          dateObj.getUTCDate() !== dayNum) {
         return null; // Date does not exist (e.g., Feb 30)
       }
       

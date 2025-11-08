@@ -232,15 +232,17 @@ export class EventStorageService {
         }
         
         // Additional validation: check if the date is actually valid
+        // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
         const dateObj = new Date(newEvent.date + 'T00:00:00');
         if (isNaN(dateObj.getTime())) {
           throw new Error(`Invalid date value: ${newEvent.date}`);
         }
         
         // Verify the date components match (handles cases like Feb 30)
-        if (dateObj.getFullYear() !== year || 
-            dateObj.getMonth() + 1 !== month || 
-            dateObj.getDate() !== day) {
+        // Use UTC methods since we're creating the date in UTC
+        if (dateObj.getUTCFullYear() !== year || 
+            dateObj.getUTCMonth() + 1 !== month || 
+            dateObj.getUTCDate() !== day) {
           throw new Error(`Invalid date value: ${newEvent.date} (date does not exist)`);
         }
         
@@ -285,15 +287,17 @@ export class EventStorageService {
           }
           
           // Additional validation: check if the date is actually valid
+          // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
           const endDateObj = new Date(newEvent.end_date + 'T00:00:00');
           if (isNaN(endDateObj.getTime())) {
             throw new Error(`Invalid end_date value: ${newEvent.end_date}`);
           }
           
           // Verify the date components match (handles cases like Feb 30)
-          if (endDateObj.getFullYear() !== endYear || 
-              endDateObj.getMonth() + 1 !== endMonth || 
-              endDateObj.getDate() !== endDay) {
+          // Use UTC methods since we're creating the date in UTC
+          if (endDateObj.getUTCFullYear() !== endYear || 
+              endDateObj.getUTCMonth() + 1 !== endMonth || 
+              endDateObj.getUTCDate() !== endDay) {
             throw new Error(`Invalid end_date value: ${newEvent.end_date} (date does not exist)`);
           }
           
@@ -362,15 +366,17 @@ export class EventStorageService {
               }
               
               // Additional validation: check if the date is actually valid (e.g., not Feb 30)
+              // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
               const dateObj = new Date(event.date + 'T00:00:00');
               if (isNaN(dateObj.getTime())) {
                 throw new Error(`Invalid date value: ${event.date}`);
               }
               
               // Verify the date components match (handles cases like Feb 30)
-              if (dateObj.getFullYear() !== year || 
-                  dateObj.getMonth() + 1 !== month || 
-                  dateObj.getDate() !== day) {
+              // Use UTC methods since we're creating the date in UTC
+              if (dateObj.getUTCFullYear() !== year || 
+                  dateObj.getUTCMonth() + 1 !== month || 
+                  dateObj.getUTCDate() !== day) {
                 throw new Error(`Invalid date value: ${event.date} (date does not exist)`);
               }
               
@@ -405,15 +411,17 @@ export class EventStorageService {
                 }
                 
                 // Additional validation: check if the date is actually valid
+                // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
                 const endDateObj = new Date(event.end_date + 'T00:00:00');
                 if (isNaN(endDateObj.getTime())) {
                   throw new Error(`Invalid end_date value: ${event.end_date}`);
                 }
                 
                 // Verify the date components match (handles cases like Feb 30)
-                if (endDateObj.getFullYear() !== endYear || 
-                    endDateObj.getMonth() + 1 !== endMonth || 
-                    endDateObj.getDate() !== endDay) {
+                // Use UTC methods since we're creating the date in UTC
+                if (endDateObj.getUTCFullYear() !== endYear || 
+                    endDateObj.getUTCMonth() + 1 !== endMonth || 
+                    endDateObj.getUTCDate() !== endDay) {
                   throw new Error(`Invalid end_date value: ${event.end_date} (date does not exist)`);
                 }
                 
