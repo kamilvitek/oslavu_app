@@ -232,8 +232,9 @@ export class EventStorageService {
         }
         
         // Additional validation: check if the date is actually valid
-        // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
-        const dateObj = new Date(newEvent.date + 'T00:00:00');
+        // Use UTC methods to avoid timezone issues: explicitly use UTC by appending 'Z'
+        // This ensures "2025-11-08" becomes "2025-11-08T00:00:00.000Z" (midnight UTC on that date)
+        const dateObj = new Date(newEvent.date + 'T00:00:00Z');
         if (isNaN(dateObj.getTime())) {
           throw new Error(`Invalid date value: ${newEvent.date}`);
         }
@@ -287,8 +288,9 @@ export class EventStorageService {
           }
           
           // Additional validation: check if the date is actually valid
-          // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
-          const endDateObj = new Date(newEvent.end_date + 'T00:00:00');
+          // Use UTC methods to avoid timezone issues: explicitly use UTC by appending 'Z'
+          // This ensures "2025-11-08" becomes "2025-11-08T00:00:00.000Z" (midnight UTC on that date)
+          const endDateObj = new Date(newEvent.end_date + 'T00:00:00Z');
           if (isNaN(endDateObj.getTime())) {
             throw new Error(`Invalid end_date value: ${newEvent.end_date}`);
           }
@@ -366,8 +368,9 @@ export class EventStorageService {
               }
               
               // Additional validation: check if the date is actually valid (e.g., not Feb 30)
-              // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
-              const dateObj = new Date(event.date + 'T00:00:00');
+              // Use UTC methods to avoid timezone issues: explicitly use UTC by appending 'Z'
+              // This ensures "2025-11-08" becomes "2025-11-08T00:00:00.000Z" (midnight UTC on that date)
+              const dateObj = new Date(event.date + 'T00:00:00Z');
               if (isNaN(dateObj.getTime())) {
                 throw new Error(`Invalid date value: ${event.date}`);
               }
@@ -411,8 +414,9 @@ export class EventStorageService {
                 }
                 
                 // Additional validation: check if the date is actually valid
-                // Use UTC methods to avoid timezone issues: 'T00:00:00' is interpreted as UTC
-                const endDateObj = new Date(event.end_date + 'T00:00:00');
+                // Use UTC methods to avoid timezone issues: explicitly use UTC by appending 'Z'
+                // This ensures "2025-11-08" becomes "2025-11-08T00:00:00.000Z" (midnight UTC on that date)
+                const endDateObj = new Date(event.end_date + 'T00:00:00Z');
                 if (isNaN(endDateObj.getTime())) {
                   throw new Error(`Invalid end_date value: ${event.end_date}`);
                 }
