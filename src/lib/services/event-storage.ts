@@ -204,6 +204,11 @@ export class EventStorageService {
     const normalizedExistingDate = this.normalizeDateForComparison(existingEvent.date);
     
     if (normalizedNewDate !== normalizedExistingDate) {
+      // Date field is required - reject empty strings
+      if (newEvent.date === '') {
+        throw new Error(`Invalid date: empty string is not allowed. Date is required.`);
+      }
+      
       // Convert date string to ISO timestamp format for TIMESTAMP WITH TIME ZONE column
       if (newEvent.date.includes('T')) {
         // Already a timestamp, validate it
@@ -345,6 +350,11 @@ export class EventStorageService {
             // Convert date string to ISO timestamp format for TIMESTAMP WITH TIME ZONE column
             // Handle both date-only strings (YYYY-MM-DD) and full timestamps
             // Validate date before conversion to prevent "Invalid time value" errors
+            // Date field is required - reject empty strings
+            if (event.date === '') {
+              throw new Error(`Invalid date: empty string is not allowed. Date is required.`);
+            }
+            
             let dateValue: string;
             if (event.date.includes('T')) {
               // Already a timestamp, validate it
@@ -392,8 +402,13 @@ export class EventStorageService {
             }
             
             // Validate end_date if present
+            // Empty strings are invalid - reject them explicitly
             let endDateValue: string | null = null;
-            if (event.end_date) {
+            if (event.end_date !== undefined && event.end_date !== null) {
+              // Check for empty string before processing
+              if (event.end_date === '') {
+                throw new Error(`Invalid end_date: empty string is not allowed. Use null to clear the value or provide a valid date.`);
+              }
               if (event.end_date.includes('T')) {
                 const endDateObj = new Date(event.end_date);
                 if (isNaN(endDateObj.getTime())) {
