@@ -175,16 +175,53 @@ export class EventStorageService {
   }
 
   /**
+   * Normalize date string to YYYY-MM-DD format for comparison
+   * Handles both ISO timestamps (2025-11-08T00:00:00.000Z) and date-only strings (2025-11-08)
+   */
+  private normalizeDateForComparison(date: string | undefined | null): string | null {
+    if (!date) return null;
+    // Extract date-only part from ISO timestamp (YYYY-MM-DDTHH:mm:ss.sssZ -> YYYY-MM-DD)
+    if (date.includes('T')) {
+      return date.split('T')[0];
+    }
+    // Already in YYYY-MM-DD format
+    return date;
+  }
+
+  /**
    * Prepare update data by comparing new event with existing event
    */
   private prepareUpdateData(newEvent: CreateEventData, existingEvent: DatabaseEvent): UpdateEventData {
-    const updateData: UpdateEventData = {};
+    const updateData: any = {};
 
     // Check if any fields have changed
     if (newEvent.title !== existingEvent.title) updateData.title = newEvent.title;
     if (newEvent.description !== existingEvent.description) updateData.description = newEvent.description;
-    if (newEvent.date !== existingEvent.date) updateData.date = newEvent.date;
-    if (newEvent.end_date !== existingEvent.end_date) updateData.end_date = newEvent.end_date;
+    
+    // Normalize dates to YYYY-MM-DD format before comparing to avoid false positives
+    // newEvent.date is in YYYY-MM-DD format, existingEvent.date is in ISO format from database
+    const normalizedNewDate = this.normalizeDateForComparison(newEvent.date);
+    const normalizedExistingDate = this.normalizeDateForComparison(existingEvent.date);
+    
+    if (normalizedNewDate !== normalizedExistingDate) {
+      // Convert date string to ISO timestamp format for TIMESTAMP WITH TIME ZONE column
+      const dateValue = newEvent.date.includes('T') 
+        ? newEvent.date 
+        : new Date(newEvent.date + 'T00:00:00').toISOString();
+      updateData.date = dateValue;
+    }
+    
+    // Only update end_date if it's explicitly provided (not undefined)
+    // undefined means "no change", null means "clear the value"
+    if (newEvent.end_date !== undefined) {
+      // Normalize both end_date values for comparison
+      const normalizedNewEndDate = this.normalizeDateForComparison(newEvent.end_date);
+      const normalizedExistingEndDate = this.normalizeDateForComparison(existingEvent.end_date);
+      
+      if (normalizedNewEndDate !== normalizedExistingEndDate) {
+        updateData.end_date = newEvent.end_date ? new Date(newEvent.end_date).toISOString() : null;
+      }
+    }
     if (newEvent.city !== existingEvent.city) updateData.city = newEvent.city;
     if (newEvent.venue !== existingEvent.venue) updateData.venue = newEvent.venue;
     if (newEvent.category !== existingEvent.category) updateData.category = newEvent.category;
@@ -192,6 +229,11 @@ export class EventStorageService {
     if (newEvent.expected_attendees !== existingEvent.expected_attendees) updateData.expected_attendees = newEvent.expected_attendees;
     if (newEvent.url !== existingEvent.url) updateData.url = newEvent.url;
     if (newEvent.image_url !== existingEvent.image_url) updateData.image_url = newEvent.image_url;
+
+    // Include embedding if present (for semantic deduplication updates)
+    if ((newEvent as any).embedding) {
+      updateData.embedding = (newEvent as any).embedding;
+    }
 
     // Always update the updated_at timestamp
     updateData.updated_at = new Date().toISOString();
@@ -209,28 +251,44 @@ export class EventStorageService {
       const { data, error } = await this.db.executeWithRetry(async () => {
         const result = await this.db.getClient()
           .from('events')
-          .insert(events.map(event => ({
-            // Map CreateEventData fields to actual database columns
-            title: event.title,
-            name: event.title, // Required field in actual schema
-            description: event.description,
-            date: event.date,
-            end_date: event.end_date ? new Date(event.end_date).toISOString() : null,
-            venue: event.venue,
-            venue_name: event.venue, // Map to venue_name field
-            city: event.city,
-            country: 'Czech Republic', // Default country
-            category: event.category,
-            subcategory: event.subcategory,
-            expected_attendees: event.expected_attendees || this.estimateAttendeesFromVenue(event.venue, event.category),
-            source: event.source,
-            source_id: event.source_id,
-            url: event.url,
-            image_url: event.image_url,
-            source_url: event.url, // Map to source_url field
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })))
+          .insert(events.map(event => {
+            // Convert date string to ISO timestamp format for TIMESTAMP WITH TIME ZONE column
+            // Handle both date-only strings (YYYY-MM-DD) and full timestamps
+            const dateValue = event.date.includes('T') 
+              ? event.date 
+              : new Date(event.date + 'T00:00:00').toISOString();
+            
+            // Include embedding if present (for semantic deduplication)
+            const eventData: any = {
+              // Map CreateEventData fields to actual database columns
+              title: event.title,
+              name: event.title, // Required field in actual schema
+              description: event.description,
+              date: dateValue,
+              end_date: event.end_date ? new Date(event.end_date).toISOString() : null,
+              venue: event.venue,
+              venue_name: event.venue, // Map to venue_name field
+              city: event.city,
+              country: 'Czech Republic', // Default country
+              category: event.category,
+              subcategory: event.subcategory,
+              expected_attendees: event.expected_attendees || this.estimateAttendeesFromVenue(event.venue, event.category),
+              source: event.source,
+              source_id: event.source_id,
+              url: event.url,
+              image_url: event.image_url,
+              source_url: event.url, // Map to source_url field
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+            
+            // Add embedding if present (from scraper)
+            if ((event as any).embedding) {
+              eventData.embedding = (event as any).embedding;
+            }
+            
+            return eventData;
+          }))
           .select();
         return result;
       });
