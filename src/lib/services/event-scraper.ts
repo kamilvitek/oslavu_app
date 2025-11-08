@@ -362,13 +362,17 @@ export class EventScraperService {
 
         console.log(`✅ Crawl processed ${pagesProcessed}/${pagesCrawled} pages, extracted ${totalEvents.length} events`);
         
+        // Cross-page deduplication: remove duplicates across all pages
+        const deduplicatedEvents = this.deduplicateEventsAcrossPages(totalEvents);
+        console.log(`🔍 Deduplicated ${totalEvents.length} events to ${deduplicatedEvents.length} unique events across pages`);
+        
         // Update last_crawled_at after successful crawl
-        const eventUrlsForTracking = totalEvents.map(e => e.url).filter(Boolean) as string[];
+        const eventUrlsForTracking = deduplicatedEvents.map(e => e.url).filter(Boolean) as string[];
         if (eventUrlsForTracking.length > 0) {
           await this.updateLastCrawledAt(source.id, eventUrlsForTracking);
         }
         
-        return totalEvents;
+        return deduplicatedEvents;
       }
 
       // Adaptive single-page scrape with retries and HTML support
@@ -1232,23 +1236,49 @@ CRITICAL REMINDERS:
     today.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
     const todayIso = today.toISOString().split('T')[0];
     
-    const upcoming = events.filter(e => {
+    const upcoming: CreateEventData[] = [];
+    const pastEvents: Array<{ title: string; date: string }> = [];
+    const invalidDates: Array<{ title: string; date: string }> = [];
+    
+    for (const e of events) {
       try {
-        if (!e.date) return false;
+        if (!e.date) {
+          invalidDates.push({ title: e.title || 'Unknown', date: 'missing' });
+          continue;
+        }
+        
         // Parse date and compare at day level (ignore time)
         const eventDate = new Date(e.date);
-        if (isNaN(eventDate.getTime())) return false;
+        if (isNaN(eventDate.getTime())) {
+          invalidDates.push({ title: e.title || 'Unknown', date: e.date });
+          continue;
+        }
         eventDate.setHours(0, 0, 0, 0);
-        return eventDate >= today;
+        
+        if (eventDate >= today) {
+          upcoming.push(e);
+        } else {
+          pastEvents.push({ title: e.title || 'Unknown', date: e.date });
+        }
       } catch (error) {
         console.warn(`⚠️ Error filtering event by date "${e.date}":`, error);
-        return false;
+        invalidDates.push({ title: e.title || 'Unknown', date: e.date || 'error' });
       }
-    });
+    }
 
     const filteredOut = events.length - upcoming.length;
     if (filteredOut > 0) {
-      console.log(`🔍 Filtered out ${filteredOut} past events (date < ${todayIso})`);
+      console.log(`🔍 Filtered out ${filteredOut} past/invalid events (date < ${todayIso})`);
+      if (pastEvents.length > 0 && pastEvents.length <= 5) {
+        console.log(`   Past events: ${pastEvents.map(e => `"${e.title}" (${e.date})`).join(', ')}`);
+      } else if (pastEvents.length > 5) {
+        console.log(`   Past events: ${pastEvents.slice(0, 5).map(e => `"${e.title}" (${e.date})`).join(', ')} ... and ${pastEvents.length - 5} more`);
+      }
+      if (invalidDates.length > 0 && invalidDates.length <= 5) {
+        console.log(`   Invalid dates: ${invalidDates.map(e => `"${e.title}" (${e.date})`).join(', ')}`);
+      } else if (invalidDates.length > 5) {
+        console.log(`   Invalid dates: ${invalidDates.slice(0, 5).map(e => `"${e.title}" (${e.date})`).join(', ')} ... and ${invalidDates.length - 5} more`);
+      }
     }
     console.log(`🔍 Processing ${upcoming.length}/${events.length} future events from ${sourceName}`);
 
@@ -1391,6 +1421,28 @@ CRITICAL REMINDERS:
     console.log(`   - Overall quality score: ${qualityScore.toFixed(1)}%`);
 
     return result;
+  }
+
+  /**
+   * Deduplicate events across pages based on title, date, and URL
+   * This is a simple deduplication before the more expensive embedding-based deduplication
+   */
+  private deduplicateEventsAcrossPages(events: CreateEventData[]): CreateEventData[] {
+    const seen = new Set<string>();
+    const uniqueEvents: CreateEventData[] = [];
+    
+    for (const event of events) {
+      // Create a unique key from title, date, and URL
+      const normalizedUrl = this.normalizeUrl(event.url) || event.url || '';
+      const key = `${(event.title || '').toLowerCase().trim()}|${event.date || ''}|${normalizedUrl.toLowerCase()}`;
+      
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueEvents.push(event);
+      }
+    }
+    
+    return uniqueEvents;
   }
 
   /**
