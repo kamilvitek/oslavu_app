@@ -263,6 +263,12 @@ export class EventScraperService {
           merged.maxPages = 50;
         }
         
+        // Ensure maxDepth is at least 2 to allow following pagination links
+        if (!merged.maxDepth || merged.maxDepth < 2) {
+          console.log(`📄 Increasing maxDepth from ${merged.maxDepth || 'undefined'} to 2 to allow pagination following`);
+          merged.maxDepth = 2;
+        }
+        
         // Phase 2: Enhanced Diagnostic Logging - Log merged crawl configuration
         console.log(`📋 Merged Crawl Configuration:`);
         console.log(`   - maxDepth: ${merged.maxDepth}`);
@@ -342,17 +348,23 @@ export class EventScraperService {
           
           // Use SDK signature: crawl(url: string, options?: object)
           // Build crawl options - handle allowList for cross-domain crawling
+          // Calculate timeout based on maxPages: 30 seconds per page, minimum 120 seconds, maximum 600 seconds (10 minutes)
+          const estimatedPages = perUrlPageCap ?? merged.maxPages ?? 50;
+          const timeoutMs = Math.min(Math.max(estimatedPages * 30000, 120000), 600000); // 30s per page, min 2min, max 10min
+          
           const crawlOptions: any = {
             maxDepth: merged.maxDepth,
             denyList: merged.denyList,
             limit: perUrlPageCap ?? merged.maxPages,
             actions: merged.actions as any,
             waitFor: merged.waitFor as any,
+            timeout: timeoutMs, // Set timeout based on expected pages
             scrapeOptions: {
               formats: ['markdown', 'html'],
               proxy: 'auto',
               maxAge: 600000,
-              onlyMainContent: false
+              onlyMainContent: false,
+              timeout: timeoutMs // Also set timeout in scrapeOptions
             }
           };
           
@@ -393,6 +405,7 @@ export class EventScraperService {
           console.log(`🔍 Crawl options:`, JSON.stringify({
             maxDepth: crawlOptions.maxDepth,
             limit: crawlOptions.limit,
+            timeout: `${timeoutMs}ms (${Math.round(timeoutMs / 1000)}s)`,
             allowList: crawlOptions.allowList || 'not set (allowing all HTTPS)',
             denyList: crawlOptions.denyList,
             hasActions: !!crawlOptions.actions && crawlOptions.actions.length > 0,

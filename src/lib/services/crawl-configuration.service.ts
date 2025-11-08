@@ -65,7 +65,7 @@ export class CrawlConfigurationService {
         };
       default:
         return {
-          maxDepth: 1,
+          maxDepth: 2, // Increased from 1 to 2 to allow following pagination links
           actions: [...consentActions, { type: "waitFor", selector: "a" }],
         };
     }
