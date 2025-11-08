@@ -37,7 +37,14 @@ export function Footer() {
               <li><Link href="https://kamilvitek.cz/kdo-jsem" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Who's behind Oslavu</Link></li>
               <li><Link href="https://kamilvitek.cz/kontakt" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Contact</Link></li>
               <li><Link href="/privacy-policy" className="hover:text-primary">Privacy Policy</Link></li>
-              {/* <li><Link href="#careers" className="hover:text-primary">Careers</Link></li> */}
+              <li>
+                <button
+                  onClick={handleCookieSettings}
+                  className="hover:text-primary text-left"
+                >
+                  Cookie Settings
+                </button>
+              </li>
             </ul>
           </div>
           

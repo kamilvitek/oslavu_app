@@ -19,26 +19,45 @@ export function CookieConsentBanner() {
   const updateConsentMode = useCallback((value: 'granted' | 'denied') => {
     if (typeof window === 'undefined') return;
     
-    // Ensure dataLayer exists
-    if (!window.dataLayer) {
-      window.dataLayer = [];
-    }
-    
-    // Update Google Consent Mode v2 using gtag
-    if (window.gtag) {
-      window.gtag('consent', 'update', {
-        analytics_storage: value,
-        ad_storage: value
-      });
-    }
-    
-    // Push event to dataLayer for GTM tracking (both granted and denied)
-    if (window.dataLayer) {
-      window.dataLayer.push({
-        event: value === 'granted' ? 'cookie_consent_granted' : 'cookie_consent_denied',
-        consent_status: value,
-        consent_timestamp: new Date().toISOString()
-      });
+    // Wait for gtag to be available (with retry logic)
+    const updateConsent = () => {
+      // Ensure dataLayer exists
+      if (!window.dataLayer) {
+        window.dataLayer = [];
+      }
+      
+      // Update Google Consent Mode v2 using gtag
+      if (window.gtag) {
+        try {
+          window.gtag('consent', 'update', {
+            analytics_storage: value,
+            ad_storage: value
+          });
+        } catch (error) {
+          console.warn('Failed to update consent mode:', error);
+        }
+      }
+      
+      // Push event to dataLayer for GTM tracking (both granted and denied)
+      if (window.dataLayer) {
+        try {
+          window.dataLayer.push({
+            event: value === 'granted' ? 'cookie_consent_granted' : 'cookie_consent_denied',
+            consent_status: value,
+            consent_timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          console.warn('Failed to push to dataLayer:', error);
+        }
+      }
+    };
+
+    // Try immediately
+    updateConsent();
+
+    // If gtag not available yet, retry after a short delay
+    if (!window.gtag && window.dataLayer) {
+      setTimeout(updateConsent, 100);
     }
   }, []);
 

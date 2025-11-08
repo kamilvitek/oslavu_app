@@ -9,7 +9,7 @@ export default function PrivacyPolicyPage() {
         <p className="text-sm text-gray-600 mb-8">
           Last updated: {new Date().toLocaleDateString()}
         </p>
-
+        
         <section className="space-y-6">
           <div>
             <h2 className="text-xl font-semibold mb-3">Cookie Usage</h2>
@@ -18,7 +18,7 @@ export default function PrivacyPolicyPage() {
               This helps us understand user behavior and improve our service.
             </p>
           </div>
-
+          
           <div>
             <h2 className="text-xl font-semibold mb-3">Analytics</h2>
             <p className="text-gray-700">
@@ -34,7 +34,7 @@ export default function PrivacyPolicyPage() {
               No personally identifiable information is collected without your explicit consent.
             </p>
           </div>
-
+          
           <div>
             <h2 className="text-xl font-semibold mb-3">Your Choices</h2>
             <p className="text-gray-700">
