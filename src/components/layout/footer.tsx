@@ -1,3 +1,5 @@
+'use client';
+
 import { Calendar, Mail, Twitter, Linkedin, Instagram } from "lucide-react";
 import Link from "next/link";
 
@@ -30,7 +32,20 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link href="https://kamilvitek.cz/kdo-jsem" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Who's behind Oslavu</Link></li>
               <li><Link href="https://kamilvitek.cz/kontakt" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Contact</Link></li>
-              {/* <li><Link href="#careers" className="hover:text-primary">Careers</Link></li> */}
+              <li><Link href="/privacy-policy" className="hover:text-primary">Privacy Policy</Link></li>
+              <li>
+                <button
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      localStorage.removeItem('cookieConsent');
+                      window.location.reload();
+                    }
+                  }}
+                  className="hover:text-primary text-left"
+                >
+                  Cookie Settings
+                </button>
+              </li>
             </ul>
           </div>
           
