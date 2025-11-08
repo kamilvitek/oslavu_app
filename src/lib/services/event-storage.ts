@@ -254,9 +254,47 @@ export class EventStorageService {
           .insert(events.map(event => {
             // Convert date string to ISO timestamp format for TIMESTAMP WITH TIME ZONE column
             // Handle both date-only strings (YYYY-MM-DD) and full timestamps
-            const dateValue = event.date.includes('T') 
-              ? event.date 
-              : new Date(event.date + 'T00:00:00').toISOString();
+            // Validate date before conversion to prevent "Invalid time value" errors
+            let dateValue: string;
+            if (event.date.includes('T')) {
+              // Already a timestamp, validate it
+              const dateObj = new Date(event.date);
+              if (isNaN(dateObj.getTime())) {
+                throw new Error(`Invalid date format: ${event.date}`);
+              }
+              dateValue = event.date;
+            } else {
+              // Date-only string, validate format first
+              if (!/^\d{4}-\d{2}-\d{2}$/.test(event.date)) {
+                throw new Error(`Invalid date format: ${event.date}`);
+              }
+              const dateObj = new Date(event.date + 'T00:00:00');
+              if (isNaN(dateObj.getTime())) {
+                throw new Error(`Invalid date value: ${event.date}`);
+              }
+              dateValue = dateObj.toISOString();
+            }
+            
+            // Validate end_date if present
+            let endDateValue: string | null = null;
+            if (event.end_date) {
+              if (event.end_date.includes('T')) {
+                const endDateObj = new Date(event.end_date);
+                if (isNaN(endDateObj.getTime())) {
+                  throw new Error(`Invalid end_date format: ${event.end_date}`);
+                }
+                endDateValue = event.end_date;
+              } else {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(event.end_date)) {
+                  throw new Error(`Invalid end_date format: ${event.end_date}`);
+                }
+                const endDateObj = new Date(event.end_date + 'T00:00:00');
+                if (isNaN(endDateObj.getTime())) {
+                  throw new Error(`Invalid end_date value: ${event.end_date}`);
+                }
+                endDateValue = endDateObj.toISOString();
+              }
+            }
             
             // Include embedding if present (for semantic deduplication)
             const eventData: any = {
@@ -265,7 +303,7 @@ export class EventStorageService {
               name: event.title, // Required field in actual schema
               description: event.description,
               date: dateValue,
-              end_date: event.end_date ? new Date(event.end_date).toISOString() : null,
+              end_date: endDateValue,
               venue: event.venue,
               venue_name: event.venue, // Map to venue_name field
               city: event.city,

@@ -304,19 +304,30 @@ export class EventScraperService {
           
           // Handle allowList for cross-domain crawling
           // IMPORTANT: Only HTTPS URLs are allowed, HTTP URLs are explicitly denied
-          // If allowList contains 'https://*', omit allowList to allow all HTTPS domains
-          // Otherwise, use the configured allowList patterns
+          // For cross-domain crawling, we need to explicitly allow HTTPS patterns
+          // Firecrawl v2 requires explicit allowList patterns for cross-domain crawling
           if (merged.allowList && merged.allowList.length > 0) {
             const hasWildcard = merged.allowList.some(p => p === 'https://*');
             if (hasWildcard) {
-              // Don't set allowList - this allows Firecrawl to crawl any HTTPS domain
-              // Firecrawl by default allows all domains if allowList is not specified
-              // HTTP URLs are already blocked via denyList
+              // For cross-domain crawling, explicitly allow all HTTPS URLs
+              // Keep the wildcard pattern to allow any HTTPS domain
+              crawlOptions.allowList = ['https://*'];
               console.log(`🌐 Allowing all HTTPS URLs (only) for cross-domain crawling`);
             } else {
               // Use the configured allowList patterns (already filtered to HTTPS only)
-              crawlOptions.allowList = merged.allowList;
+              // Ensure we also allow the start URL's domain for cross-domain crawling
+              const startUrlDomain = new URL(url).origin;
+              const allowListWithDomain = [...merged.allowList];
+              if (!allowListWithDomain.some(p => p.includes(startUrlDomain))) {
+                allowListWithDomain.push(`${startUrlDomain}/*`);
+              }
+              crawlOptions.allowList = allowListWithDomain;
+              console.log(`🌐 Using configured allowList with domain: ${startUrlDomain}`);
             }
+          } else {
+            // No allowList configured - allow all HTTPS URLs for cross-domain crawling
+            crawlOptions.allowList = ['https://*'];
+            console.log(`🌐 No allowList configured - allowing all HTTPS URLs for cross-domain crawling`);
           }
           
           // Ensure denyList includes HTTP URLs to explicitly block non-secure connections
@@ -324,11 +335,32 @@ export class EventScraperService {
             crawlOptions.denyList = merged.denyList;
           }
           
+          console.log(`🔍 Starting crawl for URL: ${url}`);
+          console.log(`🔍 Crawl options:`, JSON.stringify({
+            maxDepth: crawlOptions.maxDepth,
+            limit: crawlOptions.limit,
+            allowList: crawlOptions.allowList || 'not set (allowing all HTTPS)',
+            denyList: crawlOptions.denyList,
+            hasActions: !!crawlOptions.actions && crawlOptions.actions.length > 0,
+            waitFor: crawlOptions.waitFor
+          }, null, 2));
+          
           const res: any = await (this.firecrawl as any).crawl(url, crawlOptions);
 
           const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> =
             Array.isArray(res?.data) ? res.data : [];
           pagesCrawled += pages.length;
+          
+          console.log(`🔍 Crawl completed: ${pages.length} pages found`);
+          if (pages.length === 0) {
+            console.warn(`⚠️ No pages found for URL: ${url}`);
+            console.warn(`⚠️ Response structure:`, JSON.stringify({
+              hasData: !!res?.data,
+              dataType: Array.isArray(res?.data) ? 'array' : typeof res?.data,
+              dataLength: Array.isArray(res?.data) ? res.data.length : 'N/A',
+              keys: res ? Object.keys(res) : []
+            }, null, 2));
+          }
 
           // Two-phase extraction: First pass - extract event URLs from listing pages
           const detailPages = pages.filter(p => detailMatchers.some(rx => rx.test(p.url)));
@@ -354,6 +386,8 @@ export class EventScraperService {
           
           // Phase 2: Process detail pages (prioritized) and listing pages
           const pagesToProcess = [...detailPages, ...listingPages];
+          
+          console.log(`🔍 Phase 2: Processing ${pagesToProcess.length} pages (${detailPages.length} detail, ${listingPages.length} listing)`);
 
           for (const page of pagesToProcess) {
             const markdown = (page as any).markdown || (page as any).content || '';
@@ -361,11 +395,19 @@ export class EventScraperService {
             if (!markdown && !html) continue;
             pagesProcessed++;
             const events = await this.extractEventsGeneric({ markdown, html }, source.name);
+            console.log(`🔍 Extracted ${events.length} raw events from page: ${page.url}`);
+            
             // Clean events before transformation
             const cleanedEvents = events.map(e => eventCleaningService.cleanEvent(e, source.name));
             const transformedEvents = cleanedEvents
               .map(e => this.transformScrapedEvent(e, source.name))
               .filter((e): e is CreateEventData => e !== null); // Filter out null events (invalid dates)
+            
+            if (transformedEvents.length !== events.length) {
+              console.log(`🔍 Filtered ${events.length - transformedEvents.length} invalid events (invalid dates)`);
+            }
+            
+            console.log(`🔍 Transformed to ${transformedEvents.length} valid events from page: ${page.url}`);
             totalEvents.push(...transformedEvents);
             
             // Track events per page for adaptive limit
