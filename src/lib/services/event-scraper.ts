@@ -216,6 +216,23 @@ export class EventScraperService {
         }
         // Dynamic page limit: default to 500, or use configured value
         merged.maxPages = merged.maxPages ?? source.max_pages_per_crawl ?? 500;
+        
+        // Allow any HTTPS URL to enable cross-domain crawling
+        // This makes the solution scalable for any startUrl without hardcoding domains
+        // Firecrawl's allowList supports patterns - we'll add a wildcard for HTTPS URLs
+        // If allowList is empty or only contains path patterns, add wildcard for external domains
+        const hasFullUrlPattern = merged.allowList?.some(pattern => 
+          pattern.startsWith('https://') || pattern.startsWith('http://')
+        );
+        
+        if (!merged.allowList || merged.allowList.length === 0) {
+          // No restrictions - allow all HTTPS URLs
+          merged.allowList = ['https://*'];
+        } else if (!hasFullUrlPattern) {
+          // Has path patterns but no full URL patterns - add wildcard to allow external domains
+          merged.allowList.push('https://*');
+        }
+        // If it already has full URL patterns, keep them as-is
 
         // Crawl each start URL individually (SDK expects a single string `url`)
         const startUrls = (merged.startUrls || []).filter(u => typeof u === 'string' && u.trim().length > 0);
@@ -253,23 +270,37 @@ export class EventScraperService {
           }
           
           // Use SDK signature: crawl(url: string, options?: object)
-          const res: any = await (this.firecrawl as any).crawl(
-            url,
-            {
-              maxDepth: merged.maxDepth,
-              allowList: merged.allowList,
-              denyList: merged.denyList,
-              limit: perUrlPageCap ?? merged.maxPages,
-              actions: merged.actions as any,
-              waitFor: merged.waitFor as any,
-              scrapeOptions: {
-                formats: ['markdown', 'html'],
-                proxy: 'auto',
-                maxAge: 600000,
-                onlyMainContent: false
-              }
+          // Build crawl options - handle allowList for cross-domain crawling
+          const crawlOptions: any = {
+            maxDepth: merged.maxDepth,
+            denyList: merged.denyList,
+            limit: perUrlPageCap ?? merged.maxPages,
+            actions: merged.actions as any,
+            waitFor: merged.waitFor as any,
+            scrapeOptions: {
+              formats: ['markdown', 'html'],
+              proxy: 'auto',
+              maxAge: 600000,
+              onlyMainContent: false
             }
-          );
+          };
+          
+          // Handle allowList for cross-domain crawling
+          // If allowList contains 'https://*', omit allowList to allow all domains
+          // Otherwise, use the configured allowList
+          if (merged.allowList && merged.allowList.length > 0) {
+            const hasWildcard = merged.allowList.some(p => p === 'https://*');
+            if (hasWildcard) {
+              // Don't set allowList - this allows Firecrawl to crawl any domain
+              // Firecrawl by default allows all domains if allowList is not specified
+              console.log(`🌐 Allowing all HTTPS URLs for cross-domain crawling`);
+            } else {
+              // Use the configured allowList patterns
+              crawlOptions.allowList = merged.allowList;
+            }
+          }
+          
+          const res: any = await (this.firecrawl as any).crawl(url, crawlOptions);
 
           const pages: Array<{ url: string; markdown?: string; content?: string; html?: string; }> =
             Array.isArray(res?.data) ? res.data : [];
