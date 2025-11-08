@@ -1,4 +1,4 @@
-<!-- b4d0e99f-6693-4e67-8fa5-307daea9a0a1 4c6b7cef-0827-41e2-86dd-d3220af6d533 -->
+<!-- b4d0e99f-6693-4e67-8fa5-307daea9a0a1 4d984ff9-b288-4304-a4a8-7003921d1aad -->
 # Scalable AI-First Pagination Detection and Fix
 
 ## Problem Analysis
@@ -12,31 +12,43 @@ The scraper is only finding 2 events from websites instead of tens of events vis
 
 ## Implementation Steps
 
-### Phase 1: AI-Powered Pagination Detection
+### Phase 1: AI-Powered Pagination Detection (Cost-Optimized)
 
 **File: `src/lib/services/event-scraper.ts`**
 
 1. **Create AI-based pagination detection function** (new function, ~line 1600+)
 
-- Use GPT to analyze HTML and detect pagination patterns
+- Use GPT-4o-mini (cheaper model) to analyze HTML and detect pagination patterns
+- Truncate HTML intelligently (keep pagination sections, remove large content blocks)
 - Extract pagination URLs, page numbers, and navigation patterns
 - Return structured pagination data (page URLs, next buttons, page numbers)
 - Handle multiple languages (Czech, English, etc.) via AI
 - Detect pagination types: numbered pages, "load more", infinite scroll, next/prev buttons
+- Cache pagination patterns per domain to avoid redundant AI calls
+- Add rate limiting for OpenAI API calls (separate from Firecrawl rate limiting)
+- Implement retry logic with exponential backoff for OpenAI API failures
+- Validate AI responses before using (check for valid URLs, reasonable patterns)
 
 2. **Add automatic pagination URL discovery** (around line 350-370)
 
-- After initial crawl, analyze HTML from first page with AI
+- Only use AI if initial crawl finds few events (< 5) or pagination suspected
+- After initial crawl, analyze HTML from first page with AI (if needed)
 - Detect pagination links and patterns automatically
+- Normalize discovered URLs (handle relative URLs, query params, fragments)
 - Add discovered pagination URLs to crawl queue dynamically
+- Track visited pagination URLs to prevent duplicates
 - Log discovered pagination patterns for transparency
+- Skip already-crawled pagination URLs (use existing getCrawledUrls mechanism)
 
 3. **Implement intelligent pagination following** (around line 280-350)
 
-- Use AI to determine if more pages exist after each page crawl
-- Automatically follow pagination links until no more events found
-- Track pagination state to avoid infinite loops
+- Use AI sparingly - only when pagination suspected or few events found
+- Set maximum pagination depth limit (e.g., 20 pages) to prevent infinite loops
+- Track pagination state (visited URLs, current depth) to avoid infinite loops
+- Use AI to determine if more pages exist after each page crawl (with limits)
+- Automatically follow pagination links until no more events found or depth limit reached
 - Handle different pagination types dynamically
+- Normalize pagination URLs before following (handle relative URLs, duplicates)
 
 ### Phase 2: Enhanced Diagnostic Logging (Generic)
 
