@@ -215,7 +215,15 @@ export class EventScraperService {
           merged.startUrls = [source.url];
         }
         // Dynamic page limit: default to 500, or use configured value
+        // For sites with pagination, ensure we have enough pages to crawl all paginated content
         merged.maxPages = merged.maxPages ?? source.max_pages_per_crawl ?? 500;
+        
+        // If maxPages is too low (less than 50), increase it to ensure pagination is fully crawled
+        // This helps sites like JIC that have multiple pages of events
+        if (merged.maxPages < 50) {
+          console.log(`📄 Increasing maxPages from ${merged.maxPages} to 50 to ensure pagination is fully crawled`);
+          merged.maxPages = 50;
+        }
         
         // Allow any HTTPS URL to enable cross-domain crawling
         // This makes the solution scalable for any startUrl without hardcoding domains
@@ -1229,6 +1237,16 @@ CRITICAL REMINDERS FOR RETRY:
     const pagination = ['next','další','dalsi','older','starší','starsi','more','více','vice'];
     const consent = ['accept','agree','allow','souhlasím','souhlasim','přijmout','prijmout','povolit','rozumím','rozumim', 'přijmout vše', 'povolit vše', 'přijmout všechno', 'povolit všechno', 'přijmimout vše', 'povolit vše', 'přijmout všechno', 'povolit všechno', 'přijmimout všechno', 'přijmám vše', 'povolím vše', 'přijmám všechno', 'povolím všechno', 'přijmim vše', 'povolim vše', 'přijmim všechno', 'povolim všechno', 'přijimám vše', 'povolím vše', 'přijimám všechno', 'povolím všechno', 'přijim vše', 'povolim vše', 'přijim všechno', 'povolim všechno'];
     const expanders = ['load more','show more','zobrazit více','zobrazit vice','načíst další','nacist dalsi', 'zobrazit více akcí', 'zobrazit více událostí', 'zobrazit více akcí na stránce', 'zobrazit více událostí na stránce', 'zobrazit další akce', 'zobrazit další události'];
+    
+    // Page number clicks (1, 2, 3, etc.) - critical for pagination
+    // These are common pagination patterns where clicking page numbers loads more events
+    const pageNumbers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+    const pageNumberClicks = pageNumbers.map(text => ({ 
+      type: 'click', 
+      target: { text }, 
+      delay: 500,  // Longer delay for page navigation
+      waitFor: 2000  // Wait for page to load after clicking
+    }));
 
     // Click consent once
     const consentClicks = consent.map(text => ({ type: 'click', target: { role: 'button', text }, once: true }));
@@ -1248,6 +1266,9 @@ CRITICAL REMINDERS FOR RETRY:
       ...monthClicks,
       { type: 'scroll', target: 'window', count: 6, delay: 350 },
       ...expanderClicks,
+      { type: 'scroll', target: 'window', count: 4, delay: 350 },
+      // Page number clicks - try clicking page numbers to navigate pagination
+      ...pageNumberClicks,
       { type: 'scroll', target: 'window', count: 4, delay: 350 },
       ...paginationClicks,
       { type: 'scroll', target: 'window', count: 4, delay: 350 }
