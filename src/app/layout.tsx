@@ -4,6 +4,7 @@ import "./globals.css";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { GTMHead, GTMNoscript } from "@/components/analytics/GTM";
+import { GoogleTag } from "@/components/analytics/GoogleTag";
 import { CookieConsentBanner } from "@/components/analytics/CookieConsent";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -33,16 +34,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID || '';
+  const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || '';
 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
+        {/* Google Tag Manager (GTM) - if GTM_ID is set */}
         {GTM_ID && (
           <>
             <GTMHead gtmId={GTM_ID} />
             <GTMNoscript gtmId={GTM_ID} />
           </>
         )}
+        {/* Direct Google Tag (gtag.js) - if GA_MEASUREMENT_ID is set (alternative to GTM) */}
+        {!GTM_ID && GA_MEASUREMENT_ID && <GoogleTag measurementId={GA_MEASUREMENT_ID} />}
         <QueryProvider>
           {children}
           <Toaster />

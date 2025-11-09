@@ -25,3 +25,10 @@ CRON_SECRET=your_secure_random_string_here
 
 # Perplexity Configuration (for online event research)
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
+
+# Google Analytics / Tag Manager Configuration
+# Option 1: Use Google Tag Manager (GTM) - format: GTM-XXXXXXX
+NEXT_PUBLIC_GTM_ID=your_gtm_id_here
+# Option 2: Use direct Google Tag (gtag.js) for GA4 - format: G-XXXXXXXXXX
+# Note: Only set one of these. If GTM_ID is set, it takes precedence.
+NEXT_PUBLIC_GA_MEASUREMENT_ID=your_ga_measurement_id_here
