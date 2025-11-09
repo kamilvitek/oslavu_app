@@ -50,6 +50,9 @@ export function Header() {
           <Link href="/#about" className="text-muted-foreground hover:text-primary transition-colors">
             About
           </Link>
+          <Link href="/#faq" className="text-muted-foreground hover:text-primary transition-colors">
+            FAQ
+          </Link>
         </nav>
 
         <div className="flex items-center space-x-4">
