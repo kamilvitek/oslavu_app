@@ -82,7 +82,36 @@ const markdownComponents: Partial<Components> = {
       return parts.length > 0 ? parts : [text];
     };
 
-    // Process children recursively
+    // Check if this paragraph contains a bold label followed by a value (contact info format)
+    const childrenArray = React.Children.toArray(children);
+    const hasBoldLabel = childrenArray.some((child: any) => {
+      if (React.isValidElement(child) && child.type === 'strong') {
+        return true;
+      }
+      if (typeof child === 'string') {
+        // Check for pattern like **Label:** value
+        return /^\*\*[^*]+\*\*:\s*/.test(child);
+      }
+      return false;
+    });
+
+    // If it's a contact info line (has bold label), format it as a list item
+    if (hasBoldLabel) {
+      const processedChildren = React.Children.map(children, (child, index) => {
+        if (typeof child === 'string') {
+          return <React.Fragment key={index}>{processText(child)}</React.Fragment>;
+        }
+        return child;
+      });
+
+      return (
+        <div className="text-foreground mb-2.5 block" {...props}>
+          {processedChildren}
+        </div>
+      );
+    }
+
+    // Process children recursively for regular paragraphs
     const processedChildren = React.Children.map(children, (child, index) => {
       if (typeof child === 'string') {
         return <React.Fragment key={index}>{processText(child)}</React.Fragment>;
