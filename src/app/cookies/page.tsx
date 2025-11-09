@@ -105,7 +105,11 @@ const markdownComponents: Partial<Components> = {
       });
 
       return (
-        <div className="text-foreground mb-2.5 block" {...props}>
+        <div 
+          className="text-foreground mb-2.5 block w-full break-words whitespace-normal" 
+          {...props} 
+          style={{ display: 'block', lineHeight: '1.75', clear: 'both' }}
+        >
           {processedChildren}
         </div>
       );
@@ -186,12 +190,14 @@ export default function CookiesPage() {
   return (
     <div className="min-h-screen bg-background py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto bg-card rounded-lg shadow-sm p-8 border border-border">
-        <MarkdownComponent
-          remarkPlugins={[remarkGfm]}
-          components={markdownComponents}
-        >
-          {markdownContent}
-        </MarkdownComponent>
+        <div className="prose prose-slate max-w-none">
+          <MarkdownComponent
+            remarkPlugins={[remarkGfm]}
+            components={markdownComponents}
+          >
+            {markdownContent}
+          </MarkdownComponent>
+        </div>
         
         <div className="mt-8 pt-6 border-t border-border">
           <Link href="/" className="text-primary hover:underline">
