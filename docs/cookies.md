@@ -7,14 +7,23 @@
 This Cookie Policy is provided by the following data controller:
 
 **Business/Company Name:** Kamil Vítek
+
 **Legal Form:** fyzická osoba podnikající (individual entrepreneur)
+
 **Registration Number (IČO):** 21003441 
+
 **Registered Address:** Riegrova 11, 690 02 Břeclav
+
 **Country of residence:** Czech Republic
+
 **Contact Person:** Kamil Vítek
+
 **Email:** kamil@kamilvitek.cz
+
 **Phone:** +420 731 217 789
+
 **Website:** https://www.oslavu.com/
+
 **Founder's personal website:** https://kamilvitek.cz/
 
 ## Introduction
@@ -169,12 +178,19 @@ If you have any questions, concerns, or requests regarding this Cookie Policy or
 
 
 **Contact Person:** Kamil Vítek
+
 **Email:** kamil@kamilvitek.cz
+
 **Phone:** +420 731 217 789
+
 **Business/Company Name:** Kamil Vítek
+
 **Legal Form:** fyzická osoba podnikající (individual entrepreneur)
+
 **Registered Address:** Riegrova 11, 690 02 Břeclav
+
 **Country of residence:** Czech Republic
+
 **Registration Number (IČO):** 21003441
 
 We will respond to your inquiry within a reasonable timeframe and in accordance with applicable data protection laws. Under GDPR, we are required to respond to your requests within one month.
@@ -202,14 +218,23 @@ For more information about cookies and how they work, you may visit:
 ## Business Registration Details
 
 **Business/Company Name:** Kamil Vítek
+
 **Legal Form:** fyzická osoba podnikající (individual entrepreneur)
+
 **Registration Number (IČO):** 21003441 
+
 **Registered Address:** Riegrova 11, 690 02 Břeclav
+
 **Country of residence:** Czech Republic
+
 **Contact Person:** Kamil Vítek
+
 **Email:** kamil@kamilvitek.cz
+
 **Phone:** +420 731 217 789
+
 **Website:** https://www.oslavu.com/
+
 **Founder's personal website:** https://kamilvitek.cz/
 
 ---
