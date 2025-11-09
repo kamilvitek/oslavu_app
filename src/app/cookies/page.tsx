@@ -90,53 +90,53 @@ const markdownComponents: Partial<Components> = {
       return child;
     });
 
-    return <p className="text-gray-700 mb-3" {...props}>{processedChildren}</p>;
+    return <p className="text-foreground mb-3" {...props}>{processedChildren}</p>;
   },
   h1: ({ node, children, ...props }: any) => (
-    <h1 className="text-3xl font-bold mb-6" {...props}>{children}</h1>
+    <h1 className="text-3xl font-bold mb-6 text-foreground" {...props}>{children}</h1>
   ),
   h2: ({ node, children, ...props }: any) => (
-    <h2 className="text-xl font-semibold mb-3 mt-6" {...props}>{children}</h2>
+    <h2 className="text-xl font-semibold mb-3 mt-6 text-foreground" {...props}>{children}</h2>
   ),
   h3: ({ node, children, ...props }: any) => (
-    <h3 className="text-lg font-semibold mb-2 mt-4" {...props}>{children}</h3>
+    <h3 className="text-lg font-semibold mb-2 mt-4 text-foreground" {...props}>{children}</h3>
   ),
   ul: ({ node, children, ...props }: any) => (
-    <ul className="list-disc list-inside mt-2 text-gray-700 space-y-1 ml-4" {...props}>{children}</ul>
+    <ul className="list-disc list-inside mt-2 text-foreground space-y-1 ml-4" {...props}>{children}</ul>
   ),
   ol: ({ node, children, ...props }: any) => (
-    <ol className="list-decimal list-inside mt-2 text-gray-700 space-y-1 ml-4" {...props}>{children}</ol>
+    <ol className="list-decimal list-inside mt-2 text-foreground space-y-1 ml-4" {...props}>{children}</ol>
   ),
   li: ({ node, children, ...props }: any) => (
-    <li className="mb-1" {...props}>{children}</li>
+    <li className="mb-1 text-foreground" {...props}>{children}</li>
   ),
   strong: ({ node, children, ...props }: any) => (
-    <strong className="font-semibold" {...props}>{children}</strong>
+    <strong className="font-semibold text-foreground" {...props}>{children}</strong>
   ),
   hr: ({ node, ...props }: any) => (
-    <hr className="my-8 border-gray-300" {...props} />
+    <hr className="my-8 border-border" {...props} />
   ),
   table: ({ node, children, ...props }: any) => (
     <div className="overflow-x-auto my-4">
-      <table className="min-w-full border-collapse border border-gray-300" {...props}>
+      <table className="min-w-full border-collapse border border-border" {...props}>
         {children}
       </table>
     </div>
   ),
   thead: ({ node, children, ...props }: any) => (
-    <thead className="bg-gray-100" {...props}>{children}</thead>
+    <thead className="bg-muted" {...props}>{children}</thead>
   ),
   tbody: ({ node, children, ...props }: any) => (
-    <tbody {...props}>{children}</tbody>
+    <tbody className="bg-card" {...props}>{children}</tbody>
   ),
   tr: ({ node, children, ...props }: any) => (
-    <tr className="border-b border-gray-300" {...props}>{children}</tr>
+    <tr className="border-b border-border" {...props}>{children}</tr>
   ),
   th: ({ node, children, ...props }: any) => (
-    <th className="border border-gray-300 px-4 py-2 text-left font-semibold" {...props}>{children}</th>
+    <th className="border border-border px-4 py-2 text-left font-semibold text-foreground" {...props}>{children}</th>
   ),
   td: ({ node, children, ...props }: any) => (
-    <td className="border border-gray-300 px-4 py-2" {...props}>{children}</td>
+    <td className="border border-border px-4 py-2 text-foreground" {...props}>{children}</td>
   ),
 };
 
@@ -155,8 +155,8 @@ export default function CookiesPage() {
   const MarkdownComponent = ReactMarkdown as any;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm p-8">
+    <div className="min-h-screen bg-background py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto bg-card rounded-lg shadow-sm p-8 border border-border">
         <MarkdownComponent
           remarkPlugins={[remarkGfm]}
           components={markdownComponents}
@@ -164,7 +164,7 @@ export default function CookiesPage() {
           {markdownContent}
         </MarkdownComponent>
         
-        <div className="mt-8 pt-6 border-t">
+        <div className="mt-8 pt-6 border-t border-border">
           <Link href="/" className="text-primary hover:underline">
             ← Back to Oslavu
           </Link>
