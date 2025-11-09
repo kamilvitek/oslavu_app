@@ -37,6 +37,7 @@ export function Footer() {
               <li><Link href="https://kamilvitek.cz/kdo-jsem" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Who's behind Oslavu</Link></li>
               <li><Link href="https://kamilvitek.cz/kontakt" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Contact</Link></li>
               <li><Link href="/privacy-policy" className="hover:text-primary">Privacy Policy</Link></li>
+              <li><Link href="/cookies" className="hover:text-primary">Cookie Policy</Link></li>
               <li>
                 <button
                   onClick={handleCookieSettings}
@@ -54,7 +55,7 @@ export function Footer() {
               <Link href="https://www.linkedin.com/in/kamil-vitek/" aria-label="LinkedIn" target="_blank" rel="noopener noreferrer">
                 <Linkedin className="h-5 w-5 text-muted-foreground hover:text-primary cursor-pointer" />
               </Link>
-              <Link href="mailto:kamil@kamilvitek.cz" aria-label="Email">
+              <Link href="mailto:kamil@kamilvitek.cz" aria-label="Email" target="_blank" rel="noopener noreferrer">
                 <Mail className="h-5 w-5 text-muted-foreground hover:text-primary cursor-pointer" />
               </Link>
               <Link href="https://www.instagram.com/kamilvitek_" aria-label="Instagram" target="_blank" rel="noopener noreferrer">

@@ -133,7 +133,7 @@ export function CookieConsentBanner() {
             <p className="text-sm md:text-base text-foreground">
               We use cookies to analyze site usage and improve your experience.{' '}
               <a 
-                href="/privacy-policy" 
+                href="/cookies" 
                 className="text-primary underline hover:text-primary/80 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
                 target="_blank"
                 rel="noopener noreferrer"
