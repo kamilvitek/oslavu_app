@@ -27,11 +27,14 @@ export function CookieConsentBanner() {
       }
       
       // Update Google Consent Mode v2 using gtag
+      // All 4 consent types must be updated to match GTM tag's built-in consent checks
       if (window.gtag) {
         try {
           window.gtag('consent', 'update', {
             analytics_storage: value,
-            ad_storage: value
+            ad_storage: value,
+            ad_personalization: value,
+            ad_user_data: value
           });
         } catch (error) {
           console.warn('Failed to update consent mode:', error);

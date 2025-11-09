@@ -20,6 +20,8 @@ export function GTMHead({ gtmId }: GTMProps) {
             gtag('consent', 'default', {
               'analytics_storage': 'denied',
               'ad_storage': 'denied',
+              'ad_personalization': 'denied',
+              'ad_user_data': 'denied',
               'wait_for_update': 500
             });
           `
