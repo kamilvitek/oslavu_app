@@ -18,13 +18,13 @@ This Privacy Policy is provided by the following data controller:
 
 **Contact Person:** Kamil Vítek
 
-**Email:** <a href="mailto:kamil@kamilvitek.cz" target="_blank" rel="noopener noreferrer">kamil@kamilvitek.cz</a>
+**Email:** kamil@kamilvitek.cz
 
-**Phone:** <a href="tel:+420731217789" target="_blank" rel="noopener noreferrer">+420 731 217 789</a>
+**Phone:** +420 731 217 789
 
-**Website:** <a href="https://www.oslavu.com/" target="_blank" rel="noopener noreferrer">https://www.oslavu.com/</a>
+**Website:** https://www.oslavu.com/
 
-**Founder's personal website:** <a href="https://kamilvitek.cz/" target="_blank" rel="noopener noreferrer">https://kamilvitek.cz/</a>
+**Founder's personal website:** https://kamilvitek.cz/
 
 ## Introduction
 
@@ -262,16 +262,16 @@ You have the right to lodge a complaint with a supervisory authority if you beli
 Pplk. Sochora 27  
 170 00 Praha 7  
 Czech Republic  
-**Website:** <a href="https://www.uoou.cz" target="_blank" rel="noopener noreferrer">https://www.uoou.cz</a>  
-**Email:** <a href="mailto:posta@uoou.cz" target="_blank" rel="noopener noreferrer">posta@uoou.cz</a>
+**Website:** https://www.uoou.cz  
+**Email:** posta@uoou.cz
 
 ## How to Exercise Your Rights
 
 To exercise any of your rights, please contact us:
 
-**Email:** <a href="mailto:kamil@kamilvitek.cz" target="_blank" rel="noopener noreferrer">kamil@kamilvitek.cz</a>
+**Email:** kamil@kamilvitek.cz
 
-**Phone:** <a href="tel:+420731217789" target="_blank" rel="noopener noreferrer">+420 731 217 789</a>
+**Phone:** +420 731 217 789
 
 **Postal Address:**  
 Kamil Vítek  
@@ -331,9 +331,9 @@ If you have any questions, concerns, or requests regarding this Privacy Policy o
 
 **Contact Person:** Kamil Vítek
 
-**Email:** <a href="mailto:kamil@kamilvitek.cz" target="_blank" rel="noopener noreferrer">kamil@kamilvitek.cz</a>
+**Email:** kamil@kamilvitek.cz
 
-**Phone:** <a href="tel:+420731217789" target="_blank" rel="noopener noreferrer">+420 731 217 789</a>
+**Phone:** +420 731 217 789
 
 **Business/Company Name:** Kamil Vítek
 
@@ -345,9 +345,9 @@ If you have any questions, concerns, or requests regarding this Privacy Policy o
 
 **Registration Number (IČO):** 21003441
 
-**Website:** <a href="https://www.oslavu.com/" target="_blank" rel="noopener noreferrer">https://www.oslavu.com/</a>
+**Website:** https://www.oslavu.com/
 
-**Founder's personal website:** <a href="https://kamilvitek.cz/" target="_blank" rel="noopener noreferrer">https://kamilvitek.cz/</a>
+**Founder's personal website:** https://kamilvitek.cz/
 
 We will respond to your inquiry within a reasonable timeframe and in accordance with applicable data protection laws. Under GDPR, we are required to respond to your requests within one month.
 
@@ -359,16 +359,16 @@ If you are not satisfied with our response or believe that we are processing you
 Pplk. Sochora 27  
 170 00 Praha 7  
 Czech Republic  
-**Website:** <a href="https://www.uoou.cz" target="_blank" rel="noopener noreferrer">https://www.uoou.cz</a>  
-**Email:** <a href="mailto:posta@uoou.cz" target="_blank" rel="noopener noreferrer">posta@uoou.cz</a>
+**Website:** https://www.uoou.cz  
+**Email:** posta@uoou.cz
 
 ## Additional Information
 
 For more information about data protection and your rights, you may visit:
 
-- **European Data Protection Board:** <a href="https://edpb.europa.eu/" target="_blank" rel="noopener noreferrer">https://edpb.europa.eu/</a>
-- **Czech Office for Personal Data Protection:** <a href="https://www.uoou.cz" target="_blank" rel="noopener noreferrer">https://www.uoou.cz</a>
-- **GDPR Portal:** <a href="https://gdpr.eu/" target="_blank" rel="noopener noreferrer">https://gdpr.eu/</a>
+- **European Data Protection Board:** https://edpb.europa.eu/
+- **Czech Office for Personal Data Protection:** https://www.uoou.cz
+- **GDPR Portal:** https://gdpr.eu/
 
 ---
 
@@ -386,13 +386,13 @@ For more information about data protection and your rights, you may visit:
 
 **Contact Person:** Kamil Vítek
 
-**Email:** <a href="mailto:kamil@kamilvitek.cz" target="_blank" rel="noopener noreferrer">kamil@kamilvitek.cz</a>
+**Email:** kamil@kamilvitek.cz
 
-**Phone:** <a href="tel:+420731217789" target="_blank" rel="noopener noreferrer">+420 731 217 789</a>
+**Phone:** +420 731 217 789
 
-**Website:** <a href="https://www.oslavu.com/" target="_blank" rel="noopener noreferrer">https://www.oslavu.com/</a>
+**Website:** https://www.oslavu.com/
 
-**Founder's personal website:** <a href="https://kamilvitek.cz/" target="_blank" rel="noopener noreferrer">https://kamilvitek.cz/</a>
+**Founder's personal website:** https://kamilvitek.cz/
 
 ---
 
