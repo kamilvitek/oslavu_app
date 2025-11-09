@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { GTMHead, GTMNoscript } from "@/components/analytics/GTM";
 import { GoogleTag } from "@/components/analytics/GoogleTag";
 import { CookieConsentBanner } from "@/components/analytics/CookieConsent";
+import { Header } from "@/components/layout/header";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -49,6 +50,7 @@ export default function RootLayout({
         {/* Direct Google Tag (gtag.js) - if GA_MEASUREMENT_ID is set (alternative to GTM) */}
         {!GTM_ID && GA_MEASUREMENT_ID && <GoogleTag measurementId={GA_MEASUREMENT_ID} />}
         <QueryProvider>
+          <Header />
           {children}
           <Toaster />
           <CookieConsentBanner />

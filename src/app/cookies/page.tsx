@@ -185,7 +185,7 @@ export default function CookiesPage() {
   const MarkdownComponent = ReactMarkdown as any;
 
   return (
-    <div className="min-h-screen bg-background py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-background pt-20 pb-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto bg-card rounded-lg shadow-sm p-8 border border-border">
         <MarkdownComponent
           remarkPlugins={[remarkGfm]}
@@ -195,8 +195,11 @@ export default function CookiesPage() {
         </MarkdownComponent>
         
         <div className="mt-8 pt-6 border-t border-border">
-          <Link href="/" className="text-primary hover:underline">
-            ← Back to Oslavu
+          <Link 
+            href="/" 
+            className="inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium shadow-sm hover:shadow-md"
+          >
+            🎉 Let's plan your perfect date
           </Link>
         </div>
       </div>
