@@ -11,7 +11,8 @@ export function Footer() {
   return (
     <footer className="bg-muted border-t border-border">
       <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="space-y-4">
             <Link href="/#hero" className="flex items-center space-x-2">
               <Calendar className="h-6 w-6 text-primary" />
@@ -65,16 +66,17 @@ export function Footer() {
               </Link>
             </div>
           </div>
-        </div>
-        
-        <div className="border-t mt-8 pt-8 text-center text-sm text-muted-foreground space-y-2">
-          <p>Proudly vibecoded by <Link href="https://kamilvitek.cz" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Kamil Vitek</Link>.</p>
-          <button
-            onClick={handleCookieSettings}
-            className="text-sm text-muted-foreground hover:text-primary underline transition-colors"
-          >
-            Cookie Settings
-          </button>
+          </div>
+          
+          <div className="border-t mt-8 pt-8 text-center text-sm text-muted-foreground space-y-2">
+            <p>Proudly vibecoded by <Link href="https://kamilvitek.cz" rel="noopener noreferrer" target="_blank" className="hover:text-primary">Kamil Vitek</Link>.</p>
+            <button
+              onClick={handleCookieSettings}
+              className="text-sm text-muted-foreground hover:text-primary underline transition-colors"
+            >
+              Cookie Settings
+            </button>
+          </div>
         </div>
       </div>
     </footer>

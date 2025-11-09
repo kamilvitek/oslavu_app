@@ -185,8 +185,8 @@ export default function PrivacyPolicyPage() {
   const MarkdownComponent = ReactMarkdown as any;
 
   return (
-    <div className="min-h-screen bg-background pt-20 pb-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto bg-card rounded-lg shadow-sm p-8 border border-border">
+    <div className="min-h-screen bg-background pt-28 sm:pt-32 pb-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto bg-card rounded-lg shadow-sm p-6 sm:p-8 border border-border">
         <MarkdownComponent
           remarkPlugins={[remarkGfm]}
           components={markdownComponents}
@@ -194,7 +194,7 @@ export default function PrivacyPolicyPage() {
           {markdownContent}
         </MarkdownComponent>
         
-        <div className="mt-8 pt-6 border-t border-border">
+        <div className="mt-8 pt-6 border-t border-border flex justify-center">
           <Link 
             href="/" 
             className="inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium shadow-sm hover:shadow-md"
