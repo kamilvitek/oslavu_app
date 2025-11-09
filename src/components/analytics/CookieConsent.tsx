@@ -140,6 +140,16 @@ export function CookieConsentBanner() {
               >
                 Learn more
               </a>
+              {' '}or read our{' '}
+              <a 
+                href="/privacy-policy" 
+                className="text-primary underline hover:text-primary/80 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Privacy Policy
+              </a>
+              .
             </p>
           </div>
           <div className="flex gap-3 shrink-0 w-full sm:w-auto">

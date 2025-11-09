@@ -9,7 +9,7 @@ export function Footer() {
     window.location.reload();
   };
   return (
-    <footer className="bg-gray-50 border-t">
+    <footer className="bg-muted border-t border-border">
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="space-y-4">
