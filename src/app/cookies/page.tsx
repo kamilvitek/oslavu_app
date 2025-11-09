@@ -95,7 +95,7 @@ const markdownComponents: Partial<Components> = {
       return false;
     });
 
-    // If it's a contact info line (has bold label), format it as a list item
+    // If it's a contact info line (has bold label), format it as a div (not p)
     if (hasBoldLabel) {
       const processedChildren = React.Children.map(children, (child, index) => {
         if (typeof child === 'string') {
@@ -104,13 +104,14 @@ const markdownComponents: Partial<Components> = {
         return child;
       });
 
+      // Return a div instead of p tag for contact info
       return (
         <div 
           className="text-foreground mb-2.5 block w-full break-words whitespace-normal" 
-          {...props} 
           style={{ display: 'block', lineHeight: '1.75', clear: 'both' }}
         >
           {processedChildren}
+          <br />
         </div>
       );
     }
