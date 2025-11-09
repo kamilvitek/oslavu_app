@@ -4,9 +4,10 @@ import { join } from 'path';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { Components } from 'react-markdown';
 
 // Custom components for react-markdown to make links, emails, and phone numbers clickable
-const markdownComponents = {
+const markdownComponents: Partial<Components> = {
   a: ({ node, href, children, ...props }: any) => {
     // If it's already a link in markdown, use it as is
     if (href) {
@@ -151,15 +152,17 @@ export default function CookiesPage() {
     markdownContent = '# Cookie Policy\n\nError loading cookie policy.';
   }
 
+  const MarkdownComponent = ReactMarkdown as any;
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm p-8">
-        <ReactMarkdown
+        <MarkdownComponent
           remarkPlugins={[remarkGfm]}
           components={markdownComponents}
         >
           {markdownContent}
-        </ReactMarkdown>
+        </MarkdownComponent>
         
         <div className="mt-8 pt-6 border-t">
           <Link href="/" className="text-primary hover:underline">
