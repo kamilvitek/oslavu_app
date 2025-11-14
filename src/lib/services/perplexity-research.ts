@@ -1,6 +1,7 @@
 // src/lib/services/perplexity-research.ts
 import { PerplexityConflictResearch, PerplexityResearchParams } from '@/types/perplexity';
 import { formatNearbyCities } from '@/lib/utils/city-proximity';
+import { cityDatabaseService } from '@/lib/services/city-database';
 import { z } from 'zod';
 
 // Zod schema for structured output validation
@@ -116,8 +117,8 @@ export class PerplexityResearchService {
         return cached.data;
       }
 
-      // Generate prompt based on category
-      const prompt = this.generatePrompt(params);
+      // Generate prompt based on category (now async to get dynamic nearby cities)
+      const prompt = await this.generatePrompt(params);
       
       // Call Perplexity API
       const result = await this.callPerplexityAPI(prompt);
@@ -133,7 +134,7 @@ export class PerplexityResearchService {
       
       if (totalEventsFound === 0) {
         console.log('⚠️ Comprehensive prompt found no events, trying simplified fallback prompt...');
-        const simplePrompt = this.generateSimplifiedPrompt(params);
+        const simplePrompt = await this.generateSimplifiedPrompt(params);
         try {
           const fallbackResult = await this.callPerplexityAPI(simplePrompt);
           const fallbackValidated = this.validateAndParseResponse(fallbackResult);
@@ -184,163 +185,177 @@ export class PerplexityResearchService {
 
   /**
    * Generate dynamic prompt based on category and subcategory
+   * Optimized for reliability: balances specificity with inclusivity
+   * Uses dynamic city database to find nearby cities (scalable for any city)
    */
-  private generatePrompt(params: PerplexityResearchParams): string {
+  private async generatePrompt(params: PerplexityResearchParams): Promise<string> {
     const { city, category, subcategory, date, expectedAttendees, dateRange } = params;
-    const nearbyCities = formatNearbyCities(city);
+    
+    // Get nearby cities dynamically from database (with AI fallback)
+    // This is scalable for any city, not just hardcoded ones
+    const nearbyCitiesList = await this.getNearbyCitiesForPrompt(city);
+    const nearbyCities = nearbyCitiesList.length > 0 
+      ? `${city}, ${nearbyCitiesList.join(', ')}`
+      : city;
     const dateRangeStr = dateRange 
       ? `${dateRange.start} to ${dateRange.end}`
       : date;
     
     // Calculate date window for temporal proximity analysis (±7 days)
-    // If dateRange exists, extend window from start and end of range; otherwise use single date
     const rangeStart = dateRange ? new Date(dateRange.start) : new Date(date);
     const rangeEnd = dateRange ? new Date(dateRange.end) : new Date(date);
-    
     const windowStart = new Date(rangeStart);
     windowStart.setDate(windowStart.getDate() - 7);
     const windowEnd = new Date(rangeEnd);
     windowEnd.setDate(windowEnd.getDate() + 7);
-    
     const windowStartStr = windowStart.toISOString().split('T')[0];
     const windowEndStr = windowEnd.toISOString().split('T')[0];
     
     // Category-specific event types
     const categoryEventTypes = this.getCategoryEventTypes(category, subcategory);
     
-    // Build date constraint for prompt - now includes temporal window
-    const exactDateConstraint = dateRange 
-      ? `PRIMARY FOCUS: Events on EXACTLY these dates: ${dateRange.start} to ${dateRange.end} (inclusive).
-TEMPORAL PROXIMITY ANALYSIS: Also include events from ${windowStartStr} to ${windowEndStr} (7 days before and after) that could impact attendance.`
-      : `PRIMARY FOCUS: Events on EXACTLY this date: ${date}.
-TEMPORAL PROXIMITY ANALYSIS: Also include events from ${windowStartStr} to ${windowEndStr} (7 days before and after) that could impact attendance.`;
-    
-    const prompt = `You are an event conflict analyst. A user is organizing a ${category} event${subcategory ? ` (${subcategory})` : ''} in ${city} on ${date}. They expect ${expectedAttendees} attendees.
+    // Build the prompt with clear structure and progressive specificity
+    const prompt = `Find ${category}${subcategory ? ` (${subcategory})` : ''} events in ${city}${dateRange ? ` from ${dateRange.start} to ${dateRange.end}` : ` on ${date}`}. The user is organizing an event expecting ${expectedAttendees} attendees.
 
-CRITICAL DATE CONSTRAINT WITH TEMPORAL PROXIMITY:
-${exactDateConstraint}
+SEARCH SCOPE:
+- Primary focus: Events on ${dateRange ? `dates ${dateRange.start} to ${dateRange.end}` : `date ${date}`}
+- Extended window: Also search from ${windowStartStr} to ${windowEndStr} (7 days before/after) for events that could impact attendance
+- Location: Search in ${nearbyCities}
+- Category: Focus on ${categoryEventTypes}${subcategory ? `, specifically ${subcategory}` : ''}
 
-TEMPORAL PROXIMITY IMPACT ANALYSIS:
-Events happening just before or after the target date can significantly impact attendance:
-- Events 1-3 days BEFORE: People may be tired, have already spent money, or be recovering from the previous event
-- Events 1-3 days AFTER: People may be saving money/time for the upcoming event, reducing your attendance
-- Events 4-7 days BEFORE/AFTER: Moderate impact - people may still be planning around these events or recovering
-- Major festivals (1000+ attendees) have stronger temporal impact - they can affect attendance even 5-7 days away
+WHAT TO INCLUDE:
 
-For conflictingEvents:
-- PRIMARY: Include events where the event date matches EXACTLY the specified date(s) - mark these as "onDate: true"
-- TEMPORAL PROXIMITY: Include events from ${windowStartStr} to ${windowEndStr} that could impact attendance - mark these as "onDate: false" and include "daysFromTarget" (negative for before, positive for after)
-- If an event spans multiple days, include it if it overlaps with the specified date(s) OR falls within the temporal window
+1. Conflicting Events (${categoryEventTypes}):
+   - Events on the exact target date(s) - mark as "onDate: true"
+   - Events within 7 days before/after - mark as "onDate: false" with "daysFromTarget" (negative = before, positive = after)
+   - Major festivals (1000+ attendees) from nearby cities, even if not in ${city} - they compete across regions
+   - Include events that match ${category}${subcategory ? ` and ${subcategory}` : ''} category
+   - Be inclusive: if unsure about category match, include it (we'll filter later)
 
-For touringArtists:
-- PRIMARY: Include artists performing on the EXACT date(s) specified
-- TEMPORAL PROXIMITY: Include major artists performing within 7 days before or after - these can draw away your target audience
+2. Touring Artists:
+   - Artists performing on target date(s) or within 7 days before/after
+   - Focus on artists matching ${category}${subcategory ? ` / ${subcategory}` : ''} genre
 
-For localFestivals:
-- PRIMARY: Include festivals that occur on the EXACT date(s) specified
-- TEMPORAL PROXIMITY: Include major festivals (500+ attendees) within 7 days before or after - these have strong temporal impact
+3. Local Festivals:
+   - Festivals on target date(s) or major festivals (500+ attendees) within 7 days
+   - Major festivals (1000+ attendees) have strong impact even from nearby cities
 
-For holidaysAndCulturalEvents:
-- PRIMARY: Include holidays/events on the EXACT date(s) specified
-- TEMPORAL PROXIMITY: Include major holidays/events within 3-5 days before or after - these can affect travel and availability
+4. Holidays & Cultural Events:
+   - Holidays/events on target date(s) or major ones within 3-5 days before/after
+   - These affect travel and availability
 
-CRITICAL LOCATION FLEXIBILITY FOR MAJOR EVENTS:
-- Major festivals (1000+ attendees) can compete across cities and regions
-- For example: MKLV Fest in Mikulov competes with events in Hradec Králové, Prague, Brno, and nearby cities
-- Large music festivals draw audiences from a wide geographic area (50-200km radius)
-- Include major festivals from nearby cities if they target the same audience and occur on the same date
-- For festivals with 1000+ expected attendees, consider them competing even if they're in a different city within Czech Republic
+CATEGORY FILTERING (be reasonable, not overly strict):
+- Primary focus: ${category}${subcategory ? ` / ${subcategory}` : ''} events
+- Include related events that might compete for the same audience
+- Exclude clearly unrelated events (e.g., wine tours for music events, sports for business events)
+- When in doubt, include rather than exclude - better to have more data
 
-CRITICAL CATEGORY/SUBCATEGORY FILTERING:
-- ONLY return events that match the target category "${category}"${subcategory ? ` and subcategory "${subcategory}"` : ''}
-- DO NOT include unrelated events (e.g., wine tours, business conferences, sports events for music/entertainment events)
-- For Entertainment category: ONLY include music, concerts, festivals, entertainment events
-- For ${subcategory ? `${subcategory} subcategory: ONLY include events that match this specific genre/style` : 'this category: ONLY include events that match this category'}
-- If an event doesn't clearly match the category/subcategory, DO NOT include it
-- Examples of events to EXCLUDE for Entertainment/Hip-Hop:
-  * Wine tours, food events, culinary events
-  * Business conferences, workshops, seminars
-  * Sports events, fitness events
-  * Educational events, lectures
-  * Healthcare events, wellness events
-  * Unrelated cultural events (unless they're music festivals)
+OUTPUT FORMAT (JSON only, no markdown):
 
-Search for:
-1. Other ${categoryEventTypes} in ${nearbyCities} from ${windowStartStr} to ${windowEndStr}
-   - PRIMARY: Events on ${dateRange ? `dates ${dateRange.start} to ${dateRange.end}` : `date ${date}`}
-   - TEMPORAL PROXIMITY: Events within 7 days before/after that could impact attendance
-   - Include major festivals (1000+ attendees) from nearby cities even if not in the exact target city
-   - Major festivals can compete across cities (e.g., Mikulov festival competes with Hradec Králové events)
-   - BUT: Only include festivals that match the target category/subcategory
-2. Major ${category} artists/events touring Czech Republic from ${windowStartStr} to ${windowEndStr}
-   - PRIMARY: Artists performing on ${dateRange ? `dates ${dateRange.start} to ${dateRange.end}` : `date ${date}`}
-   - TEMPORAL PROXIMITY: Major artists performing within 7 days before/after
-   - ONLY include artists/events that match the target category/subcategory
-3. Local festivals or cultural events targeting similar audiences from ${windowStartStr} to ${windowEndStr}
-   - PRIMARY: Festivals on ${dateRange ? `dates ${dateRange.start} to ${dateRange.end}` : `date ${date}`}
-   - TEMPORAL PROXIMITY: Major festivals (500+ attendees) within 7 days before/after
-   - Pay special attention to major festivals (1000+ attendees) - they compete across cities and have strong temporal impact
-   - BUT: Only include festivals that match the target category/subcategory
-4. Holidays or special events in Czech Republic from ${windowStartStr} to ${windowEndStr}
-   - PRIMARY: Holidays/events on ${dateRange ? `dates ${dateRange.start} to ${dateRange.end}` : `date ${date}`}
-   - TEMPORAL PROXIMITY: Major holidays/events within 3-5 days before/after
+{
+  "conflictingEvents": [
+    {
+      "name": "Event name",
+      "date": "YYYY-MM-DD",
+      "location": "City name",
+      "type": "concert|festival|cultural_event|other",
+      "onDate": true/false,
+      "daysFromTarget": number (only if onDate is false),
+      "expectedAttendance": number (optional),
+      "description": "Brief description (optional)",
+      "source": "URL (optional)",
+      "temporalImpact": "high|medium|low" (optional)
+    }
+  ],
+  "touringArtists": [
+    {
+      "artistName": "Artist name",
+      "tourDates": ["YYYY-MM-DD"],
+      "locations": ["City name"],
+      "genre": "Genre (optional)"
+    }
+  ],
+  "localFestivals": [
+    {
+      "name": "Festival name",
+      "dates": "Date range string",
+      "location": "City name",
+      "type": "Festival type",
+      "description": "Description (optional)"
+    }
+  ],
+  "holidaysAndCulturalEvents": [
+    {
+      "name": "Holiday/Event name",
+      "date": "YYYY-MM-DD",
+      "type": "holiday|cultural_event",
+      "impact": "low|medium|high",
+      "description": "Description (optional)"
+    }
+  ],
+  "recommendations": {
+    "shouldMoveDate": false,
+    "recommendedDates": [],
+    "reasoning": [
+      "Write in simple, direct language. Example: 'Rock for People festival (June 10-14) in Hradec Králové will attract 20,000+ fans. Even though your event is on June 16 (2 days after), many potential attendees will still be recovering or have already spent their budget. Consider moving to June 20-25.'"
+    ],
+    "riskLevel": "low|medium|high"
+  }
+}
 
-Provide structured JSON with:
-- conflictingEvents: Array of competing events with:
-  * name, date (YYYY-MM-DD format), location, type (concert/festival/cultural_event/other)
-  * onDate: boolean (true if on exact target date, false if within temporal window)
-  * daysFromTarget: number (optional, negative for days before, positive for days after, only if onDate is false)
-  * expectedAttendance (if known), description, source URL if available
-  * temporalImpact: string (optional, "high"/"medium"/"low" - impact based on proximity and size)
-- touringArtists: Array of major artists touring with artistName, tourDates (array of YYYY-MM-DD), locations (array), genre
-  * Include artists performing on target date(s) AND within 7 days before/after
-- localFestivals: Array of local festivals with name, dates (date range string), location, type, description
-  * Include festivals on target date(s) AND major festivals (500+ attendees) within 7 days before/after
-- holidaysAndCulturalEvents: Array with name, date (YYYY-MM-DD), type (holiday/cultural_event), impact (low/medium/high), description
-  * Include holidays/events on target date(s) AND major ones within 3-5 days before/after
-- recommendations: Object with shouldMoveDate (boolean), recommendedDates (array of YYYY-MM-DD if shouldMoveDate is true), reasoning (array of strings), riskLevel (low/medium/high)
-  * When evaluating shouldMoveDate, consider BOTH same-day conflicts AND temporal proximity impacts
-  * In reasoning, explicitly mention if conflicts are on the same date or nearby dates, and explain the temporal impact
-
-CRITICAL FOR RECOMMENDATIONS - Write in simple, direct language:
-- Use plain language that anyone can understand immediately
-- Start with the main problem or opportunity
-- Be specific about dates, names, and impacts
-- Mention temporal proximity when relevant (e.g., "3 days before", "the day after")
-- Use action verbs and clear implications
-- Avoid jargon like "saturate the market" - instead say "too many events competing for the same audience"
-- Format each reasoning point as: "What's happening" + "Why it matters (including temporal impact)" + "What to do"
-- Keep each point under 100 words
-- Focus on actionable insights, not just facts
-
-Example of good reasoning with temporal proximity:
-- "Rock for People festival (June 10-14) will attract 20,000+ rock fans in Hradec Králové. Even though your event is on June 16 (2 days after), many potential attendees will still be recovering or have already spent their budget. This will reduce your attendance. Consider moving your event to June 20-25 to avoid the conflict."
-- "Major hip-hop concert on June 5 (3 days before your June 8 event) will draw your target audience. People may be saving money for that event or be too tired to attend yours so soon after. Consider moving to June 12-15 to give people time to recover."
-
-Example of bad reasoning:
-- "International touring artists and large crowds will saturate the local market, making it difficult to attract attendees and secure resources."
-
-IMPORTANT: 
+IMPORTANT GUIDELINES:
 - Use YYYY-MM-DD format for all dates
-- PRIMARY: Return events that occur on the EXACT date(s) specified: ${dateRange ? `${dateRange.start} to ${dateRange.end}` : date}
-- TEMPORAL PROXIMITY: Also return events from ${windowStartStr} to ${windowEndStr} that could impact attendance
-- Be specific about dates and locations
+- Be specific about dates, locations, and event names
 - Include source URLs when available
-- Write recommendations in simple, conversational language
-- Clearly indicate which events are on the exact date vs. nearby dates
-- If no conflicts found on the exact date(s) OR within the temporal window, return empty arrays but still provide recommendations
-
-Return ONLY valid JSON, no markdown code blocks or additional text.`;
+- For recommendations: Use plain language, be specific, mention temporal proximity when relevant
+- If no events found, return empty arrays but still provide recommendations
+- Return ONLY valid JSON, no markdown code blocks or additional text`;
 
     return prompt;
+  }
+
+  /**
+   * Get nearby cities dynamically using CityDatabaseService
+   * Falls back to hardcoded list if database lookup fails
+   */
+  private async getNearbyCitiesForPrompt(city: string): Promise<string[]> {
+    try {
+      // Use CityDatabaseService to get impact cities (nearby larger cities)
+      // This uses database first, then calculates from coordinates, then AI fallback
+      const impactCities = await cityDatabaseService.getImpactCities(
+        city,
+        50000, // minPopulation: cities with 50k+ population
+        50     // maxDistance: within 50km
+      );
+      
+      if (impactCities.length > 0) {
+        // Return city names (use English name if available, otherwise Czech)
+        return impactCities.map(c => c.name_en || c.name_cs || '');
+      }
+      
+      // Fallback to hardcoded list if database lookup fails
+      console.log(`⚠️ No nearby cities found in database for "${city}", using fallback`);
+      return formatNearbyCities(city).split(', ').slice(1); // Remove the city itself
+    } catch (error) {
+      console.warn(`⚠️ Error getting nearby cities for "${city}", using fallback:`, error);
+      // Fallback to hardcoded list on error
+      const fallback = formatNearbyCities(city).split(', ');
+      return fallback.length > 1 ? fallback.slice(1) : [];
+    }
   }
 
   /**
    * Generate simplified prompt for fallback when comprehensive prompt finds no events
    * This uses a more direct, less restrictive approach similar to simple user queries
    */
-  private generateSimplifiedPrompt(params: PerplexityResearchParams): string {
+  private async generateSimplifiedPrompt(params: PerplexityResearchParams): Promise<string> {
     const { city, category, subcategory, date, dateRange } = params;
+    
+    // Get nearby cities dynamically
+    const nearbyCitiesList = await this.getNearbyCitiesForPrompt(city);
+    const nearbyCitiesStr = nearbyCitiesList.length > 0 
+      ? `${city}, ${nearbyCitiesList.join(', ')}`
+      : city;
     const dateStr = dateRange ? `${dateRange.start} to ${dateRange.end}` : date;
     
     // Calculate date window (±7 days)
@@ -406,7 +421,7 @@ Return a JSON object with this structure:
 }
 
 IMPORTANT:
-- Focus on finding events in ${city} on or near ${dateStr}
+- Focus on finding events in ${nearbyCitiesStr} on or near ${dateStr}
 - Include events that match ${category}${subcategory ? ` and ${subcategory}` : ''} category
 - Be inclusive - include events that might be relevant even if not perfectly matching
 - Use YYYY-MM-DD format for all dates
