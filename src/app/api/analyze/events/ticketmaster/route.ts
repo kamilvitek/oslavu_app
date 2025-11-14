@@ -4,6 +4,7 @@ import { ticketmasterService } from '@/lib/services/ticketmaster';
 import { Event } from '@/types';
 import { sanitizeApiParameters, logSanitizationResults } from '@/lib/utils/input-sanitization';
 import { getCityCountryCode } from '@/lib/utils/city-country-mapping';
+import { cityNormalizationService } from '@/lib/services/city-normalization';
 
 // Helper function to create responses with proper headers
 function createResponse(data: any, options: { status?: number } = {}) {
@@ -92,7 +93,7 @@ export async function GET(request: NextRequest) {
     const sanitizedParams = sanitizationResult.sanitizedParams;
     
     // Extract sanitized parameters
-    const city = sanitizedParams.city;
+    const originalCity = sanitizedParams.city;
     const startDate = sanitizedParams.startDate;
     const endDate = sanitizedParams.endDate;
     const category = sanitizedParams.category;
@@ -102,12 +103,18 @@ export async function GET(request: NextRequest) {
     const page = sanitizedParams.page || 0;
     const size = Math.min(sanitizedParams.size || 199, 199); // Ticketmaster's maximum page size is 199
 
+    // Normalize city name before API calls (e.g., "Praha" -> "Prague")
+    console.log(`🌍 Normalizing city name for Ticketmaster API: "${originalCity}"`);
+    const normalizedCity = await cityNormalizationService.getAPICityName(originalCity);
+    console.log(`✅ City normalized: "${originalCity}" -> "${normalizedCity}"`);
+    const city = normalizedCity; // Use normalized city for API calls
+
     // Use sanitized radius (already validated and converted)
     const cleanRadius = radius;
 
     // Log request parameters only in development mode
     if (process.env.NODE_ENV === 'development') {
-      console.log('🎟️ Ticketmaster API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
+      console.log('🎟️ Ticketmaster API Request params:', { originalCity, normalizedCity: city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
     }
 
     if (!city && !keyword) {
@@ -218,6 +225,7 @@ export async function GET(request: NextRequest) {
           console.log(`🎟️ Ticketmaster: Mapped category "${category}" to "${ticketmasterClassification}"`);
           
           // NEW APPROACH: For Prague, use country-based search with AI city detection directly
+          // Check normalized city name (handles both "Prague" and "Praha")
           let primaryResult;
           if (searchCity.toLowerCase() === 'prague') {
             console.log(`🎟️ Route: Using country-based search with AI city detection for Prague`);
@@ -312,6 +320,7 @@ export async function GET(request: NextRequest) {
         }
         
         // NEW APPROACH: If no events found for Czech cities, use country-based search with AI city detection
+        // Check normalized city name (handles both "Prague" and "Praha")
         if (events.length === 0 && (searchCity.toLowerCase() === 'prague' || searchCity.toLowerCase().includes('czech'))) {
           console.log(`🎟️ Ticketmaster: No events found for ${searchCity}, trying country-based search with AI city detection`);
           

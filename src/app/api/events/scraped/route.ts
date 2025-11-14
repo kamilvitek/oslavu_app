@@ -4,6 +4,7 @@ import { serverDatabaseService } from '@/lib/supabase';
 import { sanitizeApiParameters } from '@/lib/utils/input-sanitization';
 import { getCategorySynonyms, normalizeCategory } from '@/lib/constants/taxonomy';
 import { aiNormalizationService } from '@/lib/services/ai-normalization';
+import { cityNormalizationService } from '@/lib/services/city-normalization';
 
 // Helper function to create responses with proper headers
 function createResponse(data: any, options: { status?: number } = {}) {
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
     const sanitizedParams = sanitizationResult.sanitizedParams;
     
     // Extract parameters
-    const city = sanitizedParams.city;
+    const originalCity = sanitizedParams.city;
     const startDate = sanitizedParams.startDate;
     const endDate = sanitizedParams.endDate;
     const category = sanitizedParams.category;
@@ -53,8 +54,21 @@ export async function GET(request: NextRequest) {
     const page = Math.max(0, sanitizedParams.page || 0);
     const limit = Math.min(100, sanitizedParams.size || 25);
     
+    // Normalize city name for database queries (e.g., "Praha" -> "Prague")
+    // This ensures we find events stored with either Czech or English city names
+    let normalizedCity = originalCity;
+    let cityAliases: string[] = [];
+    if (originalCity) {
+      console.log(`🌍 Normalizing city name for database query: "${originalCity}"`);
+      const cityNormalization = await cityNormalizationService.normalizeCityForAPI(originalCity);
+      normalizedCity = cityNormalization.normalized;
+      cityAliases = cityNormalization.aliases;
+      console.log(`✅ City normalized: "${originalCity}" -> "${normalizedCity}" (aliases: ${cityAliases.length})`);
+    }
+    
     console.log('🔍 Querying scraped events:', {
-      city,
+      originalCity,
+      normalizedCity,
       startDate,
       endDate,
       category,
@@ -79,8 +93,13 @@ export async function GET(request: NextRequest) {
       query = query.lte('date', `${endDate}T23:59:59Z`);
     }
     
-    if (city) {
-      query = query.ilike('city', `%${city}%`);
+    if (normalizedCity) {
+      // Query using normalized city and aliases for fuzzy matching
+      // This finds events stored with either "Praha" or "Prague" in the database
+      const citySearchTerms = [normalizedCity, ...cityAliases.slice(0, 5)]; // Limit aliases to avoid too many OR conditions
+      const cityConditions = citySearchTerms.map(term => `city.ilike.*${term}*`).join(',');
+      query = query.or(cityConditions);
+      console.log(`🔍 Using city search with normalized name and aliases: ${citySearchTerms.join(', ')}`);
     }
     
     if (category) {

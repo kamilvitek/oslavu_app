@@ -245,7 +245,10 @@ export class TicketmasterService {
       }
       
       // NEW APPROACH: For Prague, use pure country-based search (no city parameters)
-      if (sanitizedParams.city && sanitizedParams.city.toLowerCase() === 'prague' && !sanitizedParams.postalCode) {
+      // Check normalized city name (handles both "Prague" and "Praha")
+      // Note: City should already be normalized at this point, but check both for safety
+      const cityLower = sanitizedParams.city?.toLowerCase() || '';
+      if (sanitizedParams.city && (cityLower === 'prague' || cityLower === 'praha') && !sanitizedParams.postalCode) {
         console.log(`🎟️ Ticketmaster: Using pure country-based search for Prague (no city parameters)`);
         
         // Remove ALL city-related parameters for pure country search
@@ -253,7 +256,8 @@ export class TicketmasterService {
         searchParams.delete('radius');
         
         // Store target city for post-processing (not sent to API)
-        this.targetCityForFiltering = sanitizedParams.city;
+        // Normalize to "Prague" for consistency
+        this.targetCityForFiltering = cityLower === 'praha' ? 'Prague' : sanitizedParams.city;
       }
       // marketId removed - using geographic parameters instead
       

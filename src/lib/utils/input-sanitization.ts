@@ -104,6 +104,7 @@ export function sanitizeString(
 
 /**
  * Sanitize and validate city names
+ * Supports Czech characters (ě, ř, ž, š, č, ř, ň, ů, ý, á, í, é, ó) and other international characters
  */
 export function sanitizeCityName(input: unknown): SanitizationResult<string> {
   const result = sanitizeString(input, {
@@ -112,7 +113,7 @@ export function sanitizeCityName(input: unknown): SanitizationResult<string> {
     allowEmpty: false,
     trimWhitespace: true,
     removeHtml: true,
-    normalizeUnicode: true
+    normalizeUnicode: true // Normalizes Unicode characters (NFC form)
   });
 
   if (!result.isValid) {
@@ -122,6 +123,7 @@ export function sanitizeCityName(input: unknown): SanitizationResult<string> {
   // Additional city-specific validation
   // Updated pattern to support international city names with accented characters
   // Using Unicode property escapes for better international support
+  // Supports: Czech (ě, ř, ž, š, č, ř, ň, ů, ý, á, í, é, ó), German (ä, ö, ü, ß), etc.
   const cityPattern = /^[\p{L}\s\-'\.]+$/u;
   if (!cityPattern.test(result.sanitizedValue)) {
     result.errors.push('City name contains invalid characters');
@@ -136,6 +138,16 @@ export function sanitizeCityName(input: unknown): SanitizationResult<string> {
   }
 
   return result;
+}
+
+/**
+ * Encode city name for use in URL parameters
+ * Properly handles Czech characters and other Unicode characters
+ */
+export function encodeCityNameForUrl(cityName: string): string {
+  // URLSearchParams automatically handles UTF-8 encoding, but for manual encoding use encodeURIComponent
+  // This ensures proper encoding of Czech characters (ě, ř, ž, š, č, ř, ň, ů, ý, á, í, é, ó)
+  return encodeURIComponent(cityName);
 }
 
 /**

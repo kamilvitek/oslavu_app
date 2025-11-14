@@ -5,6 +5,8 @@ import { USPUpdater } from './usp-updater';
 import { getCityCountryCode, validateCityCountryPair } from '@/lib/utils/city-country-mapping';
 import { eventDeduplicator, DeduplicationMetrics } from './event-deduplicator';
 import { cityRecognitionService } from './city-recognition';
+import { cityNormalizationService } from './city-normalization';
+import { cityDatabaseService } from './city-database';
 import { holidayService } from './holiday-service';
 import { HolidayServiceConfig } from '@/types/holidays';
 import { seasonalityEngine } from './seasonality-engine';
@@ -653,17 +655,28 @@ export class ConflictAnalysisService {
       throw new Error('Analysis date range is required');
     }
 
-    // Add geographic validation
-    const countryCode = getCityCountryCode(params.city);
-    if (!validateCityCountryPair(params.city, countryCode)) {
-      console.warn(`Geographic mismatch: ${params.city} does not belong to ${countryCode}`);
+    // Normalize city name before making API calls
+    // This ensures APIs receive English names (e.g., "Prague" instead of "Praha")
+    console.log(`🌍 Normalizing city name for API calls: "${params.city}"`);
+    const cityNormalization = await cityNormalizationService.normalizeCityForAPI(params.city);
+    const normalizedCity = cityNormalization.normalized;
+    const originalCity = params.city;
+    
+    console.log(`✅ City normalized: "${originalCity}" -> "${normalizedCity}" (confidence: ${cityNormalization.confidence})`);
+
+    // Add geographic validation (use normalized city for country code lookup)
+    const countryCode = getCityCountryCode(normalizedCity);
+    if (!validateCityCountryPair(normalizedCity, countryCode)) {
+      console.warn(`Geographic mismatch: ${normalizedCity} does not belong to ${countryCode}`);
       // Use the correct country code from our mapping
-      const correctCountryCode = getCityCountryCode(params.city);
-      console.log(`Using correct country code: ${correctCountryCode} for city: ${params.city}`);
+      const correctCountryCode = getCityCountryCode(normalizedCity);
+      console.log(`Using correct country code: ${correctCountryCode} for city: ${normalizedCity}`);
     }
 
+    // Use normalized city name for API calls (encode properly for URLs)
+    const encodedCity = encodeURIComponent(normalizedCity);
     const queryParams = new URLSearchParams({
-      city: params.city,
+      city: normalizedCity, // Use normalized city name
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
@@ -711,7 +724,7 @@ export class ConflictAnalysisService {
     const ticketmasterExpandedCategories = this.getTicketmasterExpandedCategories(params.category);
     
     const standardTicketmasterParams = new URLSearchParams({
-      city: params.city,
+      city: normalizedCity, // Use normalized city name for API
       startDate: params.dateRangeStart,
       endDate: params.dateRangeEnd,
       category: params.category,
@@ -783,6 +796,26 @@ export class ConflictAnalysisService {
       return request;
     };
 
+    // Check if city is small and find nearby impact cities
+    // Small cities should include events from nearby larger cities that could affect attendance
+    // Analysis remains for the submitted city, but includes nearby competing events
+    const SMALL_CITY_THRESHOLD = 50000; // Cities with population < 50k are considered small
+    const cityInfo = await cityDatabaseService.getCityInfo(originalCity);
+    let impactCities: Array<{ name: string; distance_km: number; impact_factor: number }> = [];
+    
+    if (cityInfo && cityInfo.population && cityInfo.population < SMALL_CITY_THRESHOLD) {
+      console.log(`🏘️ Small city detected: ${originalCity} (population: ${cityInfo.population})`);
+      const nearbyCities = await cityDatabaseService.getImpactCities(originalCity, 50000, 50);
+      if (nearbyCities.length > 0) {
+        impactCities = nearbyCities.map(city => ({
+          name: city.name_en,
+          distance_km: city.distance_km,
+          impact_factor: city.impact_factor
+        }));
+        console.log(`📍 Found ${impactCities.length} nearby impact cities: ${impactCities.map(c => `${c.name} (${c.distance_km}km, impact: ${c.impact_factor.toFixed(2)})`).join(', ')}`);
+      }
+    }
+
     // Optimized parallel execution
     console.log(`🚀 Starting optimized parallel API requests...`);
     const startTime = Date.now();
@@ -804,7 +837,11 @@ export class ConflictAnalysisService {
     const scrapedUrl = `${baseUrl}/api/events/scraped?${queryParams.toString()}`;
     console.log(`  Scraped: ${scrapedUrl}`);
 
-    const apiRequests = [
+    const apiRequests: Array<{
+      name: string;
+      promise: Promise<Response>;
+      metadata?: { impact_factor: number; distance_km: number; source_city: string };
+    }> = [
       {
         name: 'ticketmaster',
         promise: createTimeoutFetch(ticketmasterUrl, 'ticketmaster') // Temporarily disable caching for debugging
@@ -823,6 +860,26 @@ export class ConflictAnalysisService {
         promise: createTimeoutFetch(scrapedUrl, 'scraped') // Add scraped events
       }
     ];
+
+    // Add API requests for nearby impact cities (for small cities)
+    for (const impactCity of impactCities) {
+      const impactCityParams = new URLSearchParams({
+        city: impactCity.name,
+        startDate: params.dateRangeStart,
+        endDate: params.dateRangeEnd,
+        category: params.category,
+        expandedCategories: ticketmasterExpandedCategories.join(','),
+        size: '25'
+      });
+      const impactCityUrl = `${baseUrl}/api/analyze/events/ticketmaster?${impactCityParams.toString()}`;
+      console.log(`  Impact City (${impactCity.name}): ${impactCityUrl}`);
+      
+      apiRequests.push({
+        name: `impact-${impactCity.name.toLowerCase()}`,
+        promise: createTimeoutFetch(impactCityUrl, 'ticketmaster'),
+        metadata: { impact_factor: impactCity.impact_factor, distance_km: impactCity.distance_km, source_city: impactCity.name }
+      });
+    }
 
     // Optimized parallel execution
     const allEvents: Event[] = [];
@@ -844,6 +901,21 @@ export class ConflictAnalysisService {
         // Process the response immediately
         if (response.ok) {
           const events = await this.extractEventsFromResponse(response, apiRequest.name);
+          
+          // For impact city events, mark them with metadata for conflict scoring
+          if (apiRequest.metadata) {
+            const metadata = apiRequest.metadata;
+            events.forEach(event => {
+              // Mark events from nearby cities with impact metadata
+              (event as any).impactCityMetadata = {
+                sourceCity: metadata.source_city,
+                distance_km: metadata.distance_km,
+                impact_factor: metadata.impact_factor
+              };
+            });
+            console.log(`📍 ${apiRequest.name}: Added ${events.length} events from nearby city ${metadata.source_city} (impact factor: ${metadata.impact_factor.toFixed(2)})`);
+          }
+          
           allEvents.push(...events);
           console.log(`✅ ${apiRequest.name}: Added ${events.length} events (total: ${allEvents.length})`);
         } else {
@@ -894,7 +966,7 @@ export class ConflictAnalysisService {
     // Debug: Check for foreign events before filtering
     const foreignEvents = allEvents.filter(e => {
       const eventCity = e.city?.toLowerCase().trim() || '';
-      const targetCity = params.city.toLowerCase().trim();
+      const targetCity = normalizedCity.toLowerCase().trim();
       
       // Check for known foreign patterns
       const isForeign = eventCity !== targetCity && 
@@ -907,7 +979,9 @@ export class ConflictAnalysisService {
     });
     console.log(`🚨 Found ${foreignEvents.length} foreign events before location filtering:`, foreignEvents.slice(0, 5).map(e => ({ title: e.title, city: e.city })));
     
-    const locationFilteredEvents = await this.filterEventsByLocation(allEvents, params.city);
+    // Use normalized city for filtering (events from APIs will have normalized city names)
+    // But also pass original city for user-facing results
+    const locationFilteredEvents = await this.filterEventsByLocation(allEvents, normalizedCity);
     console.log(`📍 Total events after location filtering: ${locationFilteredEvents.length}`);
 
     // For conflict analysis, use all location-filtered events to consider all potential competitors
