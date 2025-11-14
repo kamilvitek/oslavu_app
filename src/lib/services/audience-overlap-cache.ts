@@ -130,7 +130,10 @@ export class AudienceOverlapCacheService {
           confidence,
           reasoning,
           calculation_method: calculationMethod,
-          expires_at: expiresAt.toISOString()
+          expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'category1,subcategory1,category2,subcategory2'
         })
         .select()
         .single();
@@ -178,13 +181,16 @@ export class AudienceOverlapCacheService {
       confidence: result.confidence,
       reasoning: result.reasoning,
       calculation_method: result.calculationMethod,
-      expires_at: expiresAt.toISOString()
+      expires_at: expiresAt.toISOString(),
+      updated_at: new Date().toISOString()
     }));
 
     try {
       const { error } = await this.supabase
         .from('audience_overlap_cache')
-        .upsert(cacheEntries);
+        .upsert(cacheEntries, {
+          onConflict: 'category1,subcategory1,category2,subcategory2'
+        });
 
       if (error) {
         console.error('Error batch caching overlap results:', error);
