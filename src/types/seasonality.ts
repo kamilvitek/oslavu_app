@@ -214,7 +214,7 @@ export interface SeasonalAnalysis {
   };
   /** Risk assessment for hosting event on this date */
   riskAssessment: {
-    level: 'low' | 'medium' | 'high';
+    level: RiskLevel;
     factors: string[];
     recommendations: string[];
   };
