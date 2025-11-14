@@ -191,12 +191,22 @@ export class PerplexityResearchService {
   private async generatePrompt(params: PerplexityResearchParams): Promise<string> {
     const { city, category, subcategory, date, expectedAttendees, dateRange } = params;
     
+    // Determine if this is a large event that could compete across cities
+    // Large events (1000+ attendees) can draw audiences from nearby cities
+    // Small events only compete locally
+    const isLargeEvent = expectedAttendees >= 1000;
+    
     // Get nearby cities dynamically from database (with AI fallback)
-    // This is scalable for any city, not just hardcoded ones
-    const nearbyCitiesList = await this.getNearbyCitiesForPrompt(city);
-    const nearbyCities = nearbyCitiesList.length > 0 
+    // Only include nearby cities for large events - small events only compete locally
+    let nearbyCitiesList: string[] = [];
+    if (isLargeEvent) {
+      nearbyCitiesList = await this.getNearbyCitiesForPrompt(city);
+    }
+    
+    const searchLocation = nearbyCitiesList.length > 0 
       ? `${city}, ${nearbyCitiesList.join(', ')}`
       : city;
+    
     const dateRangeStr = dateRange 
       ? `${dateRange.start} to ${dateRange.end}`
       : date;
@@ -220,7 +230,9 @@ export class PerplexityResearchService {
 SEARCH SCOPE:
 - Primary focus: Events on ${dateRange ? `dates ${dateRange.start} to ${dateRange.end}` : `date ${date}`}
 - Extended window: Also search from ${windowStartStr} to ${windowEndStr} (7 days before/after) for events that could impact attendance
-- Location: Search in ${nearbyCities}
+- Location: ${isLargeEvent 
+      ? `Search in ${searchLocation} (user's event is large with ${expectedAttendees} expected attendees, so major events from nearby cities could compete)` 
+      : `Search ONLY in ${city} (user's event is small with ${expectedAttendees} expected attendees, so only local events matter - do NOT search in remote cities)`}
 - Category: Focus on ${categoryEventTypes}${subcategory ? `, specifically ${subcategory}` : ''}
 
 WHAT TO INCLUDE:
@@ -228,21 +240,29 @@ WHAT TO INCLUDE:
 1. Conflicting Events (${categoryEventTypes}):
    - Events on the exact target date(s) - mark as "onDate: true"
    - Events within 7 days before/after - mark as "onDate: false" with "daysFromTarget" (negative = before, positive = after)
-   - Major festivals (1000+ attendees) from nearby cities, even if not in ${city} - they compete across regions
+   ${isLargeEvent 
+     ? `- IMPORTANT: User's event is large (${expectedAttendees} attendees), so include major events (1000+ attendees) from nearby cities - they can compete across regions`
+     : `- IMPORTANT: User's event is small (${expectedAttendees} attendees), so ONLY include events in ${city} - do NOT include events from other cities, even if they're large`}
    - Include events that match ${category}${subcategory ? ` and ${subcategory}` : ''} category
    - Be inclusive: if unsure about category match, include it (we'll filter later)
 
 2. Touring Artists:
    - Artists performing on target date(s) or within 7 days before/after
+   ${isLargeEvent 
+     ? `- Include artists in ${searchLocation} (user's large event can compete with touring artists in nearby cities)`
+     : `- Include artists ONLY in ${city} (user's small event only competes locally)`}
    - Focus on artists matching ${category}${subcategory ? ` / ${subcategory}` : ''} genre
 
 3. Local Festivals:
    - Festivals on target date(s) or major festivals (500+ attendees) within 7 days
-   - Major festivals (1000+ attendees) have strong impact even from nearby cities
+   ${isLargeEvent 
+     ? `- Include major festivals (1000+ attendees) from nearby cities - they can compete with user's large event`
+     : `- Include festivals ONLY in ${city} - do NOT include festivals from other cities`}
 
 4. Holidays & Cultural Events:
    - Holidays/events on target date(s) or major ones within 3-5 days before/after
    - These affect travel and availability
+   - Include regardless of location (holidays affect everyone)
 
 CATEGORY FILTERING (be reasonable, not overly strict):
 - Primary focus: ${category}${subcategory ? ` / ${subcategory}` : ''} events
@@ -349,10 +369,15 @@ IMPORTANT GUIDELINES:
    * This uses a more direct, less restrictive approach similar to simple user queries
    */
   private async generateSimplifiedPrompt(params: PerplexityResearchParams): Promise<string> {
-    const { city, category, subcategory, date, dateRange } = params;
+    const { city, category, subcategory, date, dateRange, expectedAttendees } = params;
     
-    // Get nearby cities dynamically
-    const nearbyCitiesList = await this.getNearbyCitiesForPrompt(city);
+    // Only include nearby cities for large events (same logic as main prompt)
+    const isLargeEvent = expectedAttendees >= 1000;
+    let nearbyCitiesList: string[] = [];
+    if (isLargeEvent) {
+      nearbyCitiesList = await this.getNearbyCitiesForPrompt(city);
+    }
+    
     const nearbyCitiesStr = nearbyCitiesList.length > 0 
       ? `${city}, ${nearbyCitiesList.join(', ')}`
       : city;
@@ -421,7 +446,10 @@ Return a JSON object with this structure:
 }
 
 IMPORTANT:
-- Focus on finding events in ${nearbyCitiesStr} on or near ${dateStr}
+- Focus on finding events ${isLargeEvent ? `in ${nearbyCitiesStr}` : `ONLY in ${city} (do NOT search in remote cities)`} on or near ${dateStr}
+- ${isLargeEvent 
+    ? `User's event is large (${expectedAttendees} attendees), so include major events from nearby cities`
+    : `User's event is small (${expectedAttendees} attendees), so ONLY include events in ${city} - do NOT include events from other cities`}
 - Include events that match ${category}${subcategory ? ` and ${subcategory}` : ''} category
 - Be inclusive - include events that might be relevant even if not perfectly matching
 - Use YYYY-MM-DD format for all dates
