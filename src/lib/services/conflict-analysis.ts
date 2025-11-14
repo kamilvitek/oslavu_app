@@ -800,20 +800,40 @@ export class ConflictAnalysisService {
     // Small cities should include events from nearby larger cities that could affect attendance
     // Analysis remains for the submitted city, but includes nearby competing events
     const SMALL_CITY_THRESHOLD = 50000; // Cities with population < 50k are considered small
-    const cityInfo = await cityDatabaseService.getCityInfo(originalCity);
     let impactCities: Array<{ name: string; distance_km: number; impact_factor: number }> = [];
     
-    if (cityInfo && cityInfo.population && cityInfo.population < SMALL_CITY_THRESHOLD) {
-      console.log(`🏘️ Small city detected: ${originalCity} (population: ${cityInfo.population})`);
-      const nearbyCities = await cityDatabaseService.getImpactCities(originalCity, 50000, 50);
-      if (nearbyCities.length > 0) {
-        impactCities = nearbyCities.map(city => ({
-          name: city.name_en,
-          distance_km: city.distance_km,
-          impact_factor: city.impact_factor
-        }));
-        console.log(`📍 Found ${impactCities.length} nearby impact cities: ${impactCities.map(c => `${c.name} (${c.distance_km}km, impact: ${c.impact_factor.toFixed(2)})`).join(', ')}`);
+    try {
+      const cityInfo = await cityDatabaseService.getCityInfo(originalCity);
+      
+      if (cityInfo && cityInfo.population && cityInfo.population < SMALL_CITY_THRESHOLD) {
+        console.log(`🏘️ Small city detected: ${originalCity} (population: ${cityInfo.population})`);
+        
+        try {
+          const nearbyCities = await cityDatabaseService.getImpactCities(originalCity, 50000, 50);
+          if (nearbyCities.length > 0) {
+            impactCities = nearbyCities.map(city => ({
+              name: city.name_en,
+              distance_km: city.distance_km,
+              impact_factor: city.impact_factor
+            }));
+            console.log(`📍 Found ${impactCities.length} nearby impact cities: ${impactCities.map(c => `${c.name} (${c.distance_km}km, impact: ${c.impact_factor.toFixed(2)})`).join(', ')}`);
+          } else {
+            console.log(`ℹ️ No nearby impact cities found for small city: ${originalCity}`);
+          }
+        } catch (impactError) {
+          console.warn(`⚠️ Error finding impact cities for ${originalCity}, continuing without impact cities:`, impactError);
+          // Continue analysis without impact cities - don't fail entire analysis
+        }
+      } else if (cityInfo && cityInfo.population) {
+        console.log(`ℹ️ City ${originalCity} is not small (population: ${cityInfo.population}), skipping impact cities search`);
+      } else if (cityInfo) {
+        console.log(`ℹ️ City ${originalCity} found but population unknown, skipping impact cities search`);
+      } else {
+        console.log(`ℹ️ City info not found for ${originalCity}, skipping impact cities search`);
       }
+    } catch (cityInfoError) {
+      console.warn(`⚠️ Error getting city info for ${originalCity}, continuing without impact cities:`, cityInfoError);
+      // Continue analysis without impact cities - don't fail entire analysis
     }
 
     // Optimized parallel execution

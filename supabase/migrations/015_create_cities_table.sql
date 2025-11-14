@@ -1,6 +1,12 @@
 -- Migration: Create cities table with population and nearby cities data
 -- This table stores city information including population, coordinates, and nearby cities
 -- Used for small city fallback logic to find nearby larger cities that could impact attendance
+-- 
+-- HYBRID APPROACH:
+-- - Database stores frequently used cities (population >= 10,000) and pre-computed relationships
+-- - AI is used as fallback for cities not in database
+-- - AI results are cached in database for future use
+-- - This provides fast lookups for common cities while maintaining flexibility
 
 CREATE TABLE IF NOT EXISTS cities (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -40,7 +46,8 @@ CREATE TRIGGER update_cities_updated_at_trigger
 
 -- Insert Czech cities and towns with population data
 -- Data source: Czech Statistical Office (January 1, 2025 population data)
--- Includes all cities and towns with population >= 10,000 (excluding small villages)
+-- Includes major cities and towns with population >= 10,000
+-- Smaller cities will be added automatically via AI fallback when needed
 INSERT INTO cities (name_en, name_cs, country_code, population, latitude, longitude) VALUES
   -- Cities (27 official cities)
   ('Prague', 'Praha', 'CZ', 1397880, 50.0755, 14.4378),
