@@ -3,6 +3,8 @@
  * Provides rate limiting functionality for API routes
  */
 
+import type { NextRequest } from 'next/server';
+
 interface RateLimitStore {
   [key: string]: {
     count: number;
@@ -84,8 +86,9 @@ export function checkRateLimit(
 /**
  * Get client identifier from request
  * Uses IP address, or X-Forwarded-For header if behind proxy
+ * Supports both Request and NextRequest types
  */
-export function getClientIdentifier(request: Request): string {
+export function getClientIdentifier(request: Request | NextRequest): string {
   // Try to get IP from headers (when behind proxy)
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
@@ -104,11 +107,12 @@ export function getClientIdentifier(request: Request): string {
 
 /**
  * Rate limit middleware for Next.js API routes
+ * Supports both Request and NextRequest types
  */
 export function withRateLimit(
   options: RateLimitOptions
 ) {
-  return async (request: Request): Promise<Response | null> => {
+  return async (request: Request | NextRequest): Promise<Response | null> => {
     const identifier = options.identifier || getClientIdentifier(request);
     const result = checkRateLimit(identifier, options);
 
