@@ -21,7 +21,8 @@
     "seed-venues": "tsx scripts/seed-venue-database.ts",
     "check-db": "tsx scripts/check-database-structure.ts",
     "setup-cron": "tsx scripts/setup-cron-automation.ts",
-    "verify-security": "./scripts/verify-security.sh"
+    "verify-security": "./scripts/verify-security.sh",
+    "security-check": "./scripts/verify-security.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
