@@ -90,13 +90,14 @@ export class PerplexityResearchService {
   async researchEventConflicts(params: PerplexityResearchParams): Promise<PerplexityConflictResearch | null> {
     const apiKey = this.getApiKey();
     
-    // Debug logging
-    console.log('🔍 Perplexity API Key Check:', {
-      hasKey: !!apiKey,
-      keyLength: apiKey.length,
-      keyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : 'none',
-      envVar: process.env.PERPLEXITY_API_KEY ? 'SET' : 'NOT SET',
-    });
+    // Debug logging (only in development, without exposing key details)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 Perplexity API Key Check:', {
+        hasKey: !!apiKey,
+        keyLength: apiKey.length,
+        envVar: process.env.PERPLEXITY_API_KEY ? 'SET' : 'NOT SET',
+      });
+    }
     
     if (!apiKey) {
       console.warn('Perplexity API key not configured. Skipping research.');

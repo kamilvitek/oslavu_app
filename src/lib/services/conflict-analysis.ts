@@ -677,7 +677,10 @@ export class ConflictAnalysisService {
     // const predicthqQueryParams = new URLSearchParams(queryParams); // PredictHQ disabled
     // predicthqQueryParams.set('radius', params.searchRadius || '50km'); // PredictHQ disabled
 
-    console.log('Fetching events with params:', queryParams.toString());
+    // Log query params only in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Fetching events with params:', queryParams.toString());
+    }
 
     // Get base URL for server-side requests
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
@@ -685,21 +688,23 @@ export class ConflictAnalysisService {
         ? 'https://oslavu-app.vercel.app'
         : `http://localhost:${process.env.PORT || 3000}`);
 
-    // Add this debug logging block right after: console.log('Fetching events with params:', queryParams.toString());
-    console.log('🔍 Production Debug Info:');
-    console.log('NODE_ENV:', process.env.NODE_ENV);
-    console.log('NEXT_PUBLIC_BASE_URL:', process.env.NEXT_PUBLIC_BASE_URL);
-    console.log('Final baseUrl:', baseUrl);
-    console.log('API Keys availability:');
-    console.log('- TICKETMASTER_API_KEY:', !!process.env.TICKETMASTER_API_KEY);
-    // console.log('- PREDICTHQ_API_KEY:', !!process.env.PREDICTHQ_API_KEY); // PredictHQ disabled
-    console.log('API URLs being called:');
-    console.log('- Ticketmaster:', `${baseUrl}/api/analyze/events/ticketmaster?${ticketmasterQueryParams.toString()}`);
-    // console.log('- PredictHQ:', `${baseUrl}/api/analyze/events/predicthq?${predicthqQueryParams.toString()}`); // PredictHQ disabled
-    console.log('- Brno:', `${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
-      startDate: params.dateRangeStart,
-      endDate: params.dateRangeEnd
-    }).toString()}`);
+    // Debug logging (only in development mode)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 Debug Info:');
+      console.log('NODE_ENV:', process.env.NODE_ENV);
+      console.log('NEXT_PUBLIC_BASE_URL:', process.env.NEXT_PUBLIC_BASE_URL);
+      console.log('Final baseUrl:', baseUrl);
+      console.log('API Keys availability:');
+      console.log('- TICKETMASTER_API_KEY:', !!process.env.TICKETMASTER_API_KEY);
+      // console.log('- PREDICTHQ_API_KEY:', !!process.env.PREDICTHQ_API_KEY); // PredictHQ disabled
+      console.log('API URLs being called:');
+      console.log('- Ticketmaster:', `${baseUrl}/api/analyze/events/ticketmaster?${ticketmasterQueryParams.toString()}`);
+      // console.log('- PredictHQ:', `${baseUrl}/api/analyze/events/predicthq?${predicthqQueryParams.toString()}`); // PredictHQ disabled
+      console.log('- Brno:', `${baseUrl}/api/analyze/events/brno?${new URLSearchParams({
+        startDate: params.dateRangeStart,
+        endDate: params.dateRangeEnd
+      }).toString()}`);
+    }
 
     // Use consistent search parameters for all APIs with expanded category mapping
     const expandedCategories = this.getExpandedCategories(params.category);

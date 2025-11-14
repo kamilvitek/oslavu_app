@@ -4,9 +4,15 @@ import { attendeeBackfillService } from '@/lib/services/attendee-backfill';
 function createResponse(data: any, options: { status?: number } = {}) {
   const headers = new Headers();
   headers.set('Content-Type', 'application/json');
-  headers.set('Access-Control-Allow-Origin', '*');
-  headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  // CORS: Only allow specific origins in production, or restrict to same-origin
+  // This is a cron endpoint, so CORS should be minimal
+  const allowedOrigin = process.env.ALLOWED_ORIGIN || (process.env.NODE_ENV === 'production' ? undefined : '*');
+  if (allowedOrigin) {
+    headers.set('Access-Control-Allow-Origin', allowedOrigin);
+    headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
 
   return new NextResponse(JSON.stringify(data), {
     status: options.status || 200,

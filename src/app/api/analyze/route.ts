@@ -4,8 +4,20 @@ import { conflictAnalysisService } from '@/lib/services/conflict-analysis';
 import { AnalysisRequest } from '@/types';
 import { sanitizeApiParameters, logSanitizationResults } from '@/lib/utils/input-sanitization';
 import { serverDatabaseService } from '@/lib/supabase';
+import { withRateLimit, rateLimitConfigs, getClientIdentifier } from '@/lib/utils/rate-limiting';
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting (strict for expensive AI operations)
+  const rateLimitResult = withRateLimit({
+    ...rateLimitConfigs.strict,
+    identifier: getClientIdentifier(request),
+  });
+
+  const rateLimitResponse = await rateLimitResult(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   try {
     const body: AnalysisRequest = await request.json();
     
@@ -171,12 +183,16 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Analysis error:', error);
+    // Log error server-side only, without exposing sensitive details
+    console.error('Analysis error:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      ...(process.env.NODE_ENV === 'development' && { fullError: error })
+    });
     
-    // Handle specific API errors
+    // Handle specific API errors without exposing internal details
     if (error instanceof Error && error.message.includes('TICKETMASTER_API_KEY')) {
       return NextResponse.json(
-        { error: 'Ticketmaster API configuration error' },
+        { error: 'External service configuration error' },
         { status: 500 }
       );
     }
@@ -184,9 +200,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         error: 'Analysis failed',
-        details: process.env.NODE_ENV === 'development' ? 
-          (error instanceof Error ? error.message : 'Unknown error') : 
-          'Internal server error'
+        message: 'An error occurred while processing the analysis'
       },
       { status: 500 }
     );

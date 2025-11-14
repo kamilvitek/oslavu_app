@@ -32,3 +32,13 @@ NEXT_PUBLIC_GTM_ID=your_gtm_id_here
 # Option 2: Use direct Google Tag (gtag.js) for GA4 - format: G-XXXXXXXXXX
 # Note: Only set one of these. If GTM_ID is set, it takes precedence.
 NEXT_PUBLIC_GA_MEASUREMENT_ID=your_ga_measurement_id_here
+
+# Optional: API Authentication (for protecting public endpoints)
+# If set, public API endpoints will require this key in X-API-Key header
+# Leave empty to allow unauthenticated access (not recommended for production)
+API_KEY=your_optional_api_key_here
+
+# Optional: CORS Configuration
+# Comma-separated list of allowed origins (e.g., https://yourdomain.com,https://app.yourdomain.com)
+# Leave empty to use default CORS behavior
+ALLOWED_ORIGIN=
