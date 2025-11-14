@@ -455,7 +455,7 @@ Return ONLY valid JSON, no markdown code blocks or additional text.`;
         throw new Error('No content in Perplexity API response');
       }
 
-      // Parse JSON response
+      // Parse JSON response with robust error handling
       let parsed;
       try {
         // Remove markdown code blocks if present
@@ -465,11 +465,37 @@ Return ONLY valid JSON, no markdown code blocks or additional text.`;
         } else if (cleanContent.startsWith('```')) {
           cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
         }
+        
+        // Try parsing first
         parsed = JSON.parse(cleanContent);
       } catch (parseError) {
-        console.error('Failed to parse Perplexity response:', parseError);
-        console.error('Raw response:', content);
-        throw new Error('Invalid JSON response from Perplexity API');
+        console.warn('⚠️ Initial JSON parse failed, attempting repair...', parseError instanceof Error ? parseError.message : 'Unknown error');
+        
+        // Attempt to repair malformed JSON
+        try {
+          const repaired = this.repairMalformedJSON(content);
+          parsed = JSON.parse(repaired);
+          console.log('✅ Successfully repaired and parsed JSON response');
+        } catch (repairError) {
+          // If repair fails, try extracting partial JSON
+          console.warn('⚠️ JSON repair failed, attempting to extract partial data...');
+          try {
+            parsed = this.extractPartialJSON(content);
+            if (parsed) {
+              console.log('✅ Successfully extracted partial JSON data');
+            } else {
+              throw new Error('Could not extract valid JSON from response');
+            }
+          } catch (extractError) {
+            console.error('❌ Failed to parse Perplexity response after all attempts:', {
+              parseError: parseError instanceof Error ? parseError.message : 'Unknown',
+              repairError: repairError instanceof Error ? repairError.message : 'Unknown',
+              extractError: extractError instanceof Error ? extractError.message : 'Unknown',
+            });
+            console.error('Raw response (first 1000 chars):', content.substring(0, 1000));
+            throw new Error('Invalid JSON response from Perplexity API - all parsing attempts failed');
+          }
+        }
       }
 
       return parsed;
@@ -752,6 +778,240 @@ Return ONLY valid JSON, no markdown code blocks or additional text.`;
         riskLevel: 'low',
       },
     };
+  }
+
+  /**
+   * Repair malformed JSON by fixing common issues:
+   * - Unterminated strings
+   * - Unclosed brackets/braces
+   * - Truncated content
+   * - Corrupted patterns (repeated characters)
+   */
+  private repairMalformedJSON(content: string): string {
+    let repaired = content.trim();
+    
+    // Remove markdown code blocks if present
+    if (repaired.startsWith('```json')) {
+      repaired = repaired.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (repaired.startsWith('```')) {
+      repaired = repaired.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    
+    // Detect and fix corrupted patterns (e.g., repeated characters like /6/6/6/6/...)
+    // This often indicates truncation or corruption
+    const corruptedPattern = /(\/[^\/"]{1,3}\/)\1{3,}/; // Pattern like /6/6/6/6/ repeated 3+ times
+    if (corruptedPattern.test(repaired)) {
+      // Find the start of the corruption and truncate there
+      const match = repaired.match(corruptedPattern);
+      if (match && match.index !== undefined) {
+        // Truncate at the start of the corruption pattern
+        repaired = repaired.substring(0, match.index);
+        // Try to close any open strings/structures before the truncation point
+        const lastQuote = repaired.lastIndexOf('"');
+        if (lastQuote >= 0) {
+          // Check if we're in a string
+          const beforeQuote = repaired.substring(0, lastQuote);
+          const quoteCount = (beforeQuote.match(/"/g) || []).length;
+          if (quoteCount % 2 === 1) {
+            // We're in a string, close it
+            repaired = repaired.substring(0, lastQuote + 1) + '"' + repaired.substring(lastQuote + 1);
+          }
+        }
+      }
+    }
+    
+    // Fix unterminated strings by finding the last unclosed quote and closing it
+    let inString = false;
+    let escapeNext = false;
+    let lastQuotePos = -1;
+    let openBraces = 0;
+    let openBrackets = 0;
+    
+    for (let i = 0; i < repaired.length; i++) {
+      const char = repaired[i];
+      
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      
+      if (char === '"' && !escapeNext) {
+        if (inString) {
+          inString = false;
+          lastQuotePos = i;
+        } else {
+          inString = true;
+          lastQuotePos = i;
+        }
+      } else if (!inString) {
+        if (char === '{') openBraces++;
+        if (char === '}') openBraces--;
+        if (char === '[') openBrackets++;
+        if (char === ']') openBrackets--;
+      }
+    }
+    
+    // If we're still in a string at the end, close it intelligently
+    if (inString && lastQuotePos >= 0) {
+      // Check if we're in the middle of a URL or other structured content
+      const stringContent = repaired.substring(lastQuotePos + 1);
+      
+      // Look for patterns that suggest where the string should end
+      // URLs often end with certain patterns or before certain characters
+      const urlEndPatterns = [
+        /\/[^\/\s"]*$/,  // Ends with a path segment
+        /\?[^?"]*$/,     // Ends with query string
+        /#[^#"]*$/,      // Ends with hash
+      ];
+      
+      // Try to find a reasonable end point
+      let insertPos = repaired.length;
+      
+      // Look for structural markers that indicate end of property value
+      const nextComma = stringContent.search(/[^\\],/); // Comma not escaped
+      const nextBrace = stringContent.search(/[^\\]}/);  // Closing brace not escaped
+      const nextBracket = stringContent.search(/[^\\]]/); // Closing bracket not escaped
+      const nextColon = stringContent.search(/[^\\]:/);   // Colon (might be start of next property)
+      
+      // Prefer closing before structural elements
+      if (nextComma >= 0) insertPos = Math.min(insertPos, lastQuotePos + 1 + nextComma);
+      if (nextBrace >= 0) insertPos = Math.min(insertPos, lastQuotePos + 1 + nextBrace);
+      if (nextBracket >= 0) insertPos = Math.min(insertPos, lastQuotePos + 1 + nextBracket);
+      
+      // If we found a reasonable position, close the string there
+      if (insertPos < repaired.length) {
+        repaired = repaired.substring(0, insertPos) + '"' + repaired.substring(insertPos);
+      } else {
+        // For truncated URLs or long strings, try to find a clean break point
+        // Look for the last complete word or path segment
+        const lastSlash = stringContent.lastIndexOf('/');
+        const lastSpace = stringContent.lastIndexOf(' ');
+        const lastDot = stringContent.lastIndexOf('.');
+        
+        // Prefer closing after a complete path segment or word
+        if (lastSlash > stringContent.length - 20) {
+          // If slash is near the end, close after it
+          insertPos = lastQuotePos + 1 + lastSlash + 1;
+        } else if (lastDot > stringContent.length - 10 && stringContent.substring(lastDot).match(/\.(com|org|net|cz|eu|io)/i)) {
+          // If it looks like a domain, close after the TLD
+          insertPos = lastQuotePos + 1 + lastDot + 4; // .com = 4 chars
+        } else {
+          // Otherwise, just close at the end
+          insertPos = repaired.length;
+        }
+        
+        repaired = repaired.substring(0, insertPos) + '"' + repaired.substring(insertPos);
+      }
+    }
+    
+    // Close unclosed brackets and braces
+    while (openBrackets > 0) {
+      repaired += ']';
+      openBrackets--;
+    }
+    
+    while (openBraces > 0) {
+      repaired += '}';
+      openBraces--;
+    }
+    
+    // Remove any trailing commas before closing brackets/braces
+    repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
+    
+    return repaired;
+  }
+
+  /**
+   * Extract partial JSON from malformed response by finding the largest valid JSON object
+   */
+  private extractPartialJSON(content: string): any | null {
+    let cleaned = content.trim();
+    
+    // Remove markdown code blocks if present
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    
+    // Try to find the largest valid JSON substring
+    // Start from the beginning and try progressively shorter substrings
+    for (let end = cleaned.length; end > 0; end--) {
+      const candidate = cleaned.substring(0, end);
+      
+      // Try to close any unclosed structures
+      let fixed = candidate;
+      let openBraces = (fixed.match(/{/g) || []).length - (fixed.match(/}/g) || []).length;
+      let openBrackets = (fixed.match(/\[/g) || []).length - (fixed.match(/\]/g) || []).length;
+      
+      // Close unclosed structures
+      while (openBrackets > 0) {
+        fixed += ']';
+        openBrackets--;
+      }
+      while (openBraces > 0) {
+        fixed += '}';
+        openBraces--;
+      }
+      
+      // Remove trailing commas
+      fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
+      
+      // Try to parse
+      try {
+        const parsed = JSON.parse(fixed);
+        // Validate it has the expected structure
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+      } catch {
+        // Continue trying shorter substrings
+        continue;
+      }
+    }
+    
+    // If we can't extract a valid object, try to build a minimal valid structure
+    try {
+      // Look for key patterns in the content
+      const hasConflictingEvents = cleaned.includes('conflictingEvents') || cleaned.includes('"conflictingEvents"');
+      const hasRecommendations = cleaned.includes('recommendations') || cleaned.includes('"recommendations"');
+      
+      // Build minimal valid structure
+      const minimal: any = {
+        conflictingEvents: [],
+        touringArtists: [],
+        localFestivals: [],
+        holidaysAndCulturalEvents: [],
+        recommendations: {
+          shouldMoveDate: false,
+          reasoning: ['Partial data extracted from response. Some information may be incomplete.'],
+          riskLevel: 'low' as const,
+        },
+      };
+      
+      // Try to extract any valid arrays or objects we can find
+      const conflictingEventsMatch = cleaned.match(/"conflictingEvents"\s*:\s*\[([^\]]*)\]/);
+      if (conflictingEventsMatch) {
+        try {
+          const eventsStr = '[' + conflictingEventsMatch[1] + ']';
+          const events = JSON.parse(eventsStr);
+          if (Array.isArray(events)) {
+            minimal.conflictingEvents = events;
+          }
+        } catch {
+          // Ignore if we can't parse the events array
+        }
+      }
+      
+      return minimal;
+    } catch {
+      return null;
+    }
   }
 }
 
