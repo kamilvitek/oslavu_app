@@ -3,6 +3,7 @@ import { eventQueryService } from '@/lib/services/event-queries';
 import { eventStorageService } from '@/lib/services/event-storage';
 import { serverDatabaseService } from '@/lib/supabase';
 import { z } from 'zod';
+import { withRateLimit, rateLimitConfigs, getClientIdentifier } from '@/lib/utils/rate-limiting';
 
 const ConflictAnalysisSchema = z.object({
   city: z.string().min(1).max(100),
@@ -21,6 +22,17 @@ const ConflictAnalysisSchema = z.object({
  * POST /api/conflict-analysis - Enhanced conflict analysis using stored data
  */
 export async function POST(request: NextRequest) {
+  // Apply rate limiting (standard for analysis operations)
+  const rateLimitResult = withRateLimit({
+    ...rateLimitConfigs.standard,
+    identifier: getClientIdentifier(request),
+  });
+
+  const rateLimitResponse = await rateLimitResult(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   try {
     const body = await request.json();
     const validatedData = ConflictAnalysisSchema.parse(body);
@@ -206,7 +218,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: false,
       error: 'Conflict analysis failed',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: 'An error occurred while processing the analysis',
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }

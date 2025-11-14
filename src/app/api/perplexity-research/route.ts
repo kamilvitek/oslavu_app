@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { perplexityResearchService } from '@/lib/services/perplexity-research';
 import { PerplexityResearchParams } from '@/types/perplexity';
 import { z } from 'zod';
+import { withRateLimit, rateLimitConfigs, getClientIdentifier } from '@/lib/utils/rate-limiting';
 
 const PerplexityResearchSchema = z.object({
   city: z.string().min(1).max(100),
@@ -20,14 +21,24 @@ const PerplexityResearchSchema = z.object({
  * POST /api/perplexity-research - Perplexity-powered event conflict research
  */
 export async function POST(request: NextRequest) {
+  // Apply rate limiting (strict for expensive AI operations)
+  const rateLimitResult = withRateLimit({
+    ...rateLimitConfigs.strict,
+    identifier: getClientIdentifier(request),
+  });
+
+  const rateLimitResponse = await rateLimitResult(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   try {
-    // Debug: Check environment variable directly in API route
-    console.log('🔍 API Route - Environment Check:', {
-      hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY,
-      keyLength: process.env.PERPLEXITY_API_KEY?.length || 0,
-      keyPrefix: process.env.PERPLEXITY_API_KEY ? process.env.PERPLEXITY_API_KEY.substring(0, 8) + '...' : 'none',
-      allEnvKeys: Object.keys(process.env).filter(k => k.includes('PERPLEXITY') || k.includes('OPENAI')).join(', '),
-    });
+    // Only log environment check in development mode, without exposing key details
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 API Route - Environment Check:', {
+        hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY
+      });
+    }
 
     const body = await request.json();
     const validatedData = PerplexityResearchSchema.parse(body);
@@ -82,14 +93,20 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/perplexity-research - Debug endpoint to check API key
+ * GET /api/perplexity-research - Health check endpoint (secured)
+ * Only returns minimal information, no API key details
  */
 export async function GET(request: NextRequest) {
+  // Only allow in development mode, or require authentication in production
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({
+      error: 'Not available in production'
+    }, { status: 403 });
+  }
+  
   return NextResponse.json({
+    status: 'ok',
     hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY,
-    keyLength: process.env.PERPLEXITY_API_KEY?.length || 0,
-    keyPrefix: process.env.PERPLEXITY_API_KEY ? process.env.PERPLEXITY_API_KEY.substring(0, 8) + '...' : 'none',
-    allEnvKeys: Object.keys(process.env).filter(k => k.includes('PERPLEXITY') || k.includes('OPENAI')).join(', '),
     nodeEnv: process.env.NODE_ENV,
   });
 }

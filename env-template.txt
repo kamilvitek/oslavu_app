@@ -25,3 +25,13 @@ CRON_SECRET=your_secure_random_string_here
 
 # Perplexity Configuration (for online event research)
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
+
+# Optional: API Authentication (for protecting public endpoints)
+# If set, public API endpoints will require this key in X-API-Key header
+# Leave empty to allow unauthenticated access (not recommended for production)
+API_KEY=your_optional_api_key_here
+
+# Optional: CORS Configuration
+# Comma-separated list of allowed origins (e.g., https://yourdomain.com,https://app.yourdomain.com)
+# Leave empty to use default CORS behavior
+ALLOWED_ORIGIN=

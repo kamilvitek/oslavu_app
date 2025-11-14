@@ -62,9 +62,16 @@ export class ErrorHandler {
 
   /**
    * Handle database errors
+   * Never exposes sensitive database structure or query details
    */
   static handleDatabaseError(error: any): NextResponse {
-    console.error('Database error:', error);
+    // Log full error details server-side only
+    console.error('Database error:', {
+      code: error?.code,
+      message: error?.message,
+      // Never log full error object or stack traces in production
+      ...(process.env.NODE_ENV === 'development' && { fullError: error })
+    });
 
     // Supabase specific error handling
     if (error.code) {
@@ -82,16 +89,18 @@ export class ErrorHandler {
             success: false,
             error: 'Duplicate entry',
             code: 'DUPLICATE_ENTRY',
-            details: error.details,
+            // Never expose database details in production
+            details: process.env.NODE_ENV === 'development' ? error.details : undefined,
             timestamp: new Date().toISOString()
           }, { status: 409 });
 
         case '23503':
           return NextResponse.json({
             success: false,
-            error: 'Foreign key constraint violation',
+            error: 'Invalid reference',
             code: 'FOREIGN_KEY_VIOLATION',
-            details: error.details,
+            // Never expose database details in production
+            details: process.env.NODE_ENV === 'development' ? error.details : undefined,
             timestamp: new Date().toISOString()
           }, { status: 400 });
 
@@ -108,7 +117,8 @@ export class ErrorHandler {
             success: false,
             error: 'Database operation failed',
             code: error.code,
-            message: error.message,
+            // Never expose internal error messages in production
+            message: process.env.NODE_ENV === 'development' ? error.message : undefined,
             timestamp: new Date().toISOString()
           }, { status: 500 });
       }
@@ -117,7 +127,8 @@ export class ErrorHandler {
     return NextResponse.json({
       success: false,
       error: 'Database error',
-      message: error.message || 'Unknown database error',
+      message: 'A database operation failed',
+      code: 'DATABASE_ERROR',
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }
@@ -153,18 +164,27 @@ export class ErrorHandler {
 
   /**
    * Handle generic errors
+   * Never exposes sensitive information like stack traces or internal details
    */
   static handleGenericError(error: any): NextResponse {
-    console.error('Unexpected error:', error);
+    // Log full error details server-side only (for debugging)
+    console.error('Unexpected error:', {
+      message: error?.message,
+      name: error?.name,
+      code: error?.code,
+      // Never log stack traces or sensitive data in production logs
+      ...(process.env.NODE_ENV === 'development' && { stack: error?.stack })
+    });
 
     // Check if it's a known error type
     if (error instanceof ValidationError) {
       return NextResponse.json({
         success: false,
         error: 'Validation failed',
-        message: error.message,
+        message: process.env.NODE_ENV === 'development' ? error.message : 'Invalid input provided',
         field: error.field,
-        value: error.value,
+        // Never expose actual values in production
+        value: process.env.NODE_ENV === 'development' ? error.value : undefined,
         timestamp: new Date().toISOString()
       }, { status: 400 });
     }
@@ -203,13 +223,12 @@ export class ErrorHandler {
       }, { status: 408 });
     }
 
-    // Default error response
+    // Default error response - never expose internal error details
     return NextResponse.json({
       success: false,
       error: 'Internal server error',
-      message: process.env.NODE_ENV === 'development' 
-        ? error.message 
-        : 'An unexpected error occurred',
+      message: 'An unexpected error occurred',
+      code: 'INTERNAL_ERROR',
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }
@@ -318,19 +337,47 @@ export class ErrorHandler {
 
   /**
    * Log error with context
+   * Never logs sensitive information like API keys, tokens, or user data
    */
   static logError(error: any, context: string, additionalData?: any): void {
+    // Sanitize additional data to remove sensitive information
+    const sanitizedAdditionalData = additionalData ? this.sanitizeLogData(additionalData) : undefined;
+    
     const errorInfo = {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-      code: error.code,
+      message: error?.message,
+      name: error?.name,
+      code: error?.code,
       context,
       timestamp: new Date().toISOString(),
-      ...additionalData
+      // Only include stack traces in development
+      ...(process.env.NODE_ENV === 'development' && { stack: error?.stack }),
+      ...sanitizedAdditionalData
     };
 
     console.error('Error logged:', errorInfo);
+  }
+
+  /**
+   * Sanitize log data to remove sensitive information
+   */
+  private static sanitizeLogData(data: any): any {
+    if (!data || typeof data !== 'object') {
+      return data;
+    }
+
+    const sensitiveKeys = ['password', 'secret', 'key', 'token', 'apiKey', 'apikey', 'authorization', 'auth'];
+    const sanitized = { ...data };
+
+    for (const key in sanitized) {
+      const lowerKey = key.toLowerCase();
+      if (sensitiveKeys.some(sensitive => lowerKey.includes(sensitive))) {
+        sanitized[key] = '[REDACTED]';
+      } else if (typeof sanitized[key] === 'object' && sanitized[key] !== null) {
+        sanitized[key] = this.sanitizeLogData(sanitized[key]);
+      }
+    }
+
+    return sanitized;
   }
 
   /**

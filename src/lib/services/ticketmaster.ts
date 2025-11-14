@@ -73,13 +73,13 @@ export class TicketmasterService {
   constructor() {
     this.apiKey = process.env.TICKETMASTER_API_KEY || '';
     
-    // Log API key status without exposing the key
-    console.log('🔑 Ticketmaster API Key Status:', {
-      present: !!this.apiKey,
-      length: this.apiKey?.length || 0,
-      firstChars: this.apiKey ? this.apiKey.substring(0, 8) + '...' : 'none',
-      isPlaceholder: this.apiKey?.includes('your_') || this.apiKey?.includes('here') || false
-    });
+    // Only log API key status in development mode, without exposing key details
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔑 Ticketmaster API Key Status:', {
+        present: !!this.apiKey,
+        isPlaceholder: this.apiKey?.includes('your_') || this.apiKey?.includes('here') || false
+      });
+    }
     
     // Don't throw error in constructor to allow service to be created
     // Error handling will be done at method level
@@ -312,21 +312,14 @@ export class TicketmasterService {
 
       const url = `${this.baseUrl}/events.json?${searchParams.toString()}`;
       
-      // FIXED: Add debugging for API key validation
-      console.log('🔑 API Key Debug:', {
-        hasApiKey: !!this.apiKey,
-        keyLength: this.apiKey?.length || 0,
-        keyStart: this.apiKey?.substring(0, 4) || 'none',
-        keyEnd: this.apiKey?.substring(this.apiKey.length - 4) || 'none',
-        isPlaceholder: this.apiKey?.includes('your_') || this.apiKey?.includes('here') || false
-      });
-      
-      // Log full request details
-      console.log('🌐 Ticketmaster Request:', {
-        url: url.replace(this.apiKey, 'API_KEY_HIDDEN'),
-        params: Object.fromEntries(searchParams),
-        timestamp: new Date().toISOString()
-      });
+      // Only log request details in development mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🌐 Ticketmaster Request:', {
+          url: url.replace(this.apiKey, 'API_KEY_HIDDEN'),
+          params: Object.fromEntries(searchParams),
+          timestamp: new Date().toISOString()
+        });
+      }
       
       const response = await this.makeRateLimitedRequest(url);
 
@@ -1001,14 +994,6 @@ export class TicketmasterService {
         
         const searchParams = new URLSearchParams();
         searchParams.append('apikey', this.apiKey);
-        
-        // FIXED: Add API key debugging for alternative search
-        console.log('🔑 Alternative Search API Key Debug:', {
-          hasApiKey: !!this.apiKey,
-          keyLength: this.apiKey?.length || 0,
-          keyStart: this.apiKey?.substring(0, 4) || 'none',
-          isPlaceholder: this.apiKey?.includes('your_') || this.apiKey?.includes('here') || false
-        });
         
         // Add strategy parameters
         Object.entries(strategy.params).forEach(([key, value]) => {

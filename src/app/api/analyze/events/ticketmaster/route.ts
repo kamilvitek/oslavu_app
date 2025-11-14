@@ -46,13 +46,13 @@ interface TicketmasterTransformation {
 
 export async function GET(request: NextRequest) {
   try {
-    // Log environment check
-    console.log('🔧 Environment Check:', {
-      NODE_ENV: process.env.NODE_ENV,
-      hasTicketmasterKey: !!process.env.TICKETMASTER_API_KEY,
-      keyLength: process.env.TICKETMASTER_API_KEY?.length || 0,
-      firstChars: process.env.TICKETMASTER_API_KEY ? process.env.TICKETMASTER_API_KEY.substring(0, 8) + '...' : 'none'
-    });
+    // Log environment check (only in development, without exposing key info)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔧 Environment Check:', {
+        NODE_ENV: process.env.NODE_ENV,
+        hasTicketmasterKey: !!process.env.TICKETMASTER_API_KEY
+      });
+    }
     
     const { searchParams } = new URL(request.url);
     
@@ -116,27 +116,13 @@ export async function GET(request: NextRequest) {
     const apiKey = process.env.TICKETMASTER_API_KEY;
     const isValidKey = !!(apiKey && apiKey.length > 10 && !apiKey.includes('your_') && !apiKey.includes('here'));
     
-    // FIXED: Add detailed API key debugging
-    console.log('🔑 Route API Key Debug:', {
-      hasApiKey: !!apiKey,
-      keyLength: apiKey?.length || 0,
-      keyStart: apiKey?.substring(0, 4) || 'none',
-      keyEnd: apiKey?.substring(apiKey.length - 4) || 'none',
-      isPlaceholder: apiKey?.includes('your_') || apiKey?.includes('here') || false,
-      isValidKey,
-      envVar: process.env.TICKETMASTER_API_KEY ? 'SET' : 'NOT_SET'
-    });
-    
     if (!isValidKey) {
-      console.error('❌ TICKETMASTER_API_KEY is not set in environment variables');
-      console.error('🎟️ Ticketmaster API key is not properly configured');
-      console.error('🎟️ Current key status:', {
-        exists: !!apiKey,
-        length: apiKey?.length || 0,
-        isPlaceholder: apiKey?.includes('your_') || apiKey?.includes('here') || false
-      });
-      console.error('🎟️ Please set TICKETMASTER_API_KEY in your .env.local file');
-      console.error('🎟️ Get your API key from: https://developer.ticketmaster.com/');
+      // Only log in development mode, without exposing key details
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ TICKETMASTER_API_KEY is not properly configured');
+        console.error('🎟️ Please set TICKETMASTER_API_KEY in your .env.local file');
+        console.error('🎟️ Get your API key from: https://developer.ticketmaster.com/');
+      }
       
       return createResponse(
         { 
@@ -146,13 +132,7 @@ export async function GET(request: NextRequest) {
             events: [],
             total: 0,
             source: 'ticketmaster',
-            message: 'Ticketmaster API key not configured - please set TICKETMASTER_API_KEY in .env.local',
-            debug: {
-              keyExists: !!apiKey,
-              keyLength: apiKey?.length || 0,
-              isPlaceholder: apiKey?.includes('your_') || apiKey?.includes('here') || false,
-              setupUrl: 'https://developer.ticketmaster.com/'
-            }
+            message: 'Ticketmaster API key not configured'
           }
         },
         { status: 500 }
