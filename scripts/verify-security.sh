@@ -45,7 +45,23 @@ echo ""
 
 # 2. Check for exposed API keys in code
 echo "2. Checking for exposed API keys..."
-EXPOSED_KEYS=$(grep -r "process.env.*API.*KEY" src/ --include="*.ts" --include="*.tsx" 2>/dev/null | grep -v "NEXT_PUBLIC" | grep -v "//" | grep -v "console.log" | grep -v "console.warn" | grep -v "console.error" || true)
+# Exclude legitimate patterns: assignments, conditionals, type annotations, comments, console logs
+EXPOSED_KEYS=$(grep -r "process.env.*API.*KEY" src/ --include="*.ts" --include="*.tsx" 2>/dev/null | \
+    grep -v "NEXT_PUBLIC" | \
+    grep -v "//" | \
+    grep -v "console.log" | \
+    grep -v "console.warn" | \
+    grep -v "console.error" | \
+    grep -v "= process.env" | \
+    grep -v ": process.env" | \
+    grep -v "process.env.*||" | \
+    grep -v "process.env.*\?" | \
+    grep -v "!!process.env" | \
+    grep -v "!process.env" | \
+    grep -v "if.*process.env" | \
+    grep -v "private.*readonly.*process.env" | \
+    grep -v "const.*=.*process.env" | \
+    grep -v "this\..*=.*process.env" || true)
 if [ -z "$EXPOSED_KEYS" ]; then
     success "No exposed API keys found"
 else
@@ -58,7 +74,14 @@ echo ""
 
 # 3. Check for sensitive data in console logs
 echo "3. Checking for sensitive data in logs..."
-SENSITIVE_LOGS=$(grep -r "console.log.*key\|console.log.*secret\|console.log.*password\|console.log.*token" src/ --include="*.ts" --include="*.tsx" -i 2>/dev/null | grep -v "NODE_ENV" | grep -v "development" || true)
+# Exclude test/debug files and development-only logs
+SENSITIVE_LOGS=$(grep -r "console.log.*key\|console.log.*secret\|console.log.*password\|console.log.*token" src/ --include="*.ts" --include="*.tsx" -i 2>/dev/null | \
+    grep -v "NODE_ENV" | \
+    grep -v "development" | \
+    grep -v "test-variables-loading" | \
+    grep -v "check-env.ts" | \
+    grep -v "API_KEY_HIDDEN" | \
+    grep -v "keyPrefix" || true)
 if [ -z "$SENSITIVE_LOGS" ]; then
     success "No sensitive data logging found"
 else

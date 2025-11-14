@@ -62,14 +62,16 @@ export async function GET(request: NextRequest) {
     // Handle expanded categories
     const expandedCategories = rawParams.expandedCategories ? rawParams.expandedCategories.split(',') : [rawParams.category];
     
-    // Log request parameters
-    console.log('📥 Ticketmaster Route Request:', {
-      method: request.method,
-      url: request.url,
-      searchParams: rawParams,
-      expandedCategories,
-      timestamp: new Date().toISOString()
-    });
+    // Log request parameters (only in development mode)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📥 Ticketmaster Route Request:', {
+        method: request.method,
+        url: request.url,
+        searchParams: rawParams,
+        expandedCategories,
+        timestamp: new Date().toISOString()
+      });
+    }
     
     // Sanitize all input parameters
     const sanitizationResult = sanitizeApiParameters(rawParams);
@@ -103,7 +105,10 @@ export async function GET(request: NextRequest) {
     // Use sanitized radius (already validated and converted)
     const cleanRadius = radius;
 
-    console.log('🎟️ Ticketmaster API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
+    // Log request parameters only in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🎟️ Ticketmaster API Request params:', { city, startDate, endDate, category, keyword, radius, useComprehensiveFallback, page, size });
+    }
 
     if (!city && !keyword) {
       return createResponse(
