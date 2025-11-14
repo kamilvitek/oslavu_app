@@ -41,6 +41,7 @@ interface ScrapedEvent {
 
 interface ScraperResult {
   created: number;
+  updated: number;
   skipped: number;
   errors: string[];
 }
@@ -133,6 +134,7 @@ export class EventScraperService {
         await this.completeSyncLog(syncLogId, 'success', {
           events_processed: events.length,
           events_created: result.created,
+          events_updated: result.updated,
           events_skipped: result.skipped,
           errors: result.errors,
           // Additional metrics will be added by processScrapedEvents
@@ -163,6 +165,7 @@ export class EventScraperService {
     
     const result: ScraperResult = {
       created: 0,
+      updated: 0,
       skipped: 0,
       errors: []
     };
@@ -1887,6 +1890,7 @@ CRITICAL REMINDERS FOR RETRY:
   private async processScrapedEvents(events: CreateEventData[], sourceName: string): Promise<ScraperResult> {
     const result: ScraperResult = {
       created: 0,
+      updated: 0,
       skipped: 0,
       errors: []
     };
@@ -2072,6 +2076,7 @@ CRITICAL REMINDERS FOR RETRY:
         console.log(`💾 Save result:`, saveResult);
         
         result.created += saveResult.created;
+        result.updated += saveResult.updated;
         result.skipped += saveResult.skipped;
         result.errors.push(...saveResult.errors);
 
@@ -2537,7 +2542,7 @@ CRITICAL REMINDERS FOR RETRY:
       const durationMs = new Date(completedAt).getTime() - startedAt.getTime();
 
       // Extract metadata fields separately
-      const { started_at, events_processed, events_created, events_skipped, errors, ...restMetadata } = metadata;
+      const { started_at, events_processed, events_created, events_updated, events_skipped, errors, ...restMetadata } = metadata;
 
       await this.db.executeWithRetry(async () => {
         const updateData: any = {
@@ -2546,6 +2551,7 @@ CRITICAL REMINDERS FOR RETRY:
           duration_ms: durationMs,
           events_processed: events_processed || 0,
           events_created: events_created || 0,
+          events_updated: events_updated || 0,
           events_skipped: events_skipped || 0,
           errors: errors || [],
         };
