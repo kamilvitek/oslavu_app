@@ -1,27 +1,26 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env tsx
 // Script to verify the cities table migration ran successfully
 
+// Load environment variables from .env.local FIRST (before any imports)
 import { config } from 'dotenv';
-import * as path from 'path';
-
-// Load environment variables
+import path from 'path';
 config({ path: path.resolve(process.cwd(), '.env.local') });
 
-// Now import the service after environment variables are loaded
-const { serverDatabaseService } = require('../src/lib/supabase');
-
 async function verifyMigration() {
+  // Dynamic import after environment variables are loaded
+  const { createServerClient } = await import('../src/lib/supabase');
+  
   console.log('🔍 Verifying cities table migration...\n');
+  
+  const supabase = createServerClient();
   
   try {
     // 1. Check if cities table exists
     console.log('1️⃣ Checking if cities table exists...');
-    const { data: cities, error: citiesError } = await serverDatabaseService.executeWithRetry(async () => {
-      return await serverDatabaseService.getClient()
-        .from('cities')
-        .select('id, name_en, name_cs, population, latitude, longitude')
-        .limit(5);
-    });
+    const { data: cities, error: citiesError } = await supabase
+      .from('cities')
+      .select('id, name_en, name_cs, population, latitude, longitude')
+      .limit(5);
 
     if (citiesError) {
       console.error('❌ Cities table does NOT exist or is not accessible');
@@ -40,12 +39,9 @@ async function verifyMigration() {
 
     // 2. Check total count
     console.log('\n2️⃣ Checking total city count...');
-    const { count, error: countError } = await serverDatabaseService.executeWithRetry(async () => {
-      const result = await serverDatabaseService.getClient()
-        .from('cities')
-        .select('*', { count: 'exact', head: true });
-      return result;
-    });
+    const { count, error: countError } = await supabase
+      .from('cities')
+      .select('*', { count: 'exact', head: true });
 
     if (countError) {
       console.warn('⚠️  Could not get city count:', countError.message);
@@ -60,13 +56,11 @@ async function verifyMigration() {
 
     // 3. Check if indexes exist (by trying to query with them)
     console.log('\n3️⃣ Checking indexes...');
-    const { data: indexTest, error: indexError } = await serverDatabaseService.executeWithRetry(async () => {
-      return await serverDatabaseService.getClient()
-        .from('cities')
-        .select('name_en')
-        .eq('name_en', 'Prague')
-        .limit(1);
-    });
+    const { data: indexTest, error: indexError } = await supabase
+      .from('cities')
+      .select('name_en')
+      .eq('name_en', 'Prague')
+      .limit(1);
 
     if (indexError) {
       console.warn('⚠️  Index test query failed:', indexError.message);
@@ -76,13 +70,11 @@ async function verifyMigration() {
 
     // 4. Check if nearby_cities relationships exist
     console.log('\n4️⃣ Checking nearby_cities relationships...');
-    const { data: relationships, error: relError } = await serverDatabaseService.executeWithRetry(async () => {
-      return await serverDatabaseService.getClient()
-        .from('cities')
-        .select('name_en, nearby_cities')
-        .not('nearby_cities', 'is', null)
-        .limit(5);
-    });
+    const { data: relationships, error: relError } = await supabase
+      .from('cities')
+      .select('name_en, nearby_cities')
+      .not('nearby_cities', 'is', null)
+      .limit(5);
 
     if (relError) {
       console.warn('⚠️  Could not check relationships:', relError.message);
@@ -100,13 +92,11 @@ async function verifyMigration() {
     console.log('\n5️⃣ Checking specific major cities...');
     const majorCities = ['Prague', 'Brno', 'Ostrava', 'Plzen'];
     for (const cityName of majorCities) {
-      const { data: city, error: cityError } = await serverDatabaseService.executeWithRetry(async () => {
-        return await serverDatabaseService.getClient()
-          .from('cities')
-          .select('name_en, name_cs, population')
-          .eq('name_en', cityName)
-          .single();
-      });
+      const { data: city, error: cityError } = await supabase
+        .from('cities')
+        .select('name_en, name_cs, population')
+        .eq('name_en', cityName)
+        .single();
 
       if (cityError || !city) {
         console.log(`   ❌ ${cityName}: NOT FOUND`);
