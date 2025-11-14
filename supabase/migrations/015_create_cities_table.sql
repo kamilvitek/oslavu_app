@@ -39,6 +39,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create trigger to automatically update updated_at
+DROP TRIGGER IF EXISTS update_cities_updated_at_trigger ON cities;
 CREATE TRIGGER update_cities_updated_at_trigger
   BEFORE UPDATE ON cities
   FOR EACH ROW
