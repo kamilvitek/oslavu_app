@@ -120,7 +120,7 @@ Return only the JSON object.`;
           population: result.population || null,
           latitude: result.latitude || null,
           longitude: result.longitude || null,
-          nearby_cities: null
+          nearby_cities: undefined
         };
 
         console.log(`✅ AI: Got city info for "${cityName}": population=${cityInfo.population}, coords=(${cityInfo.latitude}, ${cityInfo.longitude})`);
@@ -274,7 +274,7 @@ Return only the JSON array.`;
               population: city.population || null,
               latitude: city.latitude || null,
               longitude: city.longitude || null,
-              nearby_cities: null,
+              nearby_cities: undefined,
               distance_km: calculatedDistance,
               impact_factor: calculatedImpactFactor
             });
