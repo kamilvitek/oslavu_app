@@ -80,14 +80,27 @@ export class SeasonalityEngine {
     region: string = this.config.defaultRegion
   ): Promise<SeasonalMultiplier> {
     const startTime = Date.now();
+    const month = new Date(date).getMonth() + 1;
     
     try {
-      // Check cache first
-      const cacheKey = `seasonal_${category}_${subcategory || 'null'}_${region}_${new Date(date).getMonth() + 1}`;
+      // Check in-memory cache first
+      const cacheKey = `seasonal_${category}_${subcategory || 'null'}_${region}_${month}`;
       const cached = this.getCachedResult(cacheKey);
       if (cached) {
-        this.logDebug(`Cache hit for seasonal multiplier: ${cacheKey}`);
+        this.logDebug(`In-memory cache hit for seasonal multiplier: ${cacheKey}`);
         return cached;
+      }
+
+      // Check database cache
+      const dbCacheKey = this.generateDatabaseCacheKey(category, subcategory, region, month);
+      const dbCached = await this.getDatabaseCachedResult(dbCacheKey);
+      if (dbCached) {
+        this.logDebug(`Database cache hit for seasonal multiplier: ${dbCacheKey}`);
+        // Convert database cache to SeasonalMultiplier format
+        const result = this.convertDatabaseCacheToMultiplier(dbCached, category, subcategory);
+        // Store in memory cache for faster subsequent access
+        this.setCachedResult(cacheKey, result);
+        return result;
       }
 
       // Query database for seasonal rules
@@ -96,7 +109,7 @@ export class SeasonalityEngine {
         .select('*')
         .eq('category', category)
         .eq('region', region)
-        .eq('month', new Date(date).getMonth() + 1)
+        .eq('month', month)
         .order('confidence', { ascending: false });
 
       if (error) {
@@ -117,12 +130,13 @@ export class SeasonalityEngine {
 
       // Calculate demand level from multiplier
       const demandLevel = this.calculateDemandLevel(bestRule.demand_multiplier);
+      const riskLevel = this.calculateRiskLevel(bestRule.demand_multiplier);
       
       // Generate reasoning
       const reasoning = this.generateSeasonalReasoning(
         bestRule.demand_multiplier,
         bestRule.reasoning,
-        new Date(date).getMonth() + 1,
+        month,
         category,
         subcategory
       );
@@ -136,8 +150,21 @@ export class SeasonalityEngine {
         expertSource: bestRule.expert_source
       };
 
-      // Cache the result
+      // Cache in memory
       this.setCachedResult(cacheKey, result);
+
+      // Cache in database for persistence across restarts
+      await this.setDatabaseCachedResult(
+        dbCacheKey,
+        category,
+        subcategory,
+        region,
+        month,
+        bestRule.demand_multiplier,
+        riskLevel,
+        bestRule.confidence,
+        bestRule.data_source
+      );
 
       const duration = Date.now() - startTime;
       this.logDebug(`Seasonal multiplier calculated in ${duration}ms: ${result.multiplier}x (${result.demandLevel})`);
@@ -418,11 +445,14 @@ export class SeasonalityEngine {
 
   /**
    * Calculate risk level from multiplier value
+   * Returns full range: very_low, low, medium, high, very_high
    */
   private calculateRiskLevel(multiplier: number): RiskLevel {
+    if (multiplier >= 2.0) return 'very_high';
     if (multiplier >= 1.5) return 'high';
     if (multiplier >= 1.2) return 'medium';
-    return 'low';
+    if (multiplier >= 0.7) return 'low';
+    return 'very_low';
   }
 
   /**
@@ -566,7 +596,7 @@ export class SeasonalityEngine {
   }
 
   /**
-   * Cache management methods
+   * Cache management methods - In-memory cache
    */
   private getCachedResult(key: string): any {
     if (!this.config.cache.enabled) return null;
@@ -595,6 +625,196 @@ export class SeasonalityEngine {
     
     this.cache.set(key, value);
     this.cacheTimestamps.set(key, Date.now());
+  }
+
+  /**
+   * Database cache management methods
+   */
+  private generateDatabaseCacheKey(
+    category: string,
+    subcategory: string | undefined,
+    region: string,
+    month: number
+  ): string {
+    // Generate consistent cache key: category:subcategory:region:month
+    const subcat = subcategory || 'null';
+    return `${category}:${subcat}:${region}:${month}`;
+  }
+
+  private async getDatabaseCachedResult(cacheKey: string): Promise<any | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('seasonal_insights_cache')
+        .select('*')
+        .eq('cache_key', cacheKey)
+        .gt('expires_at', new Date().toISOString())
+        .single();
+
+      if (error) {
+        // PGRST116 = no rows returned, which is fine
+        if (error.code !== 'PGRST116') {
+          this.logError('Error fetching database cache:', error);
+        }
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      this.logError('Error accessing database cache:', error);
+      return null;
+    }
+  }
+
+  private async setDatabaseCachedResult(
+    cacheKey: string,
+    category: string,
+    subcategory: string | undefined,
+    region: string,
+    month: number,
+    demandMultiplier: number,
+    riskLevel: RiskLevel,
+    confidence: number,
+    calculationMethod: string
+  ): Promise<void> {
+    try {
+      // Normalize demand multiplier to 0-1 range for demand_score
+      // Multiplier range is 0.1-3.0, normalize to 0-1: (multiplier - 0.1) / (3.0 - 0.1)
+      const demandScore = Math.max(0, Math.min(1, (demandMultiplier - 0.1) / 2.9));
+
+      // Calculate optimal_score: higher multiplier = more optimal (0-1 scale)
+      // Optimal score represents how good this month is for events
+      // Multiplier 3.0 = 1.0, multiplier 0.1 = 0.0
+      const optimalScore = demandScore;
+
+      // Set expiration to 30 days from now
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
+      const { error } = await this.supabase
+        .from('seasonal_insights_cache')
+        .upsert({
+          cache_key: cacheKey,
+          category,
+          subcategory: subcategory || null,
+          region,
+          month,
+          demand_score: demandScore,
+          risk_level: riskLevel,
+          optimal_score: optimalScore,
+          calculation_method: calculationMethod,
+          confidence,
+          calculated_at: new Date().toISOString(),
+          expires_at: expiresAt.toISOString()
+        }, {
+          onConflict: 'cache_key'
+        });
+
+      if (error) {
+        this.logError('Error storing database cache:', error);
+      } else {
+        this.logDebug(`Cached seasonal insight to database: ${cacheKey}`);
+      }
+    } catch (error) {
+      this.logError('Error storing database cache:', error);
+    }
+  }
+
+  private convertDatabaseCacheToMultiplier(
+    dbCache: any,
+    category: string,
+    subcategory?: string
+  ): SeasonalMultiplier {
+    // Convert demand_score back to multiplier (reverse normalization)
+    // demand_score = (multiplier - 0.1) / 2.9
+    // multiplier = demand_score * 2.9 + 0.1
+    const multiplier = dbCache.demand_score * 2.9 + 0.1;
+
+    // Convert risk_level to demandLevel
+    const demandLevelMap: Record<string, DemandLevel> = {
+      'very_low': 'very_low',
+      'low': 'low',
+      'medium': 'medium',
+      'high': 'high',
+      'very_high': 'very_high'
+    };
+
+    return {
+      multiplier,
+      demandLevel: demandLevelMap[dbCache.risk_level] || 'medium',
+      confidence: dbCache.confidence,
+      reasoning: [`Cached seasonal insight for ${category}${subcategory ? ` (${subcategory})` : ''} in month ${dbCache.month}`],
+      dataSource: dbCache.calculation_method as DataSource
+    };
+  }
+
+  /**
+   * Clean expired cache entries from database
+   * Useful for maintenance and keeping the cache table size manageable
+   */
+  async cleanExpiredCacheEntries(): Promise<number> {
+    try {
+      const { data, error } = await this.supabase
+        .from('seasonal_insights_cache')
+        .delete()
+        .lt('expires_at', new Date().toISOString())
+        .select('id');
+
+      if (error) {
+        this.logError('Error cleaning expired cache entries:', error);
+        return 0;
+      }
+
+      const deletedCount = data?.length || 0;
+      if (deletedCount > 0) {
+        this.logDebug(`Cleaned ${deletedCount} expired seasonal cache entries`);
+      }
+      return deletedCount;
+    } catch (error) {
+      this.logError('Error cleaning expired cache:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Get cache statistics
+   */
+  async getCacheStats(): Promise<{
+    totalEntries: number;
+    expiredEntries: number;
+    memoryCacheSize: number;
+  }> {
+    try {
+      const { data: totalData, error: totalError } = await this.supabase
+        .from('seasonal_insights_cache')
+        .select('id', { count: 'exact', head: true });
+
+      const { data: expiredData, error: expiredError } = await this.supabase
+        .from('seasonal_insights_cache')
+        .select('id', { count: 'exact', head: true })
+        .lt('expires_at', new Date().toISOString());
+
+      if (totalError || expiredError) {
+        this.logError('Error getting cache stats:', totalError || expiredError);
+        return {
+          totalEntries: 0,
+          expiredEntries: 0,
+          memoryCacheSize: this.cache.size
+        };
+      }
+
+      return {
+        totalEntries: totalData?.length || 0,
+        expiredEntries: expiredData?.length || 0,
+        memoryCacheSize: this.cache.size
+      };
+    } catch (error) {
+      this.logError('Error getting cache statistics:', error);
+      return {
+        totalEntries: 0,
+        expiredEntries: 0,
+        memoryCacheSize: this.cache.size
+      };
+    }
   }
 
   /**

@@ -84,7 +84,7 @@ export interface SeasonalRecommendation {
   /** Demand score (0.0-1.0) indicating how optimal this month is */
   demandScore: number;
   /** Risk level for hosting events in this month */
-  riskLevel: 'low' | 'medium' | 'high';
+  riskLevel: RiskLevel;
   /** Human-readable reasoning for the recommendation */
   reasoning: string[];
   /** Historical success rate (0.0-1.0) based on past events */
@@ -449,7 +449,7 @@ export type DemandLevel = 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
 /**
  * Risk level classifications
  */
-export type RiskLevel = 'low' | 'medium' | 'high';
+export type RiskLevel = 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
 
 /**
  * Impact level classifications
