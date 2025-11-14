@@ -9,7 +9,7 @@ export function getNearbyCities(city: string): string[] {
   
   const cityMap: Record<string, string[]> = {
     'prague': ['Brno', 'Pardubice', 'Hradec Králové', 'České Budějovice', 'Plzeň', 'Mikulov'],
-    'brno': ['Prague', 'Pardubice', 'Olomouc', 'Zlín', 'Ostrava', 'Mikulov'],
+    'brno': ['Prague', 'Pardubice', 'Olomouc', 'Zlín', 'Ostrava', 'Mikulov', 'Hodonín'],
     'hradec králové': ['Prague', 'Pardubice', 'Brno', 'Liberec', 'Mikulov'],
     'pardubice': ['Prague', 'Hradec Králové', 'Brno', 'Olomouc', 'Mikulov'],
     'ostrava': ['Brno', 'Prague', 'Olomouc', 'Zlín'],
@@ -19,6 +19,7 @@ export function getNearbyCities(city: string): string[] {
     'liberec': ['Prague', 'Hradec Králové'],
     'zlín': ['Brno', 'Olomouc', 'Ostrava'],
     'mikulov': ['Brno', 'Prague', 'Hradec Králové', 'Pardubice'],
+    'hodonín': ['Brno', 'Břeclav', 'Znojmo', 'Uherské Hradiště'],
   };
   
   // Try exact match first

@@ -123,15 +123,50 @@ export class PerplexityResearchService {
       const result = await this.callPerplexityAPI(prompt);
       
       // Validate and parse response
-      const validatedResult = this.validateAndParseResponse(result);
+      let validatedResult = this.validateAndParseResponse(result);
+      
+      // FALLBACK: If comprehensive prompt found no events, try a simpler direct prompt
+      // This helps with smaller cities or when the complex prompt over-filters
+      const totalEventsFound = validatedResult.conflictingEvents.length + 
+                               validatedResult.touringArtists.length + 
+                               validatedResult.localFestivals.length;
+      
+      if (totalEventsFound === 0) {
+        console.log('⚠️ Comprehensive prompt found no events, trying simplified fallback prompt...');
+        const simplePrompt = this.generateSimplifiedPrompt(params);
+        try {
+          const fallbackResult = await this.callPerplexityAPI(simplePrompt);
+          const fallbackValidated = this.validateAndParseResponse(fallbackResult);
+          
+          // Use fallback results if they found events
+          const fallbackTotalEvents = fallbackValidated.conflictingEvents.length + 
+                                      fallbackValidated.touringArtists.length + 
+                                      fallbackValidated.localFestivals.length;
+          
+          if (fallbackTotalEvents > 0) {
+            console.log(`✅ Simplified prompt found ${fallbackTotalEvents} events, using fallback results`);
+            validatedResult = fallbackValidated;
+            validatedResult.researchMetadata = {
+              query: simplePrompt,
+              timestamp: new Date().toISOString(),
+              sourcesUsed: this.extractSourceCount(fallbackResult),
+              confidence: this.calculateOverallConfidence(fallbackValidated),
+            };
+          }
+        } catch (fallbackError) {
+          console.warn('⚠️ Fallback prompt also failed, using original results:', fallbackError);
+        }
+      }
       
       // Add metadata
-      validatedResult.researchMetadata = {
-        query: prompt,
-        timestamp: new Date().toISOString(),
-        sourcesUsed: this.extractSourceCount(result),
-        confidence: this.calculateOverallConfidence(validatedResult),
-      };
+      if (!validatedResult.researchMetadata) {
+        validatedResult.researchMetadata = {
+          query: prompt,
+          timestamp: new Date().toISOString(),
+          sourcesUsed: this.extractSourceCount(result),
+          confidence: this.calculateOverallConfidence(validatedResult),
+        };
+      }
       
       // Cache the result
       this.requestCache.set(cacheKey, {
@@ -296,6 +331,86 @@ IMPORTANT:
 - If no conflicts found on the exact date(s) OR within the temporal window, return empty arrays but still provide recommendations
 
 Return ONLY valid JSON, no markdown code blocks or additional text.`;
+
+    return prompt;
+  }
+
+  /**
+   * Generate simplified prompt for fallback when comprehensive prompt finds no events
+   * This uses a more direct, less restrictive approach similar to simple user queries
+   */
+  private generateSimplifiedPrompt(params: PerplexityResearchParams): string {
+    const { city, category, subcategory, date, dateRange } = params;
+    const dateStr = dateRange ? `${dateRange.start} to ${dateRange.end}` : date;
+    
+    // Calculate date window (±7 days)
+    const rangeStart = dateRange ? new Date(dateRange.start) : new Date(date);
+    const rangeEnd = dateRange ? new Date(dateRange.end) : new Date(date);
+    const windowStart = new Date(rangeStart);
+    windowStart.setDate(windowStart.getDate() - 7);
+    const windowEnd = new Date(rangeEnd);
+    windowEnd.setDate(windowEnd.getDate() + 7);
+    const windowStartStr = windowStart.toISOString().split('T')[0];
+    const windowEndStr = windowEnd.toISOString().split('T')[0];
+    
+    // Simple, direct prompt - similar to what users would type
+    const prompt = `Find ${category}${subcategory ? ` (${subcategory})` : ''} events in ${city} city${dateRange ? ` from ${dateRange.start} to ${dateRange.end}` : ` on ${date}`}.
+
+Search for events from ${windowStartStr} to ${windowEndStr} (including 7 days before and after the target date).
+
+Return a JSON object with this structure:
+{
+  "conflictingEvents": [
+    {
+      "name": "Event name",
+      "date": "YYYY-MM-DD",
+      "location": "City name",
+      "type": "concert|festival|cultural_event|other",
+      "expectedAttendance": number (optional),
+      "description": "Event description (optional)",
+      "source": "URL (optional)"
+    }
+  ],
+  "touringArtists": [
+    {
+      "artistName": "Artist name",
+      "tourDates": ["YYYY-MM-DD"],
+      "locations": ["City name"],
+      "genre": "Genre (optional)"
+    }
+  ],
+  "localFestivals": [
+    {
+      "name": "Festival name",
+      "dates": "Date range string",
+      "location": "City name",
+      "type": "Festival type",
+      "description": "Description (optional)"
+    }
+  ],
+  "holidaysAndCulturalEvents": [
+    {
+      "name": "Holiday/Event name",
+      "date": "YYYY-MM-DD",
+      "type": "holiday|cultural_event",
+      "impact": "low|medium|high",
+      "description": "Description (optional)"
+    }
+  ],
+  "recommendations": {
+    "shouldMoveDate": false,
+    "recommendedDates": [],
+    "reasoning": ["Simple explanation"],
+    "riskLevel": "low|medium|high"
+  }
+}
+
+IMPORTANT:
+- Focus on finding events in ${city} on or near ${dateStr}
+- Include events that match ${category}${subcategory ? ` and ${subcategory}` : ''} category
+- Be inclusive - include events that might be relevant even if not perfectly matching
+- Use YYYY-MM-DD format for all dates
+- Return ONLY valid JSON, no markdown code blocks`;
 
     return prompt;
   }
