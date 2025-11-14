@@ -31,7 +31,7 @@ export function Hero() {
       <div className="relative container mx-auto px-4 py-20 lg:py-32">
         <div className="text-center">
           {/* Main heading with animation */}
-          <div className={`transition-all duration-1000 ${isVisible ? 'animate-fade-in-up opacity-100' : 'opacity-0 translate-y-8'}`}>
+          <div className={`transition-all duration-1000 mt-8 md:mt-12 lg:mt-16 ${isVisible ? 'animate-fade-in-up opacity-100' : 'opacity-0 translate-y-8'}`}>
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-foreground mb-6 leading-tight">
               Pick the Perfect 
               <span className="gradient-primary bg-clip-text text-transparent"> Event Date</span>
