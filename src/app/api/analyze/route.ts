@@ -126,14 +126,14 @@ export async function POST(request: NextRequest) {
 
       const analysisRecord = {
         user_id: null, // Anonymous analysis for now
-        request_data: {
-          city: sanitizedBody.city,
-          category: sanitizedBody.category,
-          expected_attendees: sanitizedBody.expectedAttendees,
-          date_range: sanitizedBody.dateRange,
-          preferred_dates: [preferredStart, preferredEnd]
-        },
-        conflict_score: averageConflictScore,
+        // Top-level fields matching database schema
+        city: sanitizedBody.city,
+        category: sanitizedBody.category,
+        subcategory: sanitizedBody.subcategory || null, // Save subcategory at top level
+        preferred_dates: [preferredStart, preferredEnd],
+        expected_attendees: sanitizedBody.expectedAttendees,
+        date_range_start: sanitizedBody.dateRange.start,
+        date_range_end: sanitizedBody.dateRange.end,
         results: {
           // Store all analysis data in the results JSONB field
           city: sanitizedBody.city,
@@ -143,6 +143,14 @@ export async function POST(request: NextRequest) {
           expected_attendees: sanitizedBody.expectedAttendees,
           date_range_start: sanitizedBody.dateRange.start,
           date_range_end: sanitizedBody.dateRange.end,
+          request_data: {
+            city: sanitizedBody.city,
+            category: sanitizedBody.category,
+            expected_attendees: sanitizedBody.expectedAttendees,
+            date_range: sanitizedBody.dateRange,
+            preferred_dates: [preferredStart, preferredEnd]
+          },
+          conflict_score: averageConflictScore,
           recommendedDates: analysis.recommendedDates,
           highRiskDates: analysis.highRiskDates,
           allEvents: analysis.allEvents,

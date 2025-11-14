@@ -112,14 +112,16 @@ export interface EventAnalytics {
 // Conflict analysis interfaces
 export interface ConflictAnalysis {
   id: string;
-  user_id: string;
+  user_id: string | null;
   city: string;
   category: string;
+  subcategory: string | null; // Add subcategory field
   preferred_dates: string[];
   expected_attendees: number;
-  results: ConflictScore[];
+  date_range_start: string; // Add date_range_start field
+  date_range_end: string; // Add date_range_end field
+  results: ConflictScore[] | Record<string, any>; // Results can be ConflictScore[] or JSONB object
   created_at: string;
-  updated_at: string;
 }
 
 export interface ConflictScore {
@@ -324,14 +326,17 @@ export interface EventsTable {
 
 export interface ConflictAnalysesTable {
   id: string;
-  user_id: string;
+  user_id: string | null;
   city: string;
   category: string;
-  preferred_dates: string[];
+  subcategory: string | null; // Add subcategory field to match database schema
+  preferred_dates: string[]; // JSONB array
   expected_attendees: number;
-  results: ConflictScore[];
+  date_range_start: string; // DATE field
+  date_range_end: string; // DATE field
+  results: Record<string, any>; // JSONB field - can contain any structure
   created_at: string;
-  updated_at: string;
+  // Note: updated_at does not exist in the database schema
 }
 
 export interface SyncLogsTable {

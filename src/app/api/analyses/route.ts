@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const { data: tableInfo, error: tableError } = await serverDatabaseService.executeWithRetry(async () => {
       const result = await serverDatabaseService.getClient()
         .from('conflict_analyses')
-        .select('id, city, category, created_at')
+        .select('id, city, category, subcategory, date_range_start, date_range_end, created_at')
         .limit(1);
       return result;
     });

@@ -8,6 +8,7 @@ import { withRateLimit, rateLimitConfigs, getClientIdentifier } from '@/lib/util
 const ConflictAnalysisSchema = z.object({
   city: z.string().min(1).max(100),
   category: z.string().min(1).max(50),
+  subcategory: z.string().max(100).optional(), // Add subcategory to schema validation
   preferred_dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1).max(10),
   expected_attendees: z.number().int().min(1).max(1000000).default(100),
   date_range: z.object({
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = ConflictAnalysisSchema.parse(body);
 
-    const { city, category, preferred_dates, expected_attendees, date_range, enable_advanced_analysis, enable_perplexity_research } = validatedData;
+    const { city, category, subcategory, preferred_dates, expected_attendees, date_range, enable_advanced_analysis, enable_perplexity_research } = validatedData;
 
     // Determine date range for analysis
     const startDate = date_range?.start || preferred_dates[0];
@@ -170,9 +171,17 @@ export async function POST(request: NextRequest) {
       
       const analysisRecord = {
         user_id: null, // Anonymous analysis for now
+        // Top-level fields matching database schema
+        city: city,
+        category: category,
+        subcategory: subcategory || null, // Save subcategory at top level
+        preferred_dates: preferred_dates,
+        expected_attendees: expected_attendees,
+        date_range_start: startDate,
+        date_range_end: endDate,
         results: {
           // Store all analysis data in the results JSONB field
-          subcategory: null,
+          subcategory: subcategory || null,
           date_range_start: startDate,
           date_range_end: endDate,
           ...analysisData

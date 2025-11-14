@@ -22,12 +22,15 @@ export interface Event {
 
 export interface ConflictAnalysis {
   id: string;
-  userId: string;
+  userId: string | null;
   city: string;
   category: string;
+  subcategory?: string | null; // Add subcategory field
   preferredDates: string[];
   expectedAttendees: number;
-  results: ConflictScore[];
+  dateRangeStart?: string; // Add date_range_start field
+  dateRangeEnd?: string; // Add date_range_end field
+  results: ConflictScore[] | Record<string, any>; // Results can be ConflictScore[] or JSONB object
   createdAt: string;
 }
 
