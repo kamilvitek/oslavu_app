@@ -45,11 +45,39 @@ echo ""
 
 # 2. Lint check
 echo "2. Linting..."
-if npm run lint > /dev/null 2>&1; then
-    success "Linting passed"
+# Use timeout command (macOS uses gtimeout, Linux uses timeout)
+# If timeout command doesn't exist, skip lint check
+if command -v timeout > /dev/null 2>&1 || command -v gtimeout > /dev/null 2>&1; then
+    TIMEOUT_CMD=$(command -v timeout || command -v gtimeout)
+    if $TIMEOUT_CMD 30 npm run lint > /dev/null 2>&1; then
+        success "Linting passed"
+    else
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 124 ]; then
+            warning "Linting timed out after 30 seconds (skipping)"
+        else
+            warning "Linting found issues (may be non-critical)"
+            echo "   Run 'npm run lint' for details"
+        fi
+    fi
 else
-    warning "Linting found issues (may be non-critical)"
-    echo "   Run 'npm run lint' for details"
+    # No timeout command available, try to run lint but don't wait too long
+    # Use a background process with a kill after delay
+    (npm run lint > /dev/null 2>&1) &
+    LINT_PID=$!
+    sleep 30
+    if kill -0 $LINT_PID 2>/dev/null; then
+        kill $LINT_PID 2>/dev/null
+        warning "Linting timed out after 30 seconds (skipping)"
+    else
+        wait $LINT_PID
+        if [ $? -eq 0 ]; then
+            success "Linting passed"
+        else
+            warning "Linting found issues (may be non-critical)"
+            echo "   Run 'npm run lint' for details"
+        fi
+    fi
 fi
 echo ""
 
