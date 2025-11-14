@@ -80,7 +80,14 @@ export class SeasonalityEngine {
     region: string = this.config.defaultRegion
   ): Promise<SeasonalMultiplier> {
     const startTime = Date.now();
-    const month = new Date(date).getMonth() + 1;
+    
+    // Validate and parse date
+    const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      this.logError(`Invalid date format: ${date}`, new Error('Invalid date'));
+      return this.getDefaultSeasonalMultiplier(category, subcategory);
+    }
+    const month = dateObj.getMonth() + 1;
     
     try {
       // Check in-memory cache first
@@ -128,25 +135,35 @@ export class SeasonalityEngine {
         return this.getDefaultSeasonalMultiplier(category, subcategory);
       }
 
+      // Validate required fields from database
+      if (typeof bestRule.demand_multiplier !== 'number' || isNaN(bestRule.demand_multiplier)) {
+        this.logError('Invalid demand_multiplier in seasonal rule:', bestRule);
+        return this.getDefaultSeasonalMultiplier(category, subcategory);
+      }
+
+      // Clamp multiplier to expected range (0.1-3.0)
+      const multiplier = Math.max(0.1, Math.min(3.0, bestRule.demand_multiplier));
+      const confidence = Math.max(0, Math.min(1, bestRule.confidence || 0.5));
+
       // Calculate demand level from multiplier
-      const demandLevel = this.calculateDemandLevel(bestRule.demand_multiplier);
-      const riskLevel = this.calculateRiskLevel(bestRule.demand_multiplier);
+      const demandLevel = this.calculateDemandLevel(multiplier);
+      const riskLevel = this.calculateRiskLevel(multiplier);
       
-      // Generate reasoning
+      // Generate reasoning (handle null/undefined reasoning from database)
       const reasoning = this.generateSeasonalReasoning(
-        bestRule.demand_multiplier,
-        bestRule.reasoning,
+        multiplier,
+        bestRule.reasoning || 'Seasonal pattern detected',
         month,
         category,
         subcategory
       );
 
       const result: SeasonalMultiplier = {
-        multiplier: bestRule.demand_multiplier,
+        multiplier,
         demandLevel,
-        confidence: bestRule.confidence,
+        confidence,
         reasoning,
-        dataSource: bestRule.data_source as DataSource,
+        dataSource: (bestRule.data_source || 'expert_rules') as DataSource,
         expertSource: bestRule.expert_source
       };
 
@@ -160,10 +177,10 @@ export class SeasonalityEngine {
         subcategory,
         region,
         month,
-        bestRule.demand_multiplier,
+        multiplier,
         riskLevel,
-        bestRule.confidence,
-        bestRule.data_source
+        confidence,
+        bestRule.data_source || 'expert_rules'
       );
 
       const duration = Date.now() - startTime;
@@ -223,14 +240,19 @@ export class SeasonalityEngine {
         );
 
         if (monthRule) {
+          // Validate and clamp demand_multiplier
+          const demandMultiplier = typeof monthRule.demand_multiplier === 'number' && !isNaN(monthRule.demand_multiplier)
+            ? Math.max(0.1, Math.min(3.0, monthRule.demand_multiplier))
+            : 1.0;
+          
           monthlyData.push({
             month,
             monthName: monthNames[month - 1],
-            demandMultiplier: monthRule.demand_multiplier,
-            riskLevel: this.calculateRiskLevel(monthRule.demand_multiplier),
-            venueAvailability: monthRule.venue_availability,
-            conflictWeight: monthRule.conflict_weight,
-            reasoning: includeReasoning ? monthRule.reasoning : ''
+            demandMultiplier,
+            riskLevel: this.calculateRiskLevel(demandMultiplier),
+            venueAvailability: typeof monthRule.venue_availability === 'number' ? monthRule.venue_availability : 0.8,
+            conflictWeight: typeof monthRule.conflict_weight === 'number' ? monthRule.conflict_weight : 1.0,
+            reasoning: includeReasoning ? (monthRule.reasoning || 'No specific reasoning available') : ''
           });
         } else {
           // Default values for missing months
@@ -294,14 +316,8 @@ export class SeasonalityEngine {
     try {
       const seasonalMultiplier = await this.getSeasonalMultiplier(date, category, subcategory, region);
       
-      // Risk assessment based on demand multiplier
-      if (seasonalMultiplier.multiplier >= 1.5) {
-        return 'high';
-      } else if (seasonalMultiplier.multiplier >= 1.2) {
-        return 'medium';
-      } else {
-        return 'low';
-      }
+      // Use the full RiskLevel calculation method for consistency
+      return this.calculateRiskLevel(seasonalMultiplier.multiplier);
     } catch (error) {
       this.logError('Error calculating seasonal risk:', error);
       return 'medium'; // Default to medium risk
@@ -404,16 +420,25 @@ export class SeasonalityEngine {
       // Assess risk
       const riskAssessment = this.assessRisk(seasonalMultiplier, holidayImpact);
 
+      // Ensure holidayImpact is not null (use default if not provided)
+      const finalHolidayImpact: HolidayImpact = holidayImpact || {
+        multiplier: 1.0,
+        affectedHolidays: [],
+        totalImpact: 'none',
+        reasoning: ['No holiday impact detected'],
+        impactWindow: { daysBefore: 0, daysAfter: 0 }
+      };
+
       const result: SeasonalAnalysis = {
         date,
         category,
         subcategory,
         region,
         seasonalMultiplier,
-        holidayImpact: holidayImpact!,
+        holidayImpact: finalHolidayImpact,
         combinedImpact,
         riskAssessment,
-        confidence: Math.min(seasonalMultiplier.confidence, holidayImpact?.multiplier ? 0.8 : 1.0),
+        confidence: Math.min(seasonalMultiplier.confidence, finalHolidayImpact.multiplier !== 1.0 ? 0.8 : 1.0),
         analyzedAt: new Date().toISOString()
       };
 
@@ -501,8 +526,23 @@ export class SeasonalityEngine {
    * Analyze seasonal pattern from monthly data
    */
   private analyzeSeasonalPattern(monthlyData: any[]): string {
+    if (!monthlyData || monthlyData.length === 0) {
+      return 'irregular';
+    }
+    
     const multipliers = monthlyData.map(m => m.demandMultiplier);
-    const maxMonth = multipliers.indexOf(Math.max(...multipliers)) + 1;
+    if (multipliers.length === 0) {
+      return 'irregular';
+    }
+    
+    const maxValue = Math.max(...multipliers);
+    const maxMonth = multipliers.indexOf(maxValue) + 1;
+    
+    // Validate maxMonth is within valid range (1-12)
+    if (maxMonth < 1 || maxMonth > 12) {
+      const variance = this.calculateVariance(multipliers);
+      return variance < 0.1 ? 'year_round' : 'irregular';
+    }
     
     if (maxMonth >= 3 && maxMonth <= 5) return 'spring_peak';
     if (maxMonth >= 6 && maxMonth <= 8) return 'summer_peak';
@@ -537,6 +577,10 @@ export class SeasonalityEngine {
    * Calculate variance of an array
    */
   private calculateVariance(values: number[]): number {
+    if (!values || values.length === 0) {
+      return 0;
+    }
+    
     const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
     const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
     return Math.sqrt(variance);
@@ -580,9 +624,15 @@ export class SeasonalityEngine {
     const factors: string[] = [];
     const recommendations: string[] = [];
     
+    // Use the full RiskLevel calculation for consistency
+    const seasonalRiskLevel = this.calculateRiskLevel(seasonal.multiplier);
+    
     if (seasonal.multiplier >= 1.5) {
       factors.push('High seasonal demand');
       recommendations.push('Consider alternative dates with lower demand');
+    } else if (seasonal.multiplier <= 0.7) {
+      factors.push('Low seasonal demand');
+      recommendations.push('This may be a good time for events with lower competition');
     }
     
     if (holiday && holiday.totalImpact !== 'none') {
@@ -590,7 +640,16 @@ export class SeasonalityEngine {
       recommendations.push('Review holiday calendar for conflicts');
     }
     
-    const riskLevel = factors.length >= 2 ? 'high' : factors.length === 1 ? 'medium' : 'low';
+    // Determine overall risk level based on factors
+    // If both seasonal and holiday factors are present, use the higher risk
+    let riskLevel: RiskLevel = seasonalRiskLevel;
+    if (holiday && holiday.totalImpact !== 'none') {
+      // If holiday impact is significant, increase risk level
+      if (holiday.totalImpact === 'critical' || holiday.totalImpact === 'high') {
+        riskLevel = seasonalRiskLevel === 'very_high' ? 'very_high' : 
+                   seasonalRiskLevel === 'high' ? 'high' : 'medium';
+      }
+    }
     
     return { level: riskLevel, factors, recommendations };
   }
@@ -636,9 +695,27 @@ export class SeasonalityEngine {
     region: string,
     month: number
   ): string {
+    // Sanitize inputs to prevent special character issues
+    // Replace colons and other special chars that could break the key format
+    const sanitize = (str: string): string => {
+      return str.replace(/[:|]/g, '_').trim();
+    };
+    
     // Generate consistent cache key: category:subcategory:region:month
-    const subcat = subcategory || 'null';
-    return `${category}:${subcat}:${region}:${month}`;
+    const subcat = subcategory ? sanitize(subcategory) : 'null';
+    const sanitizedCategory = sanitize(category);
+    const sanitizedRegion = sanitize(region);
+    
+    const cacheKey = `${sanitizedCategory}:${subcat}:${sanitizedRegion}:${month}`;
+    
+    // Validate key length (VARCHAR(200) limit)
+    if (cacheKey.length > 200) {
+      this.logError(`Cache key too long (${cacheKey.length} chars): ${cacheKey}`, new Error('Cache key length exceeded'));
+      // Truncate and hash if needed - for now just truncate
+      return cacheKey.substring(0, 200);
+    }
+    
+    return cacheKey;
   }
 
   private async getDatabaseCachedResult(cacheKey: string): Promise<any | null> {
@@ -651,10 +728,16 @@ export class SeasonalityEngine {
         .single();
 
       if (error) {
-        // PGRST116 = no rows returned, which is fine
-        if (error.code !== 'PGRST116') {
+        // PGRST116 = no rows returned (PostgREST), which is fine
+        // Also check for other "not found" error codes
+        if (error.code !== 'PGRST116' && error.code !== '42P01') {
           this.logError('Error fetching database cache:', error);
         }
+        return null;
+      }
+
+      // Validate that data exists and has required fields
+      if (!data || typeof data.demand_score !== 'number') {
         return null;
       }
 
@@ -677,9 +760,18 @@ export class SeasonalityEngine {
     calculationMethod: string
   ): Promise<void> {
     try {
+      // Validate inputs
+      if (!category || !region || month < 1 || month > 12) {
+        this.logError('Invalid parameters for database cache:', { category, region, month });
+        return;
+      }
+
+      // Validate and clamp demandMultiplier to expected range (0.1-3.0)
+      const clampedMultiplier = Math.max(0.1, Math.min(3.0, demandMultiplier));
+      
       // Normalize demand multiplier to 0-1 range for demand_score
       // Multiplier range is 0.1-3.0, normalize to 0-1: (multiplier - 0.1) / (3.0 - 0.1)
-      const demandScore = Math.max(0, Math.min(1, (demandMultiplier - 0.1) / 2.9));
+      const demandScore = Math.max(0, Math.min(1, (clampedMultiplier - 0.1) / 2.9));
 
       // Calculate optimal_score: higher multiplier = more optimal (0-1 scale)
       // Optimal score represents how good this month is for events
@@ -724,10 +816,16 @@ export class SeasonalityEngine {
     category: string,
     subcategory?: string
   ): SeasonalMultiplier {
+    // Validate dbCache has required fields
+    if (!dbCache || typeof dbCache.demand_score !== 'number' || typeof dbCache.confidence !== 'number') {
+      this.logError('Invalid database cache data:', dbCache);
+      return this.getDefaultSeasonalMultiplier(category, subcategory);
+    }
+
     // Convert demand_score back to multiplier (reverse normalization)
     // demand_score = (multiplier - 0.1) / 2.9
     // multiplier = demand_score * 2.9 + 0.1
-    const multiplier = dbCache.demand_score * 2.9 + 0.1;
+    const multiplier = Math.max(0.1, Math.min(3.0, dbCache.demand_score * 2.9 + 0.1));
 
     // Convert risk_level to demandLevel
     const demandLevelMap: Record<string, DemandLevel> = {
@@ -738,12 +836,15 @@ export class SeasonalityEngine {
       'very_high': 'very_high'
     };
 
+    const riskLevel = dbCache.risk_level || 'medium';
+    const demandLevel = demandLevelMap[riskLevel] || this.calculateDemandLevel(multiplier);
+
     return {
       multiplier,
-      demandLevel: demandLevelMap[dbCache.risk_level] || 'medium',
-      confidence: dbCache.confidence,
-      reasoning: [`Cached seasonal insight for ${category}${subcategory ? ` (${subcategory})` : ''} in month ${dbCache.month}`],
-      dataSource: dbCache.calculation_method as DataSource
+      demandLevel,
+      confidence: Math.max(0, Math.min(1, dbCache.confidence || 0.5)),
+      reasoning: [`Cached seasonal insight for ${category}${subcategory ? ` (${subcategory})` : ''} in month ${dbCache.month || 'unknown'}`],
+      dataSource: (dbCache.calculation_method || 'expert_rules') as DataSource
     };
   }
 
@@ -784,13 +885,14 @@ export class SeasonalityEngine {
     memoryCacheSize: number;
   }> {
     try {
-      const { data: totalData, error: totalError } = await this.supabase
+      // Use count queries instead of select with head:true
+      const { count: totalCount, error: totalError } = await this.supabase
         .from('seasonal_insights_cache')
-        .select('id', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true });
 
-      const { data: expiredData, error: expiredError } = await this.supabase
+      const { count: expiredCount, error: expiredError } = await this.supabase
         .from('seasonal_insights_cache')
-        .select('id', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .lt('expires_at', new Date().toISOString());
 
       if (totalError || expiredError) {
@@ -803,8 +905,8 @@ export class SeasonalityEngine {
       }
 
       return {
-        totalEntries: totalData?.length || 0,
-        expiredEntries: expiredData?.length || 0,
+        totalEntries: totalCount || 0,
+        expiredEntries: expiredCount || 0,
         memoryCacheSize: this.cache.size
       };
     } catch (error) {
