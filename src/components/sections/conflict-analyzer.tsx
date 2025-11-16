@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ export function ConflictAnalyzer() {
   const [error, setError] = useState<string | null>(null);
   const [openaiAvailable, setOpenaiAvailable] = useState(false);
   const [currentAnalysisStep, setCurrentAnalysisStep] = useState<string>('');
+  const currentStepRef = useRef<string>('');
 
   const analysisSteps: ProgressStep[] = [
     {
@@ -69,8 +70,9 @@ export function ConflictAnalyzer() {
     checkOpenAIStatus();
   }, []);
 
-  const updateAnalysisProgress = (stepId: string, status: 'pending' | 'in-progress' | 'completed' | 'error') => {
+  const updateAnalysisProgress = (stepId: string) => {
     setCurrentAnalysisStep(stepId);
+    currentStepRef.current = stepId;
   };
 
   const handleAnalysisComplete = async (formData: any) => {
@@ -79,14 +81,63 @@ export function ConflictAnalyzer() {
     setAnalysisResult(null);
     setCurrentAnalysisStep('initializing');
 
-    try {
-      // Simulate progress updates
-      updateAnalysisProgress('initializing', 'in-progress');
-      await new Promise(resolve => setTimeout(resolve, 500));
+    // Track progress intervals
+    let progressInterval: NodeJS.Timeout | null = null;
+    const startTime = Date.now();
+    
+    // Estimated stage durations (as percentages of total time)
+    // Based on backend analysis: fetching is longest (40-50%), then analyzing (30-40%), then recommendations (10-20%)
+    const stageTimings = {
+      'initializing': 0,           // 0% - immediate
+      'fetching-events': 0.05,     // 5% - starts right after init
+      'analyzing-conflicts': 0.45, // 45% - starts when fetching is mostly done
+      'generating-recommendations': 0.75, // 75% - starts when analysis is mostly done
+      'complete': 1.0              // 100% - when response arrives
+    };
 
-      updateAnalysisProgress('fetching-events', 'in-progress');
+    // Expected total time - start with a conservative estimate
+    // Will dynamically adjust if the API call takes longer
+    let expectedTotalTime = 25000; // Start with 25 seconds estimate
+    let apiCallStartTime: number | null = null;
+
+    try {
+      // Step 1: Initializing
+      updateAnalysisProgress('initializing');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      updateAnalysisProgress('fetching-events');
+
+      // Step 2: Start fetching events and make API call
+      apiCallStartTime = Date.now();
       
-      // Call the API endpoint instead of the service directly
+      // Start progress tracking based on elapsed time
+      progressInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const currentStep = currentStepRef.current;
+
+        // Dynamically adjust expected time if API call is taking longer than expected
+        if (apiCallStartTime && elapsed > expectedTotalTime * 0.8) {
+          // If we're past 80% of expected time and still waiting, extend the estimate
+          const apiElapsed = Date.now() - apiCallStartTime;
+          if (apiElapsed > expectedTotalTime * 0.7) {
+            expectedTotalTime = Math.max(expectedTotalTime, apiElapsed * 1.5);
+          }
+        }
+
+        const progress = Math.min(elapsed / expectedTotalTime, 0.95); // Cap at 95% until complete
+
+        // Update stages based on progress
+        if (progress >= stageTimings['generating-recommendations'] && 
+            currentStep !== 'generating-recommendations' && 
+            currentStep !== 'complete' &&
+            currentStep !== '') {
+          updateAnalysisProgress('generating-recommendations');
+        } else if (progress >= stageTimings['analyzing-conflicts'] && 
+                   (currentStep === 'fetching-events' || currentStep === '')) {
+          updateAnalysisProgress('analyzing-conflicts');
+        }
+      }, 800); // Check every 800ms for smoother updates
+      
+      // Call the API endpoint
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
@@ -107,23 +158,54 @@ export function ConflictAnalyzer() {
         })
       });
 
-      updateAnalysisProgress('analyzing-conflicts', 'in-progress');
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Clear the progress interval
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+      }
 
-      updateAnalysisProgress('generating-recommendations', 'in-progress');
+      // Ensure all intermediate steps are marked as completed
+      // Transition through steps if API call completed before progress tracker reached them
+      const currentStep = currentStepRef.current;
+      if (currentStep === 'fetching-events') {
+        // API completed while still fetching - mark fetching complete and move through remaining steps
+        updateAnalysisProgress('analyzing-conflicts');
+        await new Promise(resolve => setTimeout(resolve, 200));
+        updateAnalysisProgress('generating-recommendations');
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } else if (currentStep === 'analyzing-conflicts') {
+        // API completed during analysis - move to recommendations
+        updateAnalysisProgress('generating-recommendations');
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      // If already on generating-recommendations, we can proceed directly to complete
+
+      // Parse response
       const data = await response.json();
       
       if (response.ok && data.data) {
-        updateAnalysisProgress('complete', 'completed');
+        // Mark all steps as completed
+        updateAnalysisProgress('complete');
+        // Small delay to show completion state
+        await new Promise(resolve => setTimeout(resolve, 300));
         setAnalysisResult(data.data);
       } else {
         setError(data.error || 'Failed to analyze conflicts');
         setCurrentAnalysisStep('');
       }
     } catch (err) {
+      // Clear interval on error
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+      }
       setError(err instanceof Error ? err.message : 'Failed to analyze conflicts');
       setCurrentAnalysisStep('');
     } finally {
+      // Ensure interval is cleared
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
       setLoading(false);
     }
   };
@@ -232,12 +314,40 @@ export function ConflictAnalyzer() {
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <ProgressIndicator 
-                      steps={analysisSteps.map(step => ({
-                        ...step,
-                        status: step.id === currentAnalysisStep ? 'in-progress' : 
-                               analysisSteps.findIndex(s => s.id === step.id) < 
-                               analysisSteps.findIndex(s => s.id === currentAnalysisStep) ? 'completed' : 'pending'
-                      }))}
+                      steps={analysisSteps.map(step => {
+                        const currentStepIndex = analysisSteps.findIndex(s => s.id === currentAnalysisStep);
+                        const stepIndex = analysisSteps.findIndex(s => s.id === step.id);
+                        
+                        // If analysis is complete, mark all steps as completed
+                        if (currentAnalysisStep === 'complete') {
+                          return {
+                            ...step,
+                            status: 'completed' as const
+                          };
+                        }
+                        
+                        // If this is the current step, mark as in-progress
+                        if (step.id === currentAnalysisStep) {
+                          return {
+                            ...step,
+                            status: 'in-progress' as const
+                          };
+                        }
+                        
+                        // If this step comes before the current step, mark as completed
+                        if (currentStepIndex > -1 && stepIndex < currentStepIndex) {
+                          return {
+                            ...step,
+                            status: 'completed' as const
+                          };
+                        }
+                        
+                        // Otherwise, mark as pending
+                        return {
+                          ...step,
+                          status: 'pending' as const
+                        };
+                      })}
                       currentStep={currentAnalysisStep}
                       variant="vertical"
                     />
