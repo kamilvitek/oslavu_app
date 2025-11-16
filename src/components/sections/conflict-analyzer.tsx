@@ -423,6 +423,40 @@ export function ConflictAnalyzer() {
                                 </div>
                               )}
 
+                              {/* Competing Events - Show events that could affect attendance (including before/after) */}
+                              {recommendation.competingEvents.length > 0 && (
+                                <div className="mt-2 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                                  <div className="flex items-center space-x-2 mb-2">
+                                    <Calendar className="h-3 w-3 text-blue-600" />
+                                    <span className="text-xs font-medium text-blue-800">
+                                      {recommendation.competingEvents.length} Event{recommendation.competingEvents.length > 1 ? 's' : ''} That Could Affect Attendance
+                                    </span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {recommendation.competingEvents.slice(0, 5).map((event, eventIndex) => {
+                                      const temporalProximity = (event as any).temporalProximity || 'on_date';
+                                      const proximityLabel = temporalProximity === 'before' ? ' (before)' : 
+                                                             temporalProximity === 'after' ? ' (after)' : '';
+                                      return (
+                                        <div key={eventIndex} className="text-xs text-blue-700 flex items-center justify-between p-1.5 bg-white rounded border">
+                                          <div className="flex-1">
+                                            <div className="font-medium">{event.title}{proximityLabel}</div>
+                                            <div className="text-xs text-gray-600">
+                                              {event.venue || 'TBA'} • {new Date(event.date).toLocaleDateString()}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    {recommendation.competingEvents.length > 5 && (
+                                      <div className="text-xs text-blue-600 italic">
+                                        + {recommendation.competingEvents.length - 5} more event{recommendation.competingEvents.length - 5 > 1 ? 's' : ''}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
                               {/* Advanced Analysis Features */}
                               {recommendation.audienceOverlap && (
                                 <div className="mt-2 p-2 bg-blue-50 rounded border-l-4 border-blue-400">
@@ -437,6 +471,41 @@ export function ConflictAnalyzer() {
                                       {recommendation.audienceOverlap.overlapReasoning[0]}
                                     </div>
                                   )}
+                                </div>
+                              )}
+
+                              {/* Perplexity Research Insights - Same as in "What This Means For You" */}
+                              {recommendation.perplexityResearch && recommendation.perplexityResearch.recommendations && (
+                                <div className="mt-2 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                                  <div className="flex items-center space-x-2 mb-2">
+                                    <span className="text-xs font-semibold text-blue-900">
+                                      💡 What This Means For You:
+                                    </span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {recommendation.perplexityResearch.recommendations.reasoning.slice(0, 2).map((reason, idx) => {
+                                      const hasConflict = reason.match(/(compete|conflict|reduce|avoid|move|clash|competition|festival|event|artist|tour|hurt|impact|attendance)/i);
+                                      const isPositive = reason.match(/(good|great|excellent|optimal|perfect|ideal|recommended|best)/i) && !hasConflict;
+                                      
+                                      return (
+                                        <div 
+                                          key={idx} 
+                                          className={`text-xs ${
+                                            hasConflict
+                                              ? 'text-orange-700 bg-orange-50 p-1.5 rounded border-l-2 border-orange-400' 
+                                              : isPositive
+                                              ? 'text-green-700 bg-green-50 p-1.5 rounded border-l-2 border-green-400'
+                                              : 'text-blue-700 bg-blue-50 p-1.5 rounded border-l-2 border-blue-400'
+                                          }`}
+                                        >
+                                          {hasConflict && <span className="font-semibold">⚠️ </span>}
+                                          {isPositive && <span className="font-semibold">✓ </span>}
+                                          {!hasConflict && !isPositive && <span className="font-semibold">ℹ️ </span>}
+                                          {reason}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
                               )}
                               

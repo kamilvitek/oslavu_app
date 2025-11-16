@@ -451,17 +451,16 @@ export class ConflictAnalysisService {
         !(rec.startDate === params.startDate && rec.endDate === params.endDate)
       );
 
-      // Build recommended dates: user's preferred dates (if low risk AND no conflicts) + other low risk dates (no conflicts)
-      // FIXED: Exclude dates with conflicts from recommended dates
+      // Build recommended dates: user's preferred dates (if low risk) + other low risk dates
+      // UPDATED: Allow dates with low-impact events (from before/after temporal window) to be recommended
+      // Only exclude dates with significant conflicts (score > 3) or high/medium risk
       const userPreferredLowRisk = userPreferredDates.filter(rec => 
         rec.riskLevel === 'Low' && 
-        rec.competingEvents.length === 0 && 
-        rec.conflictScore === 0
+        rec.conflictScore <= 3 // Allow low-impact conflicts from events before/after
       );
       const otherLowRiskDates = otherDates.filter(rec => 
         rec.riskLevel === 'Low' && 
-        rec.competingEvents.length === 0 && 
-        rec.conflictScore === 0
+        rec.conflictScore <= 3 // Allow low-impact conflicts from events before/after
       );
       
       const recommendedDates = [
@@ -1251,8 +1250,10 @@ export class ConflictAnalysisService {
     const results = await Promise.all(datePromises);
     recommendations.push(...results);
 
-    // OPTIMIZATION: Second pass - Call Perplexity for top high-risk future dates (max 5)
-    // This reduces API calls while still covering important dates
+    // OPTIMIZATION: Second pass - Call Perplexity for:
+    // 1. Top high-risk future dates (max 5)
+    // 2. Top recommended dates (low-risk dates that will be shown to users, max 3)
+    // This ensures recommended dates have comprehensive analysis including events before/after
     if (params.enablePerplexityResearch) {
       const today = new Date().toISOString().split('T')[0];
       
@@ -1279,10 +1280,36 @@ export class ConflictAnalysisService {
         })
         .slice(0, 5); // Top 5 high-risk dates
       
-      console.log(`🔍 Perplexity: Calling for ${highRiskFutureDates.length} high-risk future dates (top priority)`);
+      // Identify recommended dates (low-risk dates) that need Perplexity research
+      // These are dates that will be shown to users, so they should have comprehensive analysis
+      const recommendedDatesForPerplexity = recommendations
+        .filter(rec => {
+          const isPreferred = rec.startDate === params.startDate && rec.endDate === params.endDate;
+          const isFuture = rec.startDate >= today;
+          const isLowRisk = rec.riskLevel === 'Low';
+          const alreadyHasPerplexity = !!rec.perplexityResearch;
+          
+          // Skip if already has Perplexity or is preferred (already called)
+          if (alreadyHasPerplexity || isPreferred) return false;
+          
+          // Include future low-risk dates (these will be shown as recommendations)
+          return isFuture && isLowRisk;
+        })
+        .sort((a, b) => {
+          // Sort by conflict score (ascending - lower is better for recommendations)
+          if (a.conflictScore !== b.conflictScore) {
+            return a.conflictScore - b.conflictScore;
+          }
+          return a.competingEvents.length - b.competingEvents.length;
+        })
+        .slice(0, 3); // Top 3 recommended dates
       
-      // Call Perplexity for top high-risk dates in parallel
-      const perplexityPromises = highRiskFutureDates.map(async (rec) => {
+      const allDatesForPerplexity = [...highRiskFutureDates, ...recommendedDatesForPerplexity];
+      
+      console.log(`🔍 Perplexity: Calling for ${highRiskFutureDates.length} high-risk future dates and ${recommendedDatesForPerplexity.length} recommended dates (total: ${allDatesForPerplexity.length})`);
+      
+      // Call Perplexity for all prioritized dates in parallel
+      const perplexityPromises = allDatesForPerplexity.map(async (rec) => {
         try {
           const perplexityResearch = await this.enhanceWithPerplexityResearch(
             rec.startDate,
@@ -1307,18 +1334,37 @@ export class ConflictAnalysisService {
             // Merge Perplexity events with competing events
             rec.competingEvents = [...rec.competingEvents, ...relevantPerplexityEvents];
             
-            // Update conflict score if high risk
-            if (perplexityResearch.recommendations.riskLevel === 'high') {
-              rec.conflictScore = Math.min(20, rec.conflictScore + 2);
-              if (rec.conflictScore > 12) {
-                rec.riskLevel = 'High';
-              }
-            }
+            // Recalculate conflict score with new Perplexity events
+            // This ensures events before/after are properly accounted for
+            const severityLevel = this.determineSeverityLevel(rec.competingEvents.length);
+            const config = this.severityConfigs[severityLevel];
+            
+            // Find the date range for this recommendation to get holiday restrictions
+            const dateRange = recommendations.find(r => 
+              r.startDate === rec.startDate && r.endDate === rec.endDate
+            );
+            
+            const updatedConflictScore = await this.calculateConflictScoreOptimized(
+              rec.competingEvents,
+              params.expectedAttendees,
+              params.category,
+              params,
+              config,
+              dateRange?.holidayRestrictions
+            );
+            
+            // Update conflict score and risk level
+            rec.conflictScore = updatedConflictScore;
+            rec.riskLevel = this.determineRiskLevel(updatedConflictScore);
+            rec.reasons = this.generateReasons(rec.competingEvents, updatedConflictScore);
             
             // Add Perplexity research to recommendation
-            rec.perplexityResearch = perplexityResearch;
+            rec.perplexityResearch = perplexityResearch ?? undefined;
             
-            console.log(`✅ Perplexity: Enhanced ${rec.startDate} with ${relevantPerplexityEvents.length} events`);
+            console.log(`✅ Perplexity: Enhanced ${rec.startDate} with ${relevantPerplexityEvents.length} events (updated score: ${updatedConflictScore})`);
+          } else {
+            // Even if no conflicting events, add Perplexity research for insights
+            rec.perplexityResearch = perplexityResearch ?? undefined;
           }
         } catch (error) {
           console.warn(`Perplexity research failed for ${rec.startDate}:`, error);
@@ -1564,6 +1610,7 @@ export class ConflictAnalysisService {
 
   /**
    * Find competing events using optimized data structures
+   * Now considers events within a temporal window (5 days before/after) that could affect attendance
    */
   private async findCompetingEventsOptimized(
     startDate: string,
@@ -1579,15 +1626,25 @@ export class ConflictAnalysisService {
     const start = new Date(startDate);
     const end = new Date(endDate);
     
-    console.log(`🔍 Finding competing events between ${startDate} and ${endDate} using optimized search`);
+    // Extended temporal window: 5 days before and after to catch events that could affect attendance
+    // Events right before can reduce budget/availability, events right after can reduce attendance
+    const TEMPORAL_WINDOW_DAYS = 5;
+    const extendedStart = new Date(start);
+    extendedStart.setDate(extendedStart.getDate() - TEMPORAL_WINDOW_DAYS);
+    const extendedEnd = new Date(end);
+    extendedEnd.setDate(extendedEnd.getDate() + TEMPORAL_WINDOW_DAYS);
+    
+    console.log(`🔍 Finding competing events between ${startDate} and ${endDate} using optimized search (with ${TEMPORAL_WINDOW_DAYS}-day temporal window)`);
     
     const competingEventIds = new Set<string>();
     
-    // Get all dates in the range
-    const datesInRange = this.getDatesInRange(startDate, endDate);
+    // Get all dates in the extended range (including temporal window)
+    const extendedStartStr = extendedStart.toISOString().split('T')[0];
+    const extendedEndStr = extendedEnd.toISOString().split('T')[0];
+    const datesInExtendedRange = this.getDatesInRange(extendedStartStr, extendedEndStr);
     
     // Find events by date using the index
-    for (const date of datesInRange) {
+    for (const date of datesInExtendedRange) {
       const eventsOnDate = this.eventIndex.byDate.get(date);
       if (eventsOnDate) {
         for (const eventId of eventsOnDate) {
@@ -1602,10 +1659,40 @@ export class ConflictAnalysisService {
       const event = this.eventIndex.events.get(eventId);
       if (!event) continue;
       
-      // CRITICAL FIX: Check if the event actually occurs within the specific date range
+      // Check if the event occurs within the extended temporal window
       const eventDate = new Date(event.date);
-      if (eventDate < start || eventDate > end) {
-        console.log(`🚫 Event "${event.title}" on ${event.date} is outside date range ${startDate} to ${endDate}, skipping`);
+      const eventEndDate = event.endDate ? new Date(event.endDate) : eventDate;
+      
+      // Include events that:
+      // 1. Overlap with the date range (on the date), OR
+      // 2. Are within the temporal window (before/after) that could affect attendance
+      const isOnDate = (eventDate >= start && eventDate <= end) || 
+                       (eventEndDate >= start && eventEndDate <= end) ||
+                       (eventDate <= start && eventEndDate >= end);
+      const isInTemporalWindow = (eventDate >= extendedStart && eventDate <= extendedEnd) ||
+                                 (eventEndDate >= extendedStart && eventEndDate <= extendedEnd);
+      
+      if (!isInTemporalWindow) {
+        console.log(`🚫 Event "${event.title}" on ${event.date} is outside temporal window, skipping`);
+        continue;
+      }
+      
+      // Calculate temporal proximity for scoring
+      let temporalProximity: 'on_date' | 'before' | 'after' | 'distant' = 'on_date';
+      if (isOnDate) {
+        temporalProximity = 'on_date';
+      } else if (eventEndDate < start) {
+        // Event is before the date range
+        const daysBefore = Math.floor((start.getTime() - eventEndDate.getTime()) / (1000 * 60 * 60 * 24));
+        temporalProximity = daysBefore <= TEMPORAL_WINDOW_DAYS ? 'before' : 'distant';
+      } else if (eventDate > end) {
+        // Event is after the date range
+        const daysAfter = Math.floor((eventDate.getTime() - end.getTime()) / (1000 * 60 * 60 * 24));
+        temporalProximity = daysAfter <= TEMPORAL_WINDOW_DAYS ? 'after' : 'distant';
+      }
+      
+      // Skip distant events (outside temporal window)
+      if (temporalProximity === 'distant') {
         continue;
       }
       
@@ -1626,7 +1713,9 @@ export class ConflictAnalysisService {
       const isCompeting = sameCategory || (isSignificant && this.isRelatedCategory(event.category, params.category));      
       if (isCompeting) {
         filteredEventIds.add(eventId);
-        console.log(`✅ Competing event "${event.title}" on ${event.date}: category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, hasAttendance=${hasAttendance}, isCompeting=${isCompeting}`);
+        // Store temporal proximity in event metadata for later use in scoring
+        (event as any).temporalProximity = temporalProximity;
+        console.log(`✅ Competing event "${event.title}" on ${event.date} (${temporalProximity}): category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, hasAttendance=${hasAttendance}, isCompeting=${isCompeting}`);
       } else {
         console.log(`❌ Filtered out "${event.title}" on ${event.date}: category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, hasAttendance=${hasAttendance}`);
       }
@@ -1642,7 +1731,7 @@ export class ConflictAnalysisService {
     }
     
     const searchTime = Date.now() - startTime;
-    console.log(`✅ Found ${competingEvents.length} competing events in ${searchTime}ms using optimized search`);
+    console.log(`✅ Found ${competingEvents.length} competing events in ${searchTime}ms using optimized search (with temporal window)`);
     
     return competingEvents;
   }
@@ -1803,6 +1892,25 @@ export class ConflictAnalysisService {
       } else {
         // Calculate score using optimized algorithm
         eventScore = this.calculateEventConflictScore(event, category, config);
+        
+        // Apply temporal proximity multiplier
+        // Events on the date have full impact, events before/after have reduced impact
+        const temporalProximity = (event as any).temporalProximity || 'on_date';
+        let temporalMultiplier = 1.0;
+        if (temporalProximity === 'before') {
+          // Events before can reduce budget/availability, but less impact than on-date
+          temporalMultiplier = 0.6; // 60% impact
+        } else if (temporalProximity === 'after') {
+          // Events after can reduce attendance, but less impact than on-date
+          temporalMultiplier = 0.7; // 70% impact
+        } else {
+          // Events on the date have full impact
+          temporalMultiplier = 1.0; // 100% impact
+        }
+        eventScore *= temporalMultiplier;
+        if (temporalProximity !== 'on_date') {
+          console.log(`  "${event.title}": temporal proximity ${temporalProximity} -> multiplier ${temporalMultiplier.toFixed(2)}x -> adjusted score = ${eventScore.toFixed(2)}`);
+        }
         
         // Apply seasonal and holiday multipliers before audience overlap
         try {
