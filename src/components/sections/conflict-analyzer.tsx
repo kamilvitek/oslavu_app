@@ -331,187 +331,215 @@ export function ConflictAnalyzer() {
                     <CardContent>
                       <div className="space-y-3">
                         {analysisResult.recommendedDates.length > 0 ? (
-                          analysisResult.recommendedDates.map((recommendation, index) => (
-                            <div 
-                              key={index}
-                              className={`p-3 border rounded-lg ${getRiskBgColor(recommendation.riskLevel)}`}
-                            >
-                              <div className={`font-semibold ${getRiskTextColor(recommendation.riskLevel)}`}>
-                                {formatDateRange(recommendation.startDate, recommendation.endDate)}
-                              </div>
-                              <div className={`text-sm ${getRiskColor(recommendation.riskLevel)}`}>
-                                Conflict Score: {recommendation.conflictScore.toFixed(1)}/20 ({recommendation.riskLevel} Risk)
-                              </div>
-                              <div className={`text-xs ${getRiskDetailColor(recommendation.riskLevel)} mt-1`}>
-                                {recommendation.reasons.join(' • ')}
-                              </div>
+                          <>
+                            {(() => {
+                              // Consolidate consecutive recommended dates into ranges
+                              const sortedDates = [...analysisResult.recommendedDates].sort((a, b) => 
+                                new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+                              );
                               
-                              {/* Holiday Restrictions - Only show when there are actual restrictions */}
-                              {recommendation.holidayRestrictions && 
-                               (recommendation.holidayRestrictions.holidays?.length > 0 || 
-                                recommendation.holidayRestrictions.cultural_events?.length > 0 ||
-                                recommendation.holidayRestrictions.business_impact !== 'none' ||
-                                recommendation.holidayRestrictions.venue_closure_expected) && (
-                                <div className="mt-2 p-3 bg-orange-50 rounded border-l-4 border-orange-400">
-                                  <div className="flex items-center space-x-2 mb-2">
-                                    <Calendar className="h-4 w-4 text-orange-600" />
-                                    <span className="text-sm font-medium text-orange-800">
-                                      Holiday & Cultural Restrictions
-                                    </span>
+                              const consolidatedRanges: Array<{
+                                startDate: string;
+                                endDate: string;
+                                recommendations: typeof analysisResult.recommendedDates;
+                                avgConflictScore: number;
+                                maxConflictScore: number;
+                                minConflictScore: number;
+                              }> = [];
+                              
+                              let currentRange: typeof consolidatedRanges[0] | null = null;
+                              
+                              for (const rec of sortedDates) {
+                                const recStart = new Date(rec.startDate);
+                                const recEnd = new Date(rec.endDate);
+                                
+                                if (!currentRange) {
+                                  // Start a new range
+                                  currentRange = {
+                                    startDate: rec.startDate,
+                                    endDate: rec.endDate,
+                                    recommendations: [rec],
+                                    avgConflictScore: rec.conflictScore,
+                                    maxConflictScore: rec.conflictScore,
+                                    minConflictScore: rec.conflictScore
+                                  };
+                                } else {
+                                  const currentRangeEnd = new Date(currentRange.endDate);
+                                  const daysBetween = Math.floor((recStart.getTime() - currentRangeEnd.getTime()) / (1000 * 60 * 60 * 24));
+                                  
+                                  // Check if this date is consecutive (within 3 days) and has no conflicts between
+                                  // Also check all recommendations in the current range for conflicts between
+                                  const allEventsInRange = currentRange.recommendations.flatMap(r => r.competingEvents);
+                                  const hasConflictsBetween = allEventsInRange.some(event => {
+                                    const eventDate = new Date(event.date);
+                                    const eventEndDate = event.endDate ? new Date(event.endDate) : eventDate;
+                                    // Check if event overlaps with the gap between ranges
+                                    return (eventDate > currentRangeEnd && eventDate < recStart) ||
+                                           (eventEndDate > currentRangeEnd && eventEndDate < recStart) ||
+                                           (eventDate <= currentRangeEnd && eventEndDate >= recStart);
+                                  });
+                                  
+                                  // Consolidate if dates are close (within 3 days), no conflicts between, and both are low risk
+                                  if (daysBetween <= 3 && !hasConflictsBetween && rec.conflictScore <= 3 && 
+                                      currentRange.recommendations.every(r => r.conflictScore <= 3)) {
+                                    // Extend the current range
+                                    currentRange.endDate = rec.endDate;
+                                    currentRange.recommendations.push(rec);
+                                    currentRange.avgConflictScore = (currentRange.recommendations.reduce((sum, r) => sum + r.conflictScore, 0) / currentRange.recommendations.length);
+                                    currentRange.maxConflictScore = Math.max(currentRange.maxConflictScore, rec.conflictScore);
+                                    currentRange.minConflictScore = Math.min(currentRange.minConflictScore, rec.conflictScore);
+                                  } else {
+                                    // Save current range and start a new one
+                                    consolidatedRanges.push(currentRange);
+                                    currentRange = {
+                                      startDate: rec.startDate,
+                                      endDate: rec.endDate,
+                                      recommendations: [rec],
+                                      avgConflictScore: rec.conflictScore,
+                                      maxConflictScore: rec.conflictScore,
+                                      minConflictScore: rec.conflictScore
+                                    };
+                                  }
+                                }
+                              }
+                              
+                              // Don't forget the last range
+                              if (currentRange) {
+                                consolidatedRanges.push(currentRange);
+                              }
+                              
+                              return consolidatedRanges.map((range, rangeIndex) => (
+                                <div 
+                                  key={rangeIndex}
+                                  className={`p-3 border rounded-lg ${getRiskBgColor('Low')}`}
+                                >
+                                  <div className={`font-semibold ${getRiskTextColor('Low')}`}>
+                                    {range.recommendations.length > 1 
+                                      ? formatDateRange(range.startDate, range.endDate) + ` (${range.recommendations.length} recommended dates)`
+                                      : formatDateRange(range.startDate, range.endDate)
+                                    }
+                                  </div>
+                                  <div className={`text-sm ${getRiskColor('Low')}`}>
+                                    {range.recommendations.length > 1 ? (
+                                      <>
+                                        Conflict Score: {range.avgConflictScore.toFixed(1)}/20 (Avg) • 
+                                        Range: {range.minConflictScore.toFixed(1)} - {range.maxConflictScore.toFixed(1)} • 
+                                        Low Risk
+                                      </>
+                                    ) : (
+                                      <>
+                                        Conflict Score: {range.recommendations[0].conflictScore.toFixed(1)}/20 (Low Risk)
+                                      </>
+                                    )}
                                   </div>
                                   
-                                  {/* Public Holidays */}
-                                  {recommendation.holidayRestrictions.holidays?.length > 0 && (
-                                    <div className="mb-2">
-                                      <div className="text-xs font-semibold text-orange-800 mb-1">
-                                        🏛️ Public Holidays:
+                                  {/* Show competing events if any */}
+                                  {range.recommendations.some(r => r.competingEvents.length > 0) && (
+                                    <div className="mt-2 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                                      <div className="flex items-center space-x-2 mb-2">
+                                        <Calendar className="h-3 w-3 text-blue-600" />
+                                        <span className="text-xs font-medium text-blue-800">
+                                          Events That Could Affect Attendance
+                                        </span>
                                       </div>
-                                      {recommendation.holidayRestrictions.holidays.map((h: any, index: number) => (
-                                        <div key={index} className="text-xs text-orange-700 ml-2 mb-1">
-                                          • <strong>{h.holiday_name}</strong>
-                                          {h.holiday_name_native && h.holiday_name_native !== h.holiday_name && (
-                                            <span className="text-orange-600"> ({h.holiday_name_native})</span>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                  
-                                  {/* Cultural Events */}
-                                  {recommendation.holidayRestrictions.cultural_events?.length > 0 && (
-                                    <div className="mb-2">
-                                      <div className="text-xs font-semibold text-orange-800 mb-1">
-                                        🎭 Cultural Events:
-                                      </div>
-                                      {recommendation.holidayRestrictions.cultural_events.map((e: any, index: number) => (
-                                        <div key={index} className="text-xs text-orange-700 ml-2 mb-1">
-                                          • <strong>{e.event_name}</strong>
-                                          {e.event_name_native && e.event_name_native !== e.event_name && (
-                                            <span className="text-orange-600"> ({e.event_name_native})</span>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                  
-                                  {/* Impact Warnings */}
-                                  <div className="space-y-1">
-                                    {recommendation.holidayRestrictions.business_impact === 'full' && (
-                                      <div className="text-xs text-red-700 font-medium bg-red-50 p-2 rounded">
-                                        🚫 <strong>Full Business Closure:</strong> All businesses and venues are typically closed on this date
-                                      </div>
-                                    )}
-                                    {recommendation.holidayRestrictions.business_impact === 'partial' && (
-                                      <div className="text-xs text-yellow-700 font-medium bg-yellow-50 p-2 rounded">
-                                        ⚠️ <strong>Partial Business Impact:</strong> Some businesses may have reduced hours or be closed
-                                      </div>
-                                    )}
-                                    {recommendation.holidayRestrictions.venue_closure_expected && (
-                                      <div className="text-xs text-red-700 font-medium bg-red-50 p-2 rounded">
-                                        🏢 <strong>Venue Availability:</strong> Most venues are likely to be closed or have limited availability
-                                      </div>
-                                    )}
-                                  </div>
-                                  
-                                  {/* General Impact Message */}
-                                  {(recommendation.holidayRestrictions.holidays?.length > 0 || 
-                                    recommendation.holidayRestrictions.cultural_events?.length > 0) && (
-                                    <div className="text-xs text-orange-700 mt-2 p-2 bg-orange-100 rounded">
-                                      💡 <strong>Impact on Your Event:</strong> These holidays and cultural events may significantly affect attendance and venue availability. Consider alternative dates for better turnout.
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Competing Events - Show events that could affect attendance (including before/after) */}
-                              {recommendation.competingEvents.length > 0 && (
-                                <div className="mt-2 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
-                                  <div className="flex items-center space-x-2 mb-2">
-                                    <Calendar className="h-3 w-3 text-blue-600" />
-                                    <span className="text-xs font-medium text-blue-800">
-                                      {recommendation.competingEvents.length} Event{recommendation.competingEvents.length > 1 ? 's' : ''} That Could Affect Attendance
-                                    </span>
-                                  </div>
-                                  <div className="space-y-1">
-                                    {recommendation.competingEvents.slice(0, 5).map((event, eventIndex) => {
-                                      const temporalProximity = (event as any).temporalProximity || 'on_date';
-                                      const proximityLabel = temporalProximity === 'before' ? ' (before)' : 
-                                                             temporalProximity === 'after' ? ' (after)' : '';
-                                      return (
-                                        <div key={eventIndex} className="text-xs text-blue-700 flex items-center justify-between p-1.5 bg-white rounded border">
-                                          <div className="flex-1">
-                                            <div className="font-medium">{event.title}{proximityLabel}</div>
-                                            <div className="text-xs text-gray-600">
-                                              {event.venue || 'TBA'} • {new Date(event.date).toLocaleDateString()}
+                                      <div className="space-y-1">
+                                        {Array.from(new Set(
+                                          range.recommendations.flatMap(r => r.competingEvents)
+                                        )).slice(0, 5).map((event, eventIndex) => {
+                                          const temporalProximity = (event as any).temporalProximity || 'on_date';
+                                          const proximityLabel = temporalProximity === 'before' ? ' (before)' : 
+                                                                 temporalProximity === 'after' ? ' (after)' : '';
+                                          return (
+                                            <div key={eventIndex} className="text-xs text-blue-700 flex items-center justify-between p-1.5 bg-white rounded border">
+                                              <div className="flex-1">
+                                                <div className="font-medium">{event.title}{proximityLabel}</div>
+                                                <div className="text-xs text-gray-600">
+                                                  {event.venue || 'TBA'} • {new Date(event.date).toLocaleDateString()}
+                                                </div>
+                                              </div>
                                             </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                    {recommendation.competingEvents.length > 5 && (
-                                      <div className="text-xs text-blue-600 italic">
-                                        + {recommendation.competingEvents.length - 5} more event{recommendation.competingEvents.length - 5 > 1 ? 's' : ''}
+                                          );
+                                        })}
                                       </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Advanced Analysis Features */}
-                              {recommendation.audienceOverlap && (
-                                <div className="mt-2 p-2 bg-blue-50 rounded border-l-4 border-blue-400">
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <Users className="h-3 w-3 text-blue-600" />
-                                    <span className="text-xs font-medium text-blue-800">
-                                      Audience Overlap: {(recommendation.audienceOverlap.averageOverlap * 100).toFixed(1)}%
-                                    </span>
-                                  </div>
-                                  {recommendation.audienceOverlap.overlapReasoning.length > 0 && (
-                                    <div className="text-xs text-blue-700">
-                                      {recommendation.audienceOverlap.overlapReasoning[0]}
                                     </div>
                                   )}
                                 </div>
-                              )}
-
-                              {/* Perplexity Research Insights - Same as in "What This Means For You" */}
-                              {recommendation.perplexityResearch && recommendation.perplexityResearch.recommendations && (
-                                <div className="mt-2 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                                  <div className="flex items-center space-x-2 mb-2">
-                                    <span className="text-xs font-semibold text-blue-900">
-                                      💡 What This Means For You:
-                                    </span>
-                                  </div>
-                                  <div className="space-y-1">
-                                    {recommendation.perplexityResearch.recommendations.reasoning.slice(0, 2).map((reason, idx) => {
-                                      const hasConflict = reason.match(/(compete|conflict|reduce|avoid|move|clash|competition|festival|event|artist|tour|hurt|impact|attendance)/i);
-                                      const isPositive = reason.match(/(good|great|excellent|optimal|perfect|ideal|recommended|best)/i) && !hasConflict;
-                                      
-                                      return (
-                                        <div 
-                                          key={idx} 
-                                          className={`text-xs ${
-                                            hasConflict
-                                              ? 'text-orange-700 bg-orange-50 p-1.5 rounded border-l-2 border-orange-400' 
-                                              : isPositive
-                                              ? 'text-green-700 bg-green-50 p-1.5 rounded border-l-2 border-green-400'
-                                              : 'text-blue-700 bg-blue-50 p-1.5 rounded border-l-2 border-blue-400'
-                                          }`}
-                                        >
-                                          {hasConflict && <span className="font-semibold">⚠️ </span>}
-                                          {isPositive && <span className="font-semibold">✓ </span>}
-                                          {!hasConflict && !isPositive && <span className="font-semibold">ℹ️ </span>}
-                                          {reason}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
+                              ));
+                            })()}
+                            
+                            {/* Consolidated "What This Means For You" section - show once for all recommended dates */}
+                            {(() => {
+                              // Collect all unique Perplexity research insights from recommended dates
+                              const allPerplexityInsights = analysisResult.recommendedDates
+                                .filter(rec => rec.perplexityResearch?.recommendations)
+                                .map(rec => rec.perplexityResearch!.recommendations);
                               
-                              {/* Venue intelligence feature temporarily disabled - property not available on DateRecommendation interface */}
-                            </div>
-                          ))
+                              // Get the most comprehensive insights (prefer the one with most reasoning)
+                              const bestInsights = allPerplexityInsights.length > 0
+                                ? allPerplexityInsights.reduce((best, current) => 
+                                    (current.reasoning?.length || 0) > (best.reasoning?.length || 0) ? current : best
+                                  )
+                                : null;
+                              
+                              if (bestInsights && bestInsights.reasoning && bestInsights.reasoning.length > 0) {
+                                return (
+                                  <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                                    <div className="flex items-center space-x-2 mb-3">
+                                      <span className="text-sm font-semibold text-blue-900">
+                                        💡 What This Means For You:
+                                      </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                      {bestInsights.reasoning.map((reason, idx) => {
+                                        const hasConflict = reason.match(/(compete|conflict|reduce|avoid|move|clash|competition|festival|event|artist|tour|hurt|impact|attendance)/i);
+                                        const isPositive = reason.match(/(good|great|excellent|optimal|perfect|ideal|recommended|best)/i) && !hasConflict;
+                                        
+                                        return (
+                                          <div 
+                                            key={idx} 
+                                            className={`text-sm ${
+                                              hasConflict
+                                                ? 'text-orange-700 bg-orange-50 p-2 rounded border-l-4 border-orange-400' 
+                                                : isPositive
+                                                ? 'text-green-700 bg-green-50 p-2 rounded border-l-4 border-green-400'
+                                                : 'text-blue-700 bg-blue-50 p-2 rounded border-l-4 border-blue-400'
+                                            }`}
+                                          >
+                                            {hasConflict && <span className="font-semibold">⚠️ Conflict: </span>}
+                                            {isPositive && <span className="font-semibold">✓ Good: </span>}
+                                            {!hasConflict && !isPositive && <span className="font-semibold">ℹ️ Info: </span>}
+                                            {reason}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                    
+                                    {/* Show recommended dates from Perplexity if available */}
+                                    {bestInsights.recommendedDates && bestInsights.recommendedDates.length > 0 && (
+                                      <div className="mt-3 p-3 bg-green-100 rounded border border-green-300">
+                                        <div className="text-sm font-semibold text-green-900 mb-2">
+                                          📅 AI-Recommended Dates:
+                                        </div>
+                                        <div className="text-sm text-green-800 space-y-1">
+                                          {bestInsights.recommendedDates.slice(0, 5).map((date, idx) => (
+                                            <div key={idx} className="font-medium">
+                                              {new Date(date).toLocaleDateString('en-US', { 
+                                                weekday: 'short', 
+                                                year: 'numeric', 
+                                                month: 'short', 
+                                                day: 'numeric' 
+                                              })}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </>
                         ) : (
                           <div className="p-3 border border-yellow-200 bg-yellow-50 rounded-lg">
                             <div className="text-yellow-800 text-sm">

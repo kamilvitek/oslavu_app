@@ -440,13 +440,37 @@ export class ConflictAnalysisService {
         console.log(`Recommendation ${index + 1}: ${rec.startDate} to ${rec.endDate} - Score: ${rec.conflictScore}, Risk: ${rec.riskLevel}, Competing Events: ${rec.competingEvents.length}`);
       });
 
+      // Extract and analyze Perplexity-recommended dates BEFORE categorization
+      // This ensures they're included in the final recommendations
+      const perplexityRecommendedDates = await this.extractAndAnalyzePerplexityRecommendedDates(
+        dateRecommendations,
+        params
+      );
+      
+      // Add Perplexity-recommended dates to the recommendations array (if not already present)
+      if (perplexityRecommendedDates.length > 0) {
+        const existingDateKeys = new Set(dateRecommendations.map(r => `${r.startDate}-${r.endDate}`));
+        const newPerplexityDates = perplexityRecommendedDates.filter(r => 
+          !existingDateKeys.has(`${r.startDate}-${r.endDate}`)
+        );
+        
+        if (newPerplexityDates.length > 0) {
+          console.log(`✅ Adding ${newPerplexityDates.length} new Perplexity-recommended dates to analysis (${perplexityRecommendedDates.length - newPerplexityDates.length} were already analyzed)`);
+          dateRecommendations.push(...newPerplexityDates);
+          // Re-sort after adding new dates
+          dateRecommendations.sort((a, b) => a.conflictScore - b.conflictScore);
+        } else {
+          console.log(`ℹ️ All ${perplexityRecommendedDates.length} Perplexity-recommended dates were already in recommendations`);
+        }
+      }
+
       // Categorize recommendations - prioritize user's preferred dates
       // First, ensure user's preferred dates are always included in the appropriate category
       const userPreferredDates = dateRecommendations.filter(rec => 
         rec.startDate === params.startDate && rec.endDate === params.endDate
       );
       
-      // Get all other dates (non-user preferred)
+      // Get all other dates (non-user preferred) - this now includes Perplexity-recommended dates
       const otherDates = dateRecommendations.filter(rec => 
         !(rec.startDate === params.startDate && rec.endDate === params.endDate)
       );
@@ -463,10 +487,47 @@ export class ConflictAnalysisService {
         rec.conflictScore <= 3 // Allow low-impact conflicts from events before/after
       );
       
-      const recommendedDates = [
-        ...userPreferredLowRisk, // Only include user's preferred dates if they're low risk AND have no conflicts
-        ...otherLowRiskDates
-      ].slice(0, 3); // Top 3 recommendations
+      // Include Perplexity-recommended dates - they're specifically recommended by AI, so be more lenient
+      // Include them if they're low/medium risk and have reasonable conflict scores
+      const perplexityRecommendedLowRisk = perplexityRecommendedDates.filter(rec => {
+        const isLowRisk = rec.riskLevel === 'Low' && rec.conflictScore <= 5; // More lenient for Perplexity recommendations
+        const isMediumRiskLowScore = rec.riskLevel === 'Medium' && rec.conflictScore <= 3; // Include medium risk if score is low
+        return isLowRisk || isMediumRiskLowScore;
+      });
+      
+      // Create a set to track which dates we've already included to avoid duplicates
+      const includedDateKeys = new Set<string>();
+      
+      const allRecommendedDates = [
+        ...userPreferredLowRisk,
+        ...otherLowRiskDates,
+        ...perplexityRecommendedLowRisk
+      ];
+      
+      // Deduplicate and sort
+      const uniqueRecommendedDates = allRecommendedDates
+        .filter(rec => {
+          const key = `${rec.startDate}-${rec.endDate}`;
+          if (includedDateKeys.has(key)) {
+            return false;
+          }
+          includedDateKeys.add(key);
+          return true;
+        })
+        .sort((a, b) => {
+          // Prioritize Perplexity-recommended dates slightly (they're AI-suggested)
+          const aIsPerplexity = perplexityRecommendedDates.some(p => p.startDate === a.startDate && p.endDate === a.endDate);
+          const bIsPerplexity = perplexityRecommendedDates.some(p => p.startDate === b.startDate && p.endDate === b.endDate);
+          
+          if (aIsPerplexity && !bIsPerplexity) return -1;
+          if (!aIsPerplexity && bIsPerplexity) return 1;
+          
+          // Then sort by conflict score
+          return a.conflictScore - b.conflictScore;
+        })
+        .slice(0, 10); // Increased limit to ensure Perplexity dates are included
+      
+      const recommendedDates = uniqueRecommendedDates;
 
       // Build high risk dates: user's preferred dates (if medium/high risk OR have conflicts) + other high risk dates
       // FIXED: Include dates with conflicts even if risk level is Low - user should be aware of all conflicts
@@ -1376,6 +1437,199 @@ export class ConflictAnalysisService {
 
     // Sort by conflict score (ascending for recommendations, descending for high risk)
     return recommendations.sort((a, b) => a.conflictScore - b.conflictScore);
+  }
+
+  /**
+   * Extract and analyze Perplexity-recommended dates from all Perplexity research results
+   * This method is called after all Perplexity research is complete to find dates that Perplexity suggests
+   */
+  private async extractAndAnalyzePerplexityRecommendedDates(
+    existingRecommendations: DateRecommendation[],
+    params: ConflictAnalysisParams
+  ): Promise<DateRecommendation[]> {
+    if (!params.enablePerplexityResearch) {
+      return [];
+    }
+
+    const perplexityRecommendedDates = new Set<string>();
+    
+    // Collect all recommended dates from ALL Perplexity research results
+    for (const rec of existingRecommendations) {
+      if (rec.perplexityResearch?.recommendations?.recommendedDates) {
+        for (const dateStr of rec.perplexityResearch.recommendations.recommendedDates) {
+          // Only include dates within the analysis range
+          const date = new Date(dateStr);
+          const analysisStart = new Date(params.dateRangeStart);
+          const analysisEnd = new Date(params.dateRangeEnd);
+          
+          if (date >= analysisStart && date <= analysisEnd) {
+            perplexityRecommendedDates.add(dateStr);
+          }
+        }
+      }
+    }
+    
+    if (perplexityRecommendedDates.size === 0) {
+      return [];
+    }
+    
+    console.log(`🔍 Analyzing ${perplexityRecommendedDates.size} Perplexity-recommended dates...`);
+    
+    // Calculate event duration from user's preferred dates
+    const preferredStart = new Date(params.startDate);
+    const preferredEnd = new Date(params.endDate);
+    const eventDuration = Math.max(1, Math.ceil((preferredEnd.getTime() - preferredStart.getTime()) / (1000 * 60 * 60 * 24)));
+    
+    const perplexityDatePromises = Array.from(perplexityRecommendedDates).map(async (dateStr) => {
+      const startDate = dateStr;
+      const endDateObj = new Date(dateStr);
+      endDateObj.setDate(endDateObj.getDate() + eventDuration - 1);
+      const endDate = endDateObj.toISOString().split('T')[0];
+      
+      // Check if this date range is already in recommendations
+      const existingRec = existingRecommendations.find(r => r.startDate === startDate && r.endDate === endDate);
+      if (existingRec) {
+        console.log(`⏭️ Skipping Perplexity-recommended date ${startDate} - already in recommendations`);
+        return null;
+      }
+      
+      try {
+        // Analyze this date using the same logic as other dates
+        const competingEvents = await this.findCompetingEventsOptimized(
+          startDate,
+          endDate,
+          params
+        );
+        
+        // Get Perplexity research for this date
+        let perplexityResearch;
+        try {
+          perplexityResearch = await this.enhanceWithPerplexityResearch(
+            startDate,
+            endDate,
+            params
+          );
+          
+          // Merge Perplexity events if available
+          if (perplexityResearch && perplexityResearch.conflictingEvents.length > 0) {
+            const perplexityEvents = this.convertPerplexityEventsToEvents(
+              perplexityResearch.conflictingEvents,
+              params,
+              startDate,
+              endDate,
+              true
+            );
+            
+            const relevantPerplexityEvents = perplexityEvents.filter(event => {
+              return this.isPerplexityEventRelevant(event, params);
+            });
+            
+            competingEvents.push(...relevantPerplexityEvents);
+          }
+        } catch (error) {
+          console.warn(`Perplexity research failed for recommended date ${startDate}:`, error);
+        }
+        
+        // Calculate conflict score
+        const severityLevel = this.determineSeverityLevel(competingEvents.length);
+        const config = this.severityConfigs[severityLevel];
+        
+        // Get holiday restrictions
+        const holidayConfig = await this.getHolidayConfigForCity(params.city);
+        let holidayRestrictions;
+        if (holidayConfig) {
+          try {
+            const holidayCheck = await holidayService.checkDateAvailability(startDate, holidayConfig);
+            holidayRestrictions = holidayCheck.restrictions;
+          } catch (error) {
+            console.warn('Failed to check holiday restrictions for Perplexity-recommended date:', error);
+          }
+        }
+        
+        const conflictScore = await this.calculateConflictScoreOptimized(
+          competingEvents,
+          params.expectedAttendees,
+          params.category,
+          params,
+          config,
+          holidayRestrictions
+        );
+        
+        const riskLevel = this.determineRiskLevel(conflictScore);
+        const reasons = this.generateReasons(competingEvents, conflictScore);
+        
+        // Calculate seasonal factors
+        let seasonalFactors;
+        try {
+          const seasonalMultiplier = await seasonalityEngine.getSeasonalMultiplier(
+            startDate,
+            params.category,
+            params.subcategory,
+            'CZ'
+          );
+          
+          const holidayImpact = await holidayConflictDetector.getHolidayImpact(
+            startDate,
+            params.category,
+            params.subcategory,
+            'CZ'
+          );
+          
+          seasonalFactors = {
+            demandLevel: seasonalMultiplier.demandLevel,
+            seasonalMultiplier: seasonalMultiplier.multiplier,
+            holidayMultiplier: holidayImpact.multiplier,
+            seasonalReasoning: seasonalMultiplier.reasoning,
+            holidayReasoning: holidayImpact.reasoning,
+            optimalityScore: Math.min(seasonalMultiplier.multiplier / 2.0, 1.0),
+            venueAvailability: 0.8
+          };
+        } catch (seasonalityError) {
+          console.warn(`Seasonal analysis failed for Perplexity-recommended date ${startDate}:`, seasonalityError);
+          seasonalFactors = {
+            demandLevel: 'medium',
+            seasonalMultiplier: 1.0,
+            holidayMultiplier: 1.0,
+            seasonalReasoning: ['Seasonal analysis unavailable'],
+            holidayReasoning: ['Holiday analysis unavailable'],
+            optimalityScore: 0.5,
+            venueAvailability: 0.8
+          };
+        }
+        
+        // Calculate audience overlap if enabled
+        let audienceOverlap;
+        if (params.enableAdvancedAnalysis !== false) {
+          audienceOverlap = await this.calculateAudienceOverlapAnalysis(
+            competingEvents,
+            params
+          );
+        }
+        
+        return {
+          startDate,
+          endDate,
+          conflictScore,
+          riskLevel,
+          competingEvents,
+          reasons,
+          audienceOverlap,
+          holidayRestrictions,
+          seasonalFactors,
+          perplexityResearch: perplexityResearch ?? undefined
+        } as DateRecommendation;
+      } catch (error) {
+        console.warn(`Failed to analyze Perplexity-recommended date ${dateStr}:`, error);
+        return null;
+      }
+    });
+    
+    const analyzedPerplexityDates = (await Promise.all(perplexityDatePromises))
+      .filter((rec): rec is DateRecommendation => rec !== null);
+    
+    console.log(`✅ Analyzed ${analyzedPerplexityDates.length} Perplexity-recommended dates (${analyzedPerplexityDates.filter(r => r.riskLevel === 'Low' && r.conflictScore <= 3).length} meet recommendation criteria)`);
+    
+    return analyzedPerplexityDates;
   }
 
   /**
