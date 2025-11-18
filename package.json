@@ -12,6 +12,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:apis": "tsx scripts/api-health-check.ts",
     "scrape": "tsx scripts/test-scraper.ts",
     "scrape:test": "tsx scripts/test-scraper.ts test",
     "scrape:run": "tsx scripts/test-scraper.ts sync",
