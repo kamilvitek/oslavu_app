@@ -1,5 +1,5 @@
 // src/lib/services/perplexity-research.ts
-import { PerplexityConflictResearch, PerplexityResearchParams } from '@/types/perplexity';
+import { PerplexityConflictResearch, PerplexityResearchParams, PerplexityBatchResearchParams, PerplexityBatchResearchResult } from '@/types/perplexity';
 import { formatNearbyCities } from '@/lib/utils/city-proximity';
 import { cityDatabaseService } from '@/lib/services/city-database';
 import { z } from 'zod';
@@ -126,38 +126,9 @@ export class PerplexityResearchService {
       // Validate and parse response
       let validatedResult = this.validateAndParseResponse(result);
       
-      // FALLBACK: If comprehensive prompt found no events, try a simpler direct prompt
-      // This helps with smaller cities or when the complex prompt over-filters
-      const totalEventsFound = validatedResult.conflictingEvents.length + 
-                               validatedResult.touringArtists.length + 
-                               validatedResult.localFestivals.length;
-      
-      if (totalEventsFound === 0) {
-        console.log('⚠️ Comprehensive prompt found no events, trying simplified fallback prompt...');
-        const simplePrompt = await this.generateSimplifiedPrompt(params);
-        try {
-          const fallbackResult = await this.callPerplexityAPI(simplePrompt);
-          const fallbackValidated = this.validateAndParseResponse(fallbackResult);
-          
-          // Use fallback results if they found events
-          const fallbackTotalEvents = fallbackValidated.conflictingEvents.length + 
-                                      fallbackValidated.touringArtists.length + 
-                                      fallbackValidated.localFestivals.length;
-          
-          if (fallbackTotalEvents > 0) {
-            console.log(`✅ Simplified prompt found ${fallbackTotalEvents} events, using fallback results`);
-            validatedResult = fallbackValidated;
-            validatedResult.researchMetadata = {
-              query: simplePrompt,
-              timestamp: new Date().toISOString(),
-              sourcesUsed: this.extractSourceCount(fallbackResult),
-              confidence: this.calculateOverallConfidence(fallbackValidated),
-            };
-          }
-        } catch (fallbackError) {
-          console.warn('⚠️ Fallback prompt also failed, using original results:', fallbackError);
-        }
-      }
+      // OPTIMIZATION: Removed fallback prompt to reduce API calls
+      // The comprehensive prompt should be sufficient for most cases
+      // If no events are found, it's likely because there truly are no events, not because of prompt issues
       
       // Add metadata
       if (!validatedResult.researchMetadata) {
@@ -181,6 +152,272 @@ export class PerplexityResearchService {
       // Return null instead of throwing - don't break main analysis
       return null;
     }
+  }
+
+  /**
+   * Batch research method for multiple date ranges in a single API call
+   * This optimizes API usage by consolidating multiple date queries into one request
+   */
+  async researchEventConflictsBatch(params: PerplexityBatchResearchParams): Promise<PerplexityBatchResearchResult> {
+    const apiKey = this.getApiKey();
+    
+    if (!apiKey) {
+      console.warn('Perplexity API key not configured. Skipping batch research.');
+      return {};
+    }
+
+    if (params.dateRanges.length === 0) {
+      return {};
+    }
+
+    try {
+      // Generate batch prompt that covers all date ranges
+      const prompt = await this.generateBatchPrompt(params);
+      
+      // Call Perplexity API once for all dates
+      console.log(`🔍 Perplexity Batch: Calling for ${params.dateRanges.length} date ranges in a single API call`);
+      const result = await this.callPerplexityAPI(prompt);
+      
+      // Validate and parse response
+      const validatedResult = this.validateAndParseResponse(result);
+      
+      // Distribute events to their respective date ranges
+      const batchResults: PerplexityBatchResearchResult = {};
+      
+      for (const dateRange of params.dateRanges) {
+        const rangeId = dateRange.id || `${dateRange.start}_${dateRange.end}`;
+        const rangeStart = new Date(dateRange.start);
+        const rangeEnd = new Date(dateRange.end);
+        
+        // Filter events that fall within this date range (with ±7 day window)
+        const windowStart = new Date(rangeStart);
+        windowStart.setDate(windowStart.getDate() - 7);
+        const windowEnd = new Date(rangeEnd);
+        windowEnd.setDate(windowEnd.getDate() + 7);
+        
+        const filteredEvents = validatedResult.conflictingEvents.filter(event => {
+          const eventDate = new Date(event.date);
+          return eventDate >= windowStart && eventDate <= windowEnd;
+        });
+        
+        const filteredTouringArtists = validatedResult.touringArtists.filter(artist => {
+          return artist.tourDates.some(date => {
+            const tourDate = new Date(date);
+            return tourDate >= windowStart && tourDate <= windowEnd;
+          });
+        });
+        
+        const filteredFestivals = validatedResult.localFestivals.filter(festival => {
+          // Parse festival date range (could be "YYYY-MM-DD to YYYY-MM-DD" or single date)
+          const dateMatch = festival.dates.match(/(\d{4}-\d{2}-\d{2})/);
+          if (dateMatch) {
+            const festivalDate = new Date(dateMatch[1]);
+            return festivalDate >= windowStart && festivalDate <= windowEnd;
+          }
+          return false;
+        });
+        
+        const filteredHolidays = validatedResult.holidaysAndCulturalEvents.filter(holiday => {
+          const holidayDate = new Date(holiday.date);
+          return holidayDate >= windowStart && holidayDate <= windowEnd;
+        });
+        
+        // Create a research result for this date range
+        batchResults[rangeId] = {
+          conflictingEvents: filteredEvents,
+          touringArtists: filteredTouringArtists,
+          localFestivals: filteredFestivals,
+          holidaysAndCulturalEvents: filteredHolidays,
+          recommendations: {
+            shouldMoveDate: validatedResult.recommendations.shouldMoveDate,
+            recommendedDates: validatedResult.recommendations.recommendedDates?.filter(date => {
+              const recDate = new Date(date);
+              return recDate >= rangeStart && recDate <= rangeEnd;
+            }),
+            reasoning: validatedResult.recommendations.reasoning,
+            riskLevel: validatedResult.recommendations.riskLevel,
+          },
+          researchMetadata: {
+            query: prompt,
+            timestamp: new Date().toISOString(),
+            sourcesUsed: validatedResult.researchMetadata?.sourcesUsed || 0,
+            confidence: this.calculateOverallConfidence({
+              conflictingEvents: filteredEvents,
+              touringArtists: filteredTouringArtists,
+              localFestivals: filteredFestivals,
+              holidaysAndCulturalEvents: filteredHolidays,
+              recommendations: batchResults[rangeId].recommendations,
+            }),
+          },
+        };
+      }
+      
+      console.log(`✅ Perplexity Batch: Processed ${params.dateRanges.length} date ranges from single API call`);
+      return batchResults;
+    } catch (error) {
+      console.error('Perplexity batch research failed:', error);
+      // Return empty results for all date ranges instead of throwing
+      const emptyResults: PerplexityBatchResearchResult = {};
+      for (const dateRange of params.dateRanges) {
+        const rangeId = dateRange.id || `${dateRange.start}_${dateRange.end}`;
+        emptyResults[rangeId] = this.getDefaultResponse();
+      }
+      return emptyResults;
+    }
+  }
+
+  /**
+   * Generate batch prompt for multiple date ranges
+   */
+  private async generateBatchPrompt(params: PerplexityBatchResearchParams): Promise<string> {
+    const { city, category, subcategory, expectedAttendees, dateRanges } = params;
+    
+    // Determine if this is a large event
+    const isLargeEvent = expectedAttendees >= 1000;
+    
+    // Get nearby cities dynamically
+    let nearbyCitiesList: string[] = [];
+    if (isLargeEvent) {
+      nearbyCitiesList = await this.getNearbyCitiesForPrompt(city);
+    }
+    
+    const searchLocation = nearbyCitiesList.length > 0 
+      ? `${city}, ${nearbyCitiesList.join(', ')}`
+      : city;
+    
+    // Calculate overall date window (earliest start - 7 days to latest end + 7 days)
+    const allDates = dateRanges.flatMap(range => [
+      new Date(range.start),
+      new Date(range.end)
+    ]);
+    const earliestDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+    const latestDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+    
+    const windowStart = new Date(earliestDate);
+    windowStart.setDate(windowStart.getDate() - 7);
+    const windowEnd = new Date(latestDate);
+    windowEnd.setDate(windowEnd.getDate() + 7);
+    
+    const windowStartStr = windowStart.toISOString().split('T')[0];
+    const windowEndStr = windowEnd.toISOString().split('T')[0];
+    
+    // Format date ranges for the prompt
+    const dateRangesStr = dateRanges.map(range => 
+      `${range.start} to ${range.end}`
+    ).join(', ');
+    
+    const categoryEventTypes = this.getCategoryEventTypes(category, subcategory);
+    
+    const prompt = `Find ${category}${subcategory ? ` (${subcategory})` : ''} events in ${city} for multiple date ranges. The user is organizing an event expecting ${expectedAttendees} attendees.
+
+TARGET DATE RANGES (primary focus):
+${dateRanges.map((range, idx) => `- Range ${idx + 1}: ${range.start} to ${range.end}`).join('\n')}
+
+SEARCH SCOPE:
+- Primary focus: Events on the target date ranges listed above
+- Extended window: Also search from ${windowStartStr} to ${windowEndStr} (7 days before/after each range) for events that could impact attendance
+- Location: ${isLargeEvent 
+      ? `Search in ${searchLocation} (user's event is large with ${expectedAttendees} expected attendees, so major events from nearby cities could compete)` 
+      : `Search ONLY in ${city} (user's event is small with ${expectedAttendees} expected attendees, so only local events matter - do NOT search in remote cities)`}
+- Category: Focus on ${categoryEventTypes}${subcategory ? `, specifically ${subcategory}` : ''}
+
+WHAT TO INCLUDE:
+
+1. Conflicting Events (${categoryEventTypes}):
+   - Events on any of the target date ranges - mark as "onDate: true"
+   - Events within 7 days before/after any target range - mark as "onDate: false" with "daysFromTarget" (negative = before, positive = after)
+   ${isLargeEvent 
+     ? `- IMPORTANT: User's event is large (${expectedAttendees} attendees), so include major events (1000+ attendees) from nearby cities - they can compete across regions`
+     : `- IMPORTANT: User's event is small (${expectedAttendees} attendees), so ONLY include events in ${city} - do NOT include events from other cities, even if they're large`}
+   - Include events that match ${category}${subcategory ? ` and ${subcategory}` : ''} category
+   - Be inclusive: if unsure about category match, include it (we'll filter later)
+
+2. Touring Artists:
+   - Artists performing on any target date range or within 7 days before/after
+   ${isLargeEvent 
+     ? `- Include artists in ${searchLocation} (user's large event can compete with touring artists in nearby cities)`
+     : `- Include artists ONLY in ${city} (user's small event only competes locally)`}
+   - Focus on artists matching ${category}${subcategory ? ` / ${subcategory}` : ''} genre
+
+3. Local Festivals:
+   - Festivals on any target date range or major festivals (500+ attendees) within 7 days
+   ${isLargeEvent 
+     ? `- Include major festivals (1000+ attendees) from nearby cities - they can compete with user's large event`
+     : `- Include festivals ONLY in ${city} - do NOT include festivals from other cities`}
+
+4. Holidays & Cultural Events:
+   - Holidays/events on any target date range or major ones within 3-5 days before/after
+   - These affect travel and availability
+   - Include regardless of location (holidays affect everyone)
+
+CATEGORY FILTERING (be reasonable, not overly strict):
+- Primary focus: ${category}${subcategory ? ` / ${subcategory}` : ''} events
+- Include related events that might compete for the same audience
+- Exclude clearly unrelated events (e.g., wine tours for music events, sports for business events)
+- When in doubt, include rather than exclude - better to have more data
+
+OUTPUT FORMAT (JSON only, no markdown):
+
+{
+  "conflictingEvents": [
+    {
+      "name": "Event name",
+      "date": "YYYY-MM-DD",
+      "location": "City name",
+      "type": "concert|festival|cultural_event|other",
+      "onDate": true/false,
+      "daysFromTarget": number (only if onDate is false),
+      "expectedAttendance": number (optional),
+      "description": "Brief description (optional)",
+      "source": "URL (optional)",
+      "temporalImpact": "high|medium|low" (optional)
+    }
+  ],
+  "touringArtists": [
+    {
+      "artistName": "Artist name",
+      "tourDates": ["YYYY-MM-DD"],
+      "locations": ["City name"],
+      "genre": "Genre (optional)"
+    }
+  ],
+  "localFestivals": [
+    {
+      "name": "Festival name",
+      "dates": "Date range string",
+      "location": "City name",
+      "type": "Festival type",
+      "description": "Description (optional)"
+    }
+  ],
+  "holidaysAndCulturalEvents": [
+    {
+      "name": "Holiday/Event name",
+      "date": "YYYY-MM-DD",
+      "type": "holiday|cultural_event",
+      "impact": "low|medium|high",
+      "description": "Description (optional)"
+    }
+  ],
+  "recommendations": {
+    "shouldMoveDate": false,
+    "recommendedDates": [],
+    "reasoning": [
+      "Write in simple, direct language. Provide recommendations for the date ranges above."
+    ],
+    "riskLevel": "low|medium|high"
+  }
+}
+
+IMPORTANT GUIDELINES:
+- Use YYYY-MM-DD format for all dates
+- Be specific about dates, locations, and event names
+- Include source URLs when available
+- For recommendations: Use plain language, be specific, mention temporal proximity when relevant
+- If no events found, return empty arrays but still provide recommendations
+- Return ONLY valid JSON, no markdown code blocks or additional text`;
+
+    return prompt;
   }
 
   /**

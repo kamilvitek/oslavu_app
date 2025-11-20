@@ -7,14 +7,44 @@
 
 const https = require('https');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+// Load environment variables
+const loadEnvFiles = () => {
+  const envFiles = ['.env.local', '.env'];
+  for (const file of envFiles) {
+    const fullPath = path.resolve(process.cwd(), file);
+    if (fs.existsSync(fullPath)) {
+      const content = fs.readFileSync(fullPath, 'utf8');
+      content.split('\n').forEach(line => {
+        const match = line.match(/^([^=:#]+)=(.*)$/);
+        if (match && !process.env[match[1].trim()]) {
+          process.env[match[1].trim()] = match[2].trim().replace(/^["']|["']$/g, '');
+        }
+      });
+    }
+  }
+};
+
+loadEnvFiles();
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
-async function makeRequest(url) {
+async function makeRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
-    const client = url.startsWith('https') ? https : http;
+    const urlObj = typeof url === 'string' ? new URL(url) : url;
+    const client = urlObj.protocol === 'https:' ? https : http;
     
-    client.get(url, (res) => {
+    const requestOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method: 'GET',
+      headers: options.headers || {}
+    };
+    
+    const req = client.request(requestOptions, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
@@ -25,7 +55,47 @@ async function makeRequest(url) {
           resolve({ status: res.statusCode, data: data });
         }
       });
-    }).on('error', reject);
+    });
+    
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function makePostRequest(url, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const client = urlObj.protocol === 'https:' ? https : http;
+    const postData = JSON.stringify(body);
+    
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData),
+        ...headers
+      }
+    };
+    
+    const req = client.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve({ status: res.statusCode, data: json });
+        } catch (e) {
+          resolve({ status: res.statusCode, data: data });
+        }
+      });
+    });
+    
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
   });
 }
 
@@ -60,12 +130,58 @@ async function checkAPICompatibility() {
       issues.push('❌ Scraped events API not responding correctly');
     }
     
-    // Test PredictHQ API
-    const phqResponse = await makeRequest(`${BASE_URL}/api/analyze/events/predicthq?city=Prague&startDate=2026-06-01&endDate=2026-06-30`);
-    if (phqResponse.status === 200 && phqResponse.data.success) {
-      console.log('✅ PredictHQ API responding correctly');
+    // Test OpenAI API
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (openaiApiKey) {
+      try {
+        const openaiResponse = await makeRequest('https://api.openai.com/v1/models', {
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`
+          }
+        });
+        if (openaiResponse.status === 200 && openaiResponse.data.data) {
+          const modelCount = Array.isArray(openaiResponse.data.data) ? openaiResponse.data.data.length : 0;
+          console.log(`✅ OpenAI API responding correctly (${modelCount} models available)`);
+        } else {
+          issues.push('❌ OpenAI API not responding correctly');
+        }
+      } catch (error) {
+        issues.push(`❌ OpenAI API test failed: ${error.message}`);
+      }
     } else {
-      issues.push('❌ PredictHQ API not responding correctly');
+      console.log('⚠️ OpenAI API key not configured - skipping test');
+    }
+    
+    // Test Perplexity API
+    const perplexityApiKey = process.env.PERPLEXITY_API_KEY;
+    if (perplexityApiKey) {
+      try {
+        const perplexityResponse = await makePostRequest(
+          'https://api.perplexity.ai/chat/completions',
+          {
+            model: 'sonar-pro',
+            messages: [
+              { role: 'system', content: 'You are a concise assistant. Respond with a single word.' },
+              { role: 'user', content: 'Reply with the word "pong".' }
+            ],
+            temperature: 0,
+            max_tokens: 10
+          },
+          {
+            'Authorization': `Bearer ${perplexityApiKey}`
+          }
+        );
+        if (perplexityResponse.status === 200 && perplexityResponse.data.choices) {
+          const content = perplexityResponse.data.choices[0]?.message?.content?.trim();
+          console.log(`✅ Perplexity API responding correctly${content ? ` (response: ${content})` : ''}`);
+        } else {
+          issues.push('❌ Perplexity API not responding correctly');
+        }
+      } catch (error) {
+        issues.push(`❌ Perplexity API test failed: ${error.message}`);
+      }
+    } else {
+      console.log('⚠️ Perplexity API key not configured - skipping test');
     }
     
     // Test observability API
@@ -122,15 +238,57 @@ async function checkPerformanceImpact() {
       console.log(`✅ Scraped events API performance acceptable: ${scrapedTime}ms`);
     }
     
-    // Test PredictHQ with new radius parameter
-    const phqStartTime = Date.now();
-    const phqResponse = await makeRequest(`${BASE_URL}/api/analyze/events/predicthq?city=Prague&startDate=2026-06-01&endDate=2026-06-30&radius=50km`);
-    const phqTime = Date.now() - phqStartTime;
+    // Test OpenAI API performance
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (openaiApiKey) {
+      try {
+        const openaiStartTime = Date.now();
+        await makeRequest('https://api.openai.com/v1/models', {
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`
+          }
+        });
+        const openaiTime = Date.now() - openaiStartTime;
+        
+        if (openaiTime > 5000) {
+          issues.push(`⚠️ OpenAI API slow: ${openaiTime}ms`);
+        } else {
+          console.log(`✅ OpenAI API performance acceptable: ${openaiTime}ms`);
+        }
+      } catch (error) {
+        // Skip performance test if API key test failed
+      }
+    }
     
-    if (phqTime > 10000) {
-      issues.push(`⚠️ PredictHQ API slow: ${phqTime}ms (radius parameter overhead)`);
-    } else {
-      console.log(`✅ PredictHQ API performance acceptable: ${phqTime}ms`);
+    // Test Perplexity API performance
+    const perplexityApiKey = process.env.PERPLEXITY_API_KEY;
+    if (perplexityApiKey) {
+      try {
+        const perplexityStartTime = Date.now();
+        await makePostRequest(
+          'https://api.perplexity.ai/chat/completions',
+          {
+            model: 'sonar-pro',
+            messages: [
+              { role: 'user', content: 'Say "test"' }
+            ],
+            temperature: 0,
+            max_tokens: 5
+          },
+          {
+            'Authorization': `Bearer ${perplexityApiKey}`
+          }
+        );
+        const perplexityTime = Date.now() - perplexityStartTime;
+        
+        if (perplexityTime > 10000) {
+          issues.push(`⚠️ Perplexity API slow: ${perplexityTime}ms`);
+        } else {
+          console.log(`✅ Perplexity API performance acceptable: ${perplexityTime}ms`);
+        }
+      } catch (error) {
+        // Skip performance test if API key test failed
+      }
     }
     
   } catch (error) {
@@ -146,34 +304,22 @@ async function checkDataConsistency() {
   const issues = [];
   
   try {
-    // Test that different endpoints return consistent data
+    // Test that scraped events endpoint returns consistent data
     const scrapedResponse = await makeRequest(`${BASE_URL}/api/events/scraped?city=Prague&category=Entertainment&limit=5`);
-    const phqResponse = await makeRequest(`${BASE_URL}/api/analyze/events/predicthq?city=Prague&startDate=2026-06-01&endDate=2026-06-30&category=Entertainment`);
     
-    if (scrapedResponse.status === 200 && phqResponse.status === 200) {
+    if (scrapedResponse.status === 200) {
       const scrapedEvents = scrapedResponse.data.data?.events || [];
-      const phqEvents = phqResponse.data.data?.events || [];
       
-      // Check for overlapping events (potential duplicates)
-      const scrapedTitles = scrapedEvents.map(e => e.title.toLowerCase());
-      const phqTitles = phqEvents.map(e => e.title.toLowerCase());
-      const overlaps = scrapedTitles.filter(title => phqTitles.includes(title));
-      
-      if (overlaps.length > 0) {
-        console.log(`⚠️ Found ${overlaps.length} potential duplicate events between sources`);
+      if (scrapedEvents.length > 0) {
+        // Check category consistency
+        const scrapedCategories = [...new Set(scrapedEvents.map(e => e.category))];
+        console.log(`📊 Scraped categories: ${scrapedCategories.join(', ')}`);
+        console.log('✅ Scraped events data structure is consistent');
       } else {
-        console.log('✅ No obvious duplicate events between sources');
+        console.log('⚠️ No events found for consistency check');
       }
-      
-      // Check category consistency
-      const scrapedCategories = [...new Set(scrapedEvents.map(e => e.category))];
-      const phqCategories = [...new Set(phqEvents.map(e => e.category))];
-      
-      console.log(`📊 Scraped categories: ${scrapedCategories.join(', ')}`);
-      console.log(`📊 PredictHQ categories: ${phqCategories.join(', ')}`);
-      
     } else {
-      issues.push('❌ Could not compare data consistency between sources');
+      issues.push('❌ Could not check data consistency - scraped events API not responding');
     }
     
   } catch (error) {

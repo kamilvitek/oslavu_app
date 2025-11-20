@@ -1191,73 +1191,9 @@ export class ConflictAnalysisService {
         };
       }
 
-      // Perplexity research enhancement (if enabled)
-      // OPTIMIZATION: Only call Perplexity for prioritized dates to reduce API calls
-      // Priority: 1) User's preferred dates (always), 2) Top high-risk future dates (max 5)
-      // Skip past dates - past events don't affect future attendance
-      let perplexityResearch;
-      const shouldCallPerplexity = params.enablePerplexityResearch && (() => {
-        // Always call for user's preferred dates
-        const isPreferredDate = dateRange.startDate === params.startDate && dateRange.endDate === params.endDate;
-        if (isPreferredDate) {
-          console.log(`🔍 Perplexity: Calling for user's preferred date ${dateRange.startDate}`);
-          return true;
-        }
-        
-        // Skip past dates - past events don't affect future attendance
-        const dateStart = new Date(dateRange.startDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (dateStart < today) {
-          console.log(`⏭️ Perplexity: Skipping past date ${dateRange.startDate}`);
-          return false;
-        }
-        
-        // For other dates, we'll determine priority after initial analysis
-        // This will be set in the second pass
-        return false;
-      })();
-      
-      // Call Perplexity if prioritized (user's preferred dates only in first pass)
-      if (shouldCallPerplexity) {
-        try {
-          perplexityResearch = await this.enhanceWithPerplexityResearch(
-            dateRange.startDate,
-            dateRange.endDate,
-            params
-          );
-          
-          // Merge Perplexity events with competing events BEFORE calculating audience overlap
-          // Pass date range to filter out events outside the requested range
-          // Use lenient location filtering for major events (festivals can compete across cities)
-          // CRITICAL: Filter by category/subcategory relevance to avoid unrelated events (e.g., wine tours for Hip-Hop events)
-          if (perplexityResearch && perplexityResearch.conflictingEvents.length > 0) {
-            const perplexityEvents = this.convertPerplexityEventsToEvents(
-              perplexityResearch.conflictingEvents, 
-              params,
-              dateRange.startDate,
-              dateRange.endDate,
-              true // lenientLocationFiltering = true for Perplexity events
-            );
-            
-            // Filter Perplexity events by category/subcategory relevance
-            // Only include events that are actually relevant to the target category/subcategory
-            const relevantPerplexityEvents = perplexityEvents.filter(event => {
-              const isRelevant = this.isPerplexityEventRelevant(event, params);
-              if (!isRelevant) {
-                console.log(`🚫 Filtering out irrelevant Perplexity event "${event.title}" - category mismatch (${event.category} vs ${params.category})`);
-              }
-              return isRelevant;
-            });
-            
-            competingEvents = [...competingEvents, ...relevantPerplexityEvents];
-            console.log(`✅ Added ${relevantPerplexityEvents.length} relevant Perplexity events to competing events (filtered out ${perplexityEvents.length - relevantPerplexityEvents.length} irrelevant events, total: ${competingEvents.length})`);
-          }
-        } catch (error) {
-          console.warn(`Perplexity research failed for ${dateRange.startDate}:`, error);
-          // Continue without Perplexity research - don't break analysis
-        }
-      }
+      // OPTIMIZATION: Perplexity research is now done in batch after all dates are analyzed
+      // This reduces API calls from N calls to 1 call for all prioritized dates
+      // Skip Perplexity in first pass - will be done in batch in second pass
 
       // FIXED: Calculate conflict score AFTER Perplexity events are added
       // This ensures Perplexity events (like MKLV Fest with 1000+ attendees) are included in the score
@@ -1303,7 +1239,8 @@ export class ConflictAnalysisService {
         audienceOverlap,
         holidayRestrictions: dateRange.holidayRestrictions,
         seasonalFactors,
-        perplexityResearch: perplexityResearch || undefined // Convert null to undefined for type compatibility
+        // Perplexity research will be added in batch pass
+        perplexityResearch: undefined
       };
     });
 
@@ -1311,23 +1248,35 @@ export class ConflictAnalysisService {
     const results = await Promise.all(datePromises);
     recommendations.push(...results);
 
-    // OPTIMIZATION: Second pass - Call Perplexity for:
-    // 1. Top high-risk future dates (max 5)
-    // 2. Top recommended dates (low-risk dates that will be shown to users, max 3)
-    // This ensures recommended dates have comprehensive analysis including events before/after
+    // OPTIMIZATION: Batch Perplexity research - Call once for all prioritized dates
+    // This reduces API calls from N calls to 1 call, significantly reducing costs
+    // Priority: 1) User's preferred dates, 2) Top high-risk future dates (max 5), 3) Top recommended dates (max 3)
     if (params.enablePerplexityResearch) {
       const today = new Date().toISOString().split('T')[0];
       
-      // Identify high-risk future dates that need Perplexity research
+      // Collect all dates that need Perplexity research
+      const datesForPerplexity: Array<{ rec: DateRecommendation; id: string }> = [];
+      
+      // 1. Always include user's preferred date
+      const preferredRec = recommendations.find(rec => 
+        rec.startDate === params.startDate && rec.endDate === params.endDate
+      );
+      if (preferredRec && preferredRec.startDate >= today) {
+        datesForPerplexity.push({
+          rec: preferredRec,
+          id: 'preferred'
+        });
+      }
+      
+      // 2. Top high-risk future dates (max 5)
       const highRiskFutureDates = recommendations
         .filter(rec => {
           const isPreferred = rec.startDate === params.startDate && rec.endDate === params.endDate;
           const isFuture = rec.startDate >= today;
           const hasConflicts = rec.competingEvents.length > 0;
-          const alreadyHasPerplexity = !!rec.perplexityResearch;
           
-          // Skip if already has Perplexity or is preferred (already called)
-          if (alreadyHasPerplexity || isPreferred) return false;
+          // Skip if already included (preferred date)
+          if (isPreferred) return false;
           
           // Include if future date with conflicts
           return isFuture && hasConflicts;
@@ -1341,17 +1290,25 @@ export class ConflictAnalysisService {
         })
         .slice(0, 5); // Top 5 high-risk dates
       
-      // Identify recommended dates (low-risk dates) that need Perplexity research
-      // These are dates that will be shown to users, so they should have comprehensive analysis
+      highRiskFutureDates.forEach((rec, idx) => {
+        datesForPerplexity.push({
+          rec,
+          id: `high-risk-${idx}`
+        });
+      });
+      
+      // 3. Top recommended dates (low-risk dates, max 3)
       const recommendedDatesForPerplexity = recommendations
         .filter(rec => {
           const isPreferred = rec.startDate === params.startDate && rec.endDate === params.endDate;
           const isFuture = rec.startDate >= today;
           const isLowRisk = rec.riskLevel === 'Low';
-          const alreadyHasPerplexity = !!rec.perplexityResearch;
+          const alreadyIncluded = datesForPerplexity.some(d => 
+            d.rec.startDate === rec.startDate && d.rec.endDate === rec.endDate
+          );
           
-          // Skip if already has Perplexity or is preferred (already called)
-          if (alreadyHasPerplexity || isPreferred) return false;
+          // Skip if already included
+          if (isPreferred || alreadyIncluded) return false;
           
           // Include future low-risk dates (these will be shown as recommendations)
           return isFuture && isLowRisk;
@@ -1365,74 +1322,90 @@ export class ConflictAnalysisService {
         })
         .slice(0, 3); // Top 3 recommended dates
       
-      const allDatesForPerplexity = [...highRiskFutureDates, ...recommendedDatesForPerplexity];
-      
-      console.log(`🔍 Perplexity: Calling for ${highRiskFutureDates.length} high-risk future dates and ${recommendedDatesForPerplexity.length} recommended dates (total: ${allDatesForPerplexity.length})`);
-      
-      // Call Perplexity for all prioritized dates in parallel
-      const perplexityPromises = allDatesForPerplexity.map(async (rec) => {
-        try {
-          const perplexityResearch = await this.enhanceWithPerplexityResearch(
-            rec.startDate,
-            rec.endDate,
-            params
-          );
-          
-          if (perplexityResearch && perplexityResearch.conflictingEvents.length > 0) {
-            const perplexityEvents = this.convertPerplexityEventsToEvents(
-              perplexityResearch.conflictingEvents,
-              params,
-              rec.startDate,
-              rec.endDate,
-              true // lenientLocationFiltering = true for Perplexity events
-            );
-            
-            // Filter by relevance
-            const relevantPerplexityEvents = perplexityEvents.filter(event => {
-              return this.isPerplexityEventRelevant(event, params);
-            });
-            
-            // Merge Perplexity events with competing events
-            rec.competingEvents = [...rec.competingEvents, ...relevantPerplexityEvents];
-            
-            // Recalculate conflict score with new Perplexity events
-            // This ensures events before/after are properly accounted for
-            const severityLevel = this.determineSeverityLevel(rec.competingEvents.length);
-            const config = this.severityConfigs[severityLevel];
-            
-            // Find the date range for this recommendation to get holiday restrictions
-            const dateRange = recommendations.find(r => 
-              r.startDate === rec.startDate && r.endDate === rec.endDate
-            );
-            
-            const updatedConflictScore = await this.calculateConflictScoreOptimized(
-              rec.competingEvents,
-              params.expectedAttendees,
-              params.category,
-              params,
-              config,
-              dateRange?.holidayRestrictions
-            );
-            
-            // Update conflict score and risk level
-            rec.conflictScore = updatedConflictScore;
-            rec.riskLevel = this.determineRiskLevel(updatedConflictScore);
-            rec.reasons = this.generateReasons(rec.competingEvents, updatedConflictScore);
-            
-            // Add Perplexity research to recommendation
-            rec.perplexityResearch = perplexityResearch ?? undefined;
-            
-            console.log(`✅ Perplexity: Enhanced ${rec.startDate} with ${relevantPerplexityEvents.length} events (updated score: ${updatedConflictScore})`);
-          } else {
-            // Even if no conflicting events, add Perplexity research for insights
-            rec.perplexityResearch = perplexityResearch ?? undefined;
-          }
-        } catch (error) {
-          console.warn(`Perplexity research failed for ${rec.startDate}:`, error);
-        }
+      recommendedDatesForPerplexity.forEach((rec, idx) => {
+        datesForPerplexity.push({
+          rec,
+          id: `recommended-${idx}`
+        });
       });
       
-      await Promise.all(perplexityPromises);
+      if (datesForPerplexity.length > 0) {
+        console.log(`🔍 Perplexity Batch: Calling for ${datesForPerplexity.length} date ranges in a single API call (preferred: ${preferredRec ? 1 : 0}, high-risk: ${highRiskFutureDates.length}, recommended: ${recommendedDatesForPerplexity.length})`);
+        
+        try {
+          // Call batch research method - single API call for all dates
+          const batchResults = await perplexityResearchService.researchEventConflictsBatch({
+            city: params.city,
+            category: params.category,
+            subcategory: params.subcategory,
+            expectedAttendees: params.expectedAttendees,
+            dateRanges: datesForPerplexity.map(d => ({
+              start: d.rec.startDate,
+              end: d.rec.endDate,
+              id: d.id
+            }))
+          });
+          
+          // Process batch results and update recommendations
+          for (const { rec, id } of datesForPerplexity) {
+            const perplexityResearch = batchResults[id];
+            
+            if (perplexityResearch) {
+              // Merge Perplexity events with competing events
+              if (perplexityResearch.conflictingEvents.length > 0) {
+                const perplexityEvents = this.convertPerplexityEventsToEvents(
+                  perplexityResearch.conflictingEvents,
+                  params,
+                  rec.startDate,
+                  rec.endDate,
+                  true // lenientLocationFiltering = true for Perplexity events
+                );
+                
+                // Filter by relevance
+                const relevantPerplexityEvents = perplexityEvents.filter(event => {
+                  return this.isPerplexityEventRelevant(event, params);
+                });
+                
+                // Merge Perplexity events with competing events
+                rec.competingEvents = [...rec.competingEvents, ...relevantPerplexityEvents];
+                
+                // Recalculate conflict score with new Perplexity events
+                const severityLevel = this.determineSeverityLevel(rec.competingEvents.length);
+                const config = this.severityConfigs[severityLevel];
+                
+                // Find the date range for this recommendation to get holiday restrictions
+                const dateRange = recommendations.find(r => 
+                  r.startDate === rec.startDate && r.endDate === rec.endDate
+                );
+                
+                const updatedConflictScore = await this.calculateConflictScoreOptimized(
+                  rec.competingEvents,
+                  params.expectedAttendees,
+                  params.category,
+                  params,
+                  config,
+                  dateRange?.holidayRestrictions
+                );
+                
+                // Update conflict score and risk level
+                rec.conflictScore = updatedConflictScore;
+                rec.riskLevel = this.determineRiskLevel(updatedConflictScore);
+                rec.reasons = this.generateReasons(rec.competingEvents, updatedConflictScore);
+                
+                console.log(`✅ Perplexity Batch: Enhanced ${rec.startDate} with ${relevantPerplexityEvents.length} events (updated score: ${updatedConflictScore})`);
+              }
+              
+              // Add Perplexity research to recommendation (even if no events found)
+              rec.perplexityResearch = perplexityResearch;
+            }
+          }
+          
+          console.log(`✅ Perplexity Batch: Completed analysis for ${datesForPerplexity.length} date ranges from single API call`);
+        } catch (error) {
+          console.warn('Perplexity batch research failed:', error);
+          // Continue without Perplexity research - don't break analysis
+        }
+      }
     }
 
     // Sort by conflict score (ascending for recommendations, descending for high risk)

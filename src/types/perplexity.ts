@@ -70,3 +70,19 @@ export interface PerplexityResearchParams {
   };
 }
 
+export interface PerplexityBatchResearchParams {
+  city: string;
+  category: string;
+  subcategory?: string;
+  expectedAttendees: number;
+  dateRanges: Array<{
+    start: string;
+    end: string;
+    id?: string; // Optional identifier to map results back
+  }>;
+}
+
+export interface PerplexityBatchResearchResult {
+  [dateRangeId: string]: PerplexityConflictResearch;
+}
+
