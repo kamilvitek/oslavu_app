@@ -175,6 +175,28 @@ function calculateEventSignificance(event: Event): number {
 }
 
 /**
+ * Calculate event duration in days from start and end dates
+ */
+function calculateEventDuration(event: Event): number {
+  if (!event.endDate) return 1; // Single day event
+  const start = new Date(event.date);
+  const end = new Date(event.endDate);
+  const diffTime = Math.abs(end.getTime() - start.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return Math.max(1, diffDays + 1); // +1 to include both start and end day
+}
+
+/**
+ * Get duration multiplier for conflict scoring
+ */
+function getDurationMultiplier(duration: number): number {
+  if (duration === 1) return 1.0;      // 1-day event: 1.0x
+  if (duration === 2) return 1.3;      // 2-day event: 1.3x
+  if (duration === 3) return 1.6;      // 3-day event: 1.6x
+  return Math.min(2.0, 1.0 + (duration - 1) * 0.3); // 4+ day event: cap at 2.0x
+}
+
+/**
  * Calculate conflict score for a single event using optimized algorithm
  */
 function calculateEventConflictScore(event: Event, category: string, config: ConflictCalculationTask['data']['config'], plannedSubcategory?: string): number {
@@ -214,6 +236,11 @@ function calculateEventConflictScore(event: Event, category: string, config: Con
       eventScore += 2; // Reduced from 10 to 2
     }
   }
+  
+  // Apply duration multiplier (longer events = higher conflict impact)
+  const eventDuration = calculateEventDuration(event);
+  const durationMultiplier = getDurationMultiplier(eventDuration);
+  eventScore *= durationMultiplier;
   
   return eventScore;
 }

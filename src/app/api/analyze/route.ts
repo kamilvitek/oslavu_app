@@ -39,9 +39,9 @@ export async function POST(request: NextRequest) {
     const sanitizedBody = sanitizationResult.sanitizedParams;
     
     // Validate required fields
-    if (!sanitizedBody.city || !sanitizedBody.category || !sanitizedBody.expectedAttendees || !sanitizedBody.dateRange) {
+    if (!sanitizedBody.city || !sanitizedBody.category || !sanitizedBody.subcategory || !sanitizedBody.expectedAttendees || !sanitizedBody.dateRange) {
       return NextResponse.json(
-        { error: 'Missing required fields: city, category, expectedAttendees, dateRange' },
+        { error: 'Missing required fields: city, category, subcategory, expectedAttendees, dateRange' },
         { status: 400 }
       );
     }

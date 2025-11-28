@@ -14,7 +14,7 @@ import { SUBCATEGORY_TAXONOMY, getAllSubcategoriesForCategory } from "@/lib/cons
 const analysisSchema = z.object({
   city: z.string().min(2, "City is required"),
   category: z.string().min(1, "Category is required"),
-  subcategory: z.string().optional(),
+  subcategory: z.string().min(1, "Subcategory is required"),
   expectedAttendees: z.number().min(1, "Expected attendees is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
@@ -202,7 +202,7 @@ export function ConflictAnalysisForm({ onAnalysisComplete }: ConflictAnalysisFor
             className="flex h-10 w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200 focus:shadow-lg focus:shadow-primary/25"
             {...register("subcategory")}
           >
-            <option value="">Select subcategory (optional)</option>
+            <option value="">Select subcategory</option>
             {availableSubcategories.map((subcategory) => (
               <option key={subcategory} value={subcategory}>
                 {subcategory}

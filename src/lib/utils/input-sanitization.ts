@@ -596,6 +596,14 @@ export function sanitizeApiParameters(params: Record<string, unknown>): {
           sanitizedParams[key] = categoryResult.sanitizedValue;
           break;
 
+        case 'subcategory':
+          if (value && typeof value === 'string' && value.trim().length > 0) {
+            sanitizedParams[key] = value.trim();
+          } else {
+            errors.push(`Subcategory must be a non-empty string`);
+          }
+          break;
+
         case 'keyword':
           const keywordResult = sanitizeSearchKeyword(value);
           if (!keywordResult.isValid) errors.push(...keywordResult.errors);

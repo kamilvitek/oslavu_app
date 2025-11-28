@@ -14,6 +14,8 @@ import { holidayConflictDetector } from './holiday-conflict-detector';
 import { aiCategoryMatcher } from './ai-category-matcher';
 import { perplexityResearchService } from './perplexity-research';
 import { PerplexityConflictResearch } from '@/types/perplexity';
+import { calculateSubcategoryOverlap, SUBCATEGORY_TAXONOMY } from '@/lib/constants/subcategory-taxonomy';
+import { subcategoryExtractionService } from './subcategory-extraction';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -99,7 +101,7 @@ export interface DateRecommendation {
 export interface ConflictAnalysisParams {
   city: string;
   category: string;
-  subcategory?: string;
+  subcategory: string;
   expectedAttendees: number;
   startDate: string; // preferred start date
   endDate: string; // preferred end date
@@ -1927,24 +1929,90 @@ export class ConflictAnalysisService {
       const sameCategory = event.category === params.category || 
                           this.isRelatedCategory(event.category, params.category);
       
+      // Check subcategory relationship - user always has subcategory now
+      let subcategoryMatch = false;
+      let inferredSubcategory: string | null = null;
+      
+      if (event.subcategory) {
+        // Competing event has subcategory - use direct matching
+        subcategoryMatch = params.subcategory === event.subcategory || 
+                          this.isRelatedSubcategory(
+                            params.category, params.subcategory,
+                            event.category, event.subcategory
+                          );
+      } else {
+        // Competing event lacks subcategory - try to infer it
+        inferredSubcategory = await this.inferSubcategoryFromEvent(
+          event.title,
+          event.description,
+          event.category
+        );
+        
+        if (inferredSubcategory) {
+          // Use inferred subcategory for matching
+          subcategoryMatch = params.subcategory === inferredSubcategory || 
+                            this.isRelatedSubcategory(
+                              params.category, params.subcategory,
+                              event.category, inferredSubcategory
+                            );
+          // Store inferred subcategory for logging
+          (event as any).inferredSubcategory = inferredSubcategory;
+        } else {
+          // Inference failed - will be handled by restrictive check below
+          subcategoryMatch = false;
+        }
+      }
+      
+      // If competing event has no subcategory and inference failed, require stricter criteria
+      if (!event.subcategory && !inferredSubcategory) {
+        const hasExactCategoryMatch = event.category === params.category;
+        const hasHighAttendance = event.expectedAttendees && 
+                                  event.expectedAttendees >= Math.max(500, params.expectedAttendees * 0.5);
+        const hasVenueMatch = Boolean(event.venue && event.venue.length > 0);
+        
+        if (!hasExactCategoryMatch || (!hasHighAttendance && !hasVenueMatch)) {
+          console.log(`❌ Filtered out "${event.title}": no subcategory, inference failed, and doesn't meet restrictive criteria (category match: ${hasExactCategoryMatch}, high attendance: ${hasHighAttendance}, venue: ${hasVenueMatch})`);
+          continue;
+        }
+        // Allow through with category-only match if restrictive criteria met
+        subcategoryMatch = true;
+      }
+      
       // Use audience overlap analysis to determine if event is significant
       const isSignificant = await this.isEventSignificant(event, params);
       
-      // Check if it has substantial expected attendance
+      // Check attendance threshold
+      const meetsAttendance = this.meetsAttendanceThreshold(event, params.expectedAttendees);
+      
+      // Check if it has substantial expected attendance (for logging)
       const hasAttendance = event.expectedAttendees && event.expectedAttendees > 50;
       
       // More restrictive matching - only include events that are:
-      // 1. Same/related category (primary criteria), OR
-      // 2. Significant events based on audience overlap (secondary criteria)
+      // 1. Same/related category AND (same subcategory OR related subcategory), OR
+      // 2. Significant events based on audience overlap AND related category AND related subcategory
       // This prevents irrelevant events like school balls from conflicting with rock concerts
-      const isCompeting = sameCategory || (isSignificant && this.isRelatedCategory(event.category, params.category));      
-      if (isCompeting) {
+      const isCompeting = (sameCategory && subcategoryMatch) || 
+                         (isSignificant && this.isRelatedCategory(event.category, params.category) && 
+                          this.isRelatedSubcategory(
+                            params.category, params.subcategory,
+                            event.category, event.subcategory || inferredSubcategory || null
+                          ));
+      
+      // Apply attendance threshold check, but allow events without attendance if they have strong signals
+      // Strong signals: venue OR matching subcategory
+      const hasStrongSignal = Boolean(event.venue && event.venue.length > 0) || 
+                             (params.subcategory && (event.subcategory || inferredSubcategory) && subcategoryMatch);
+      const finalIsCompeting = isCompeting && (meetsAttendance || hasStrongSignal);
+      
+      if (finalIsCompeting) {
         filteredEventIds.add(eventId);
         // Store temporal proximity in event metadata for later use in scoring
         (event as any).temporalProximity = temporalProximity;
-        console.log(`✅ Competing event "${event.title}" on ${event.date} (${temporalProximity}): category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, hasAttendance=${hasAttendance}, isCompeting=${isCompeting}`);
+        const reason = meetsAttendance ? 'meets attendance threshold' : 
+                      (event.venue ? 'has venue (strong signal)' : 'has matching subcategory (strong signal)');
+        console.log(`✅ Competing event "${event.title}" on ${event.date} (${temporalProximity}): category="${event.category}", subcategory="${event.subcategory || 'none'}", sameCategory=${sameCategory}, subcategoryMatch=${subcategoryMatch}, isSignificant=${isSignificant}, meetsAttendance=${meetsAttendance}, hasStrongSignal=${hasStrongSignal}, reason="${reason}", isCompeting=${finalIsCompeting}`);
       } else {
-        console.log(`❌ Filtered out "${event.title}" on ${event.date}: category="${event.category}", sameCategory=${sameCategory}, isSignificant=${isSignificant}, hasAttendance=${hasAttendance}`);
+        console.log(`❌ Filtered out "${event.title}" on ${event.date}: category="${event.category}", subcategory="${event.subcategory || 'none'}", sameCategory=${sameCategory}, subcategoryMatch=${subcategoryMatch}, isSignificant=${isSignificant}, meetsAttendance=${meetsAttendance}, hasStrongSignal=${hasStrongSignal}`);
       }
     }
     
@@ -2118,7 +2186,7 @@ export class ConflictAnalysisService {
         console.log(`  "${event.title}": cached score = ${eventScore}`);
       } else {
         // Calculate score using optimized algorithm
-        eventScore = this.calculateEventConflictScore(event, category, config);
+        eventScore = this.calculateEventConflictScore(event, category, config, params?.subcategory);
         
         // Apply temporal proximity multiplier
         // Events on the date have full impact, events before/after have reduced impact
@@ -2137,6 +2205,14 @@ export class ConflictAnalysisService {
         eventScore *= temporalMultiplier;
         if (temporalProximity !== 'on_date') {
           console.log(`  "${event.title}": temporal proximity ${temporalProximity} -> multiplier ${temporalMultiplier.toFixed(2)}x -> adjusted score = ${eventScore.toFixed(2)}`);
+        }
+        
+        // Apply duration multiplier (longer events = higher conflict impact)
+        const eventDuration = this.calculateEventDuration(event);
+        const durationMultiplier = this.getDurationMultiplier(eventDuration);
+        eventScore *= durationMultiplier;
+        if (eventDuration > 1) {
+          console.log(`  "${event.title}": duration ${eventDuration} days -> multiplier ${durationMultiplier.toFixed(2)}x -> adjusted score = ${eventScore.toFixed(2)}`);
         }
         
         // Apply seasonal and holiday multipliers before audience overlap
@@ -2318,14 +2394,19 @@ export class ConflictAnalysisService {
   /**
    * Calculate conflict score for a single event using optimized algorithm
    */
-  private calculateEventConflictScore(event: Event, category: string, config: ConflictSeverityConfig): number {
+  private calculateEventConflictScore(event: Event, category: string, config: ConflictSeverityConfig, plannedSubcategory?: string): number {
     let eventScore = 0;
     
     // Base score for any competing event - increased to catch more events
     eventScore += 5;
     
     // Smart category conflict scoring based on audience overlap
-    const categoryConflictScore = this.calculateCategoryConflictScore(event.category, category);
+    const categoryConflictScore = this.calculateCategoryConflictScore(
+      event.category, 
+      category,
+      event.subcategory,
+      plannedSubcategory
+    );
     eventScore += categoryConflictScore;
     
     // Higher score for events with venues (more significant) - increased
@@ -2366,13 +2447,34 @@ export class ConflictAnalysisService {
       }
     }
     
+    // Apply duration multiplier (longer events = higher conflict impact)
+    const eventDuration = this.calculateEventDuration(event);
+    const durationMultiplier = this.getDurationMultiplier(eventDuration);
+    eventScore *= durationMultiplier;
+    
     return eventScore;
   }
 
   /**
    * Calculate category conflict score based on audience overlap potential
    */
-  private calculateCategoryConflictScore(competingCategory: string, plannedCategory: string): number {
+  private calculateCategoryConflictScore(
+    competingCategory: string, 
+    plannedCategory: string,
+    competingSubcategory?: string | null,
+    plannedSubcategory?: string
+  ): number {
+    // If both have subcategories, use subcategory relationship for more accurate scoring
+    if (plannedSubcategory && competingSubcategory && competingCategory === plannedCategory) {
+      const isRelated = this.isRelatedSubcategory(
+        plannedCategory, plannedSubcategory,
+        competingCategory, competingSubcategory
+      );
+      if (isRelated) {
+        // Same or related subcategory = maximum conflict
+        return 10;
+      }
+    }
     // Define category relationships and audience overlap potential
     const categoryRelationships = {
       // High conflict (same audience, direct competition)
@@ -2864,33 +2966,51 @@ export class ConflictAnalysisService {
         )
       ]) as any;
 
-      // Event is significant if audience overlap is > 10% (lowered threshold for better coverage)
-      const isSignificant = overlap.overlapScore > 0.1;
+      // Event is significant if audience overlap is >= 30% (increased threshold for better filtering)
+      const isSignificantOverlap = overlap.overlapScore >= 0.3;
+      
+      // Also check attendance threshold
+      const meetsAttendance = this.meetsAttendanceThreshold(event, params.expectedAttendees);
+      
+      // Require both overlap and attendance threshold to be met
+      const isSignificant = isSignificantOverlap && meetsAttendance;
       
       if (isSignificant) {
-        console.log(`🎯 Event "${event.title}" is significant: ${(overlap.overlapScore * 100).toFixed(1)}% audience overlap`);
+        console.log(`🎯 Event "${event.title}" is significant: ${(overlap.overlapScore * 100).toFixed(1)}% audience overlap, attendance check: ${meetsAttendance}`);
       } else {
-        console.log(`🚫 Event "${event.title}" is not significant: ${(overlap.overlapScore * 100).toFixed(1)}% audience overlap (too low)`);
+        console.log(`🚫 Event "${event.title}" is not significant: ${(overlap.overlapScore * 100).toFixed(1)}% audience overlap (threshold: 30%), attendance check: ${meetsAttendance}`);
       }
       
       return isSignificant;
     } catch (error) {
-      // Fallback to basic criteria if overlap analysis fails
-      console.log(`⚠️ Audience overlap analysis failed for "${event.title}", using fallback criteria`);
+      // Stricter fallback: require category match + strong signals
+      console.log(`⚠️ Audience overlap analysis failed for "${event.title}", using strict fallback criteria`);
       
-      // Fallback: Use venue + size + category criteria (more inclusive)
+      // Require category match first
+      const hasCategoryMatch = event.category === params.category || 
+                              this.isRelatedCategory(event.category, params.category);
+      
+      if (!hasCategoryMatch) {
+        console.log(`🚫 Event "${event.title}" is not significant (fallback): category mismatch`);
+        return false;
+      }
+      
+      // Require at least one strong signal: venue OR valid attendance OR subcategory match
       const hasVenue = Boolean(event.venue && event.venue.length > 0);
-      const hasSize = Boolean(event.expectedAttendees && event.expectedAttendees > 0);
-      const isSameCategory = event.category === params.category;
-      const hasCategory = Boolean(event.category);
+      const hasValidAttendance = this.meetsAttendanceThreshold(event, params.expectedAttendees);
+      const hasSubcategoryMatch = Boolean(params.subcategory && event.subcategory && 
+                                  this.isRelatedSubcategory(
+                                    params.category, params.subcategory,
+                                    event.category, event.subcategory
+                                  ));
       
-      // More inclusive fallback - consider event significant if it has basic info
-      const isSignificant = hasVenue || hasSize || hasCategory;
+      // Stricter fallback - require venue OR (valid attendance) OR (subcategory match)
+      const isSignificant = hasVenue || hasValidAttendance || hasSubcategoryMatch;
       
       if (isSignificant) {
-        console.log(`🎯 Event "${event.title}" is significant (fallback): venue=${hasVenue}, size=${hasSize}, category=${hasCategory}`);
+        console.log(`🎯 Event "${event.title}" is significant (fallback): venue=${hasVenue}, attendance=${hasValidAttendance}, subcategory=${hasSubcategoryMatch}`);
       } else {
-        console.log(`🚫 Event "${event.title}" is not significant (fallback): missing basic info`);
+        console.log(`🚫 Event "${event.title}" is not significant (fallback): missing strong signals`);
       }
       
       return isSignificant;
@@ -2910,12 +3030,16 @@ export class ConflictAnalysisService {
       'Professional Development': ['Professional Development', 'Business', 'Education'],
       'Networking': ['Networking', 'Business', 'Professional Development'],
       
-      // Entertainment and cultural categories
-      'Entertainment': ['Entertainment', 'Music', 'Arts & Culture'], // Entertainment categories
-      'Arts & Culture': ['Arts & Culture', 'Entertainment', 'Music'], // Cultural events
-      'Music': ['Music', 'Entertainment', 'Arts & Culture'], // Music events
-      'Comedy': ['Comedy', 'Entertainment', 'Arts & Culture'],
-      'Theater': ['Theater', 'Arts & Culture', 'Entertainment'],
+      // Entertainment and cultural categories - more restrictive with sub-groups
+      // Music sub-group: Pop, Rock, Electronic, Hip-Hop, Jazz, Classical
+      // Performing Arts sub-group: Theater, Dance, Comedy
+      // Visual Arts sub-group: Exhibition, Film, Museums
+      // Only match within sub-groups, not across them
+      'Entertainment': ['Entertainment', 'Music'], // Entertainment matches Music, but subcategory filtering will handle sub-groups
+      'Arts & Culture': ['Arts & Culture', 'Entertainment'], // Cultural events
+      'Music': ['Music', 'Entertainment'], // Music events - subcategory filtering will prevent Dance/Exhibition matches
+      'Comedy': ['Comedy', 'Entertainment', 'Arts & Culture'], // Comedy can match both Entertainment and Arts & Culture
+      'Theater': ['Theater', 'Arts & Culture', 'Entertainment'], // Theater can match both
       
       // Sports - only competes with sports
       'Sports': ['Sports'],
@@ -2939,6 +3063,138 @@ export class ConflictAnalysisService {
 
     return relatedCategories[category1]?.includes(category2) || 
            relatedCategories[category2]?.includes(category1) || false;
+  }
+
+  /**
+   * Check if two subcategories are related based on audience overlap
+   * Uses calculateSubcategoryOverlap() with a 30% minimum threshold
+   */
+  private isRelatedSubcategory(
+    category1: string,
+    subcategory1: string | null,
+    category2: string,
+    subcategory2: string | null
+  ): boolean {
+    // If categories don't match, subcategories can't be related
+    if (category1 !== category2) {
+      return false;
+    }
+
+    // If category not in taxonomy, fall back to category-level matching
+    if (!SUBCATEGORY_TAXONOMY[category1]) {
+      return true; // Allow category-level matching
+    }
+
+    // If both have subcategories, use taxonomy overlap
+    if (subcategory1 && subcategory2) {
+      const overlap = calculateSubcategoryOverlap(
+        category1, subcategory1,
+        category2, subcategory2
+      );
+      // Use 30% minimum threshold as specified in plan
+      return overlap >= 0.3;
+    }
+
+    // If only one has subcategory, use category default overlap
+    if (subcategory1 || subcategory2) {
+      const categoryData = SUBCATEGORY_TAXONOMY[category1];
+      if (categoryData) {
+        // Use category's default overlap, but still require 30% minimum
+        return categoryData.defaultOverlap >= 0.3;
+      }
+    }
+
+    // Neither has subcategory - allow category-level matching
+    return true;
+  }
+
+  /**
+   * Check if a competing event meets the attendance threshold relative to the planned event
+   * For large events (10,000+): require competing event >= 1,000 attendees (10% ratio)
+   * For medium events (1,000-10,000): require competing event >= 100 attendees (10% ratio)
+   * For small events (<1,000): require competing event >= 50 attendees (5% ratio)
+   * Returns false if either event lacks attendance data (unless other strong signals exist in isEventSignificant)
+   */
+  private meetsAttendanceThreshold(
+    competingEvent: Event,
+    plannedEventAttendees: number
+  ): boolean {
+    // If planned event has no attendance, be more lenient - check if competing event has attendance
+    if (!plannedEventAttendees || plannedEventAttendees <= 0) {
+      return !!(competingEvent.expectedAttendees && competingEvent.expectedAttendees > 0);
+    }
+
+    // If competing event has no attendance, return false
+    // This will be handled by isEventSignificant fallback which checks for other strong signals (venue, subcategory match)
+    if (!competingEvent.expectedAttendees || competingEvent.expectedAttendees <= 0) {
+      return false;
+    }
+
+    const competingAttendees = competingEvent.expectedAttendees;
+    
+    // Calculate relative ratio
+    const attendanceRatio = competingAttendees / plannedEventAttendees;
+
+    // Determine event size category and apply thresholds
+    if (plannedEventAttendees >= 10000) {
+      // Large events: require competing event >= 1,000 attendees (10% ratio)
+      return competingAttendees >= 1000 && attendanceRatio >= 0.10;
+    } else if (plannedEventAttendees >= 1000) {
+      // Medium events: require competing event >= 100 attendees (10% ratio)
+      return competingAttendees >= 100 && attendanceRatio >= 0.10;
+    } else {
+      // Small events: require competing event >= 50 attendees (5% ratio)
+      return competingAttendees >= 50 && attendanceRatio >= 0.05;
+    }
+  }
+
+  /**
+   * Infer subcategory from competing event title/description when subcategory is missing
+   * Uses existing SubcategoryExtractionService for consistency
+   */
+  private async inferSubcategoryFromEvent(
+    title: string,
+    description: string | undefined,
+    category: string
+  ): Promise<string | null> {
+    try {
+      const result = await subcategoryExtractionService.extractSubcategory(title, description || null, category);
+      
+      // Only return inferred subcategory if confidence is reasonable (>= 0.5)
+      if (result.confidence >= 0.5 && result.subcategory) {
+        console.log(`🔍 Inferred subcategory "${result.subcategory}" for "${title}" (confidence: ${(result.confidence * 100).toFixed(1)}%)`);
+        return result.subcategory;
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn(`⚠️ Subcategory inference failed for "${title}":`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate event duration in days from start and end dates
+   * Returns 1 for single-day events, or number of days for multi-day events
+   */
+  private calculateEventDuration(event: Event): number {
+    if (!event.endDate) return 1; // Single day event
+    const start = new Date(event.date);
+    const end = new Date(event.endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(1, diffDays + 1); // +1 to include both start and end day
+  }
+
+  /**
+   * Get duration multiplier for conflict scoring
+   * Longer events have higher conflict impact
+   */
+  private getDurationMultiplier(duration: number): number {
+    if (duration === 1) return 1.0;      // 1-day event: 1.0x
+    if (duration === 2) return 1.3;      // 2-day event: 1.3x
+    if (duration === 3) return 1.6;      // 3-day event: 1.6x
+    return Math.min(2.0, 1.0 + (duration - 1) * 0.3); // 4+ day event: cap at 2.0x
   }
 
   /**

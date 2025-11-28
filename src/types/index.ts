@@ -58,7 +58,7 @@ export interface ConflictingEvent {
 export interface AnalysisRequest {
   city: string;
   category: string;
-  subcategory?: string;
+  subcategory: string;
   preferredDates: string[];
   expectedAttendees: number;
   dateRange: {
