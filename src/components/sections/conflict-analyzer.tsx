@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge, SuccessBadge, WarningBadge, ErrorBadge, InfoBadge } from "@/components/ui/status-badge";
 import { ProgressIndicator, ProgressStep } from "@/components/ui/progress-indicator";
 import { MetricCard } from "@/components/ui/metric-card";
-import { Calendar, MapPin, Users, Target, AlertTriangle, CheckCircle, Loader2, RefreshCw, Building, BarChart3, Clock, Zap } from "lucide-react";
+import { Calendar, MapPin, Users, Target, AlertTriangle, CheckCircle, Loader2, RefreshCw, Building, BarChart3, Clock, Zap, Music, Gift, Star, TrendingUp, TrendingDown } from "lucide-react";
 import { ConflictAnalysisForm } from "@/components/forms/conflict-analysis-form";
 import { conflictAnalysisService, ConflictAnalysisResult, DateRecommendation } from "@/lib/services/conflict-analysis";
 // OpenAI service is now accessed via API endpoint
@@ -266,6 +266,139 @@ export function ConflictAnalyzer() {
       case 'Medium': return 'text-yellow-600';
       case 'High': return 'text-red-600';
       default: return 'text-gray-600';
+    }
+  };
+
+  // Helper function to deduplicate similar reasoning strings
+  const deduplicateReasoning = (reasoning: string[]): string[] => {
+    const seen = new Set<string>();
+    const normalized = new Map<string, string>();
+    
+    return reasoning.filter((reason) => {
+      // Normalize the string for comparison (lowercase, remove extra spaces, remove punctuation)
+      const normalizedReason = reason
+        .toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      // Check for similar content (fuzzy matching)
+      let isDuplicate = false;
+      for (const [norm, original] of normalized.entries()) {
+        // Check if strings are very similar (80% similarity threshold)
+        const similarity = calculateSimilarity(normalizedReason, norm);
+        if (similarity > 0.8) {
+          isDuplicate = true;
+          // Keep the longer/more detailed version
+          if (reason.length > original.length) {
+            normalized.set(normalizedReason, reason);
+            seen.delete(original);
+            seen.add(reason);
+          }
+          break;
+        }
+      }
+      
+      if (!isDuplicate && !seen.has(normalizedReason)) {
+        seen.add(normalizedReason);
+        normalized.set(normalizedReason, reason);
+        return true;
+      }
+      
+      return false;
+    });
+  };
+
+  // Calculate similarity between two strings (simple Jaccard similarity)
+  const calculateSimilarity = (str1: string, str2: string): number => {
+    const words1 = new Set(str1.split(' '));
+    const words2 = new Set(str2.split(' '));
+    const intersection = new Set([...words1].filter(x => words2.has(x)));
+    const union = new Set([...words1, ...words2]);
+    return intersection.size / union.size;
+  };
+
+  // Sort conflicting events by expected attendance or date proximity
+  const sortConflictingEvents = (events: any[], targetDate?: string) => {
+    return [...events].sort((a, b) => {
+      // First, prioritize by expected attendance (if available)
+      if (a.expectedAttendance && b.expectedAttendance) {
+        return b.expectedAttendance - a.expectedAttendance;
+      }
+      if (a.expectedAttendance) return -1;
+      if (b.expectedAttendance) return 1;
+      
+      // Then, sort by date proximity to target date
+      if (targetDate) {
+        const target = new Date(targetDate).getTime();
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return Math.abs(dateA - target) - Math.abs(dateB - target);
+      }
+      
+      // Finally, sort by date
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+  };
+
+  // Prioritize high-impact holidays
+  const sortHolidays = (holidays: any[]) => {
+    const impactOrder = { high: 0, medium: 1, low: 2 };
+    return [...holidays].sort((a, b) => {
+      return (impactOrder[a.impact as keyof typeof impactOrder] || 3) - 
+             (impactOrder[b.impact as keyof typeof impactOrder] || 3);
+    });
+  };
+
+  // Group reasoning by severity
+  const groupReasoningBySeverity = (reasoning: string[]) => {
+    const groups: { high: string[]; medium: string[]; low: string[]; info: string[] } = {
+      high: [],
+      medium: [],
+      low: [],
+      info: []
+    };
+
+    reasoning.forEach((reason) => {
+      const hasConflict = /(compete|conflict|reduce|avoid|move|clash|competition|festival|event|artist|tour|hurt|impact|attendance)/i.test(reason);
+      const isHighSeverity = /(major|significant|severe|critical|high.*risk|strongly|definitely|must|should.*avoid)/i.test(reason);
+      const isPositive = /(good|great|excellent|optimal|perfect|ideal|recommended|best|favorable|clear|no.*conflict|low.*risk)/i.test(reason) && !hasConflict;
+      
+      if (hasConflict && isHighSeverity) {
+        groups.high.push(reason);
+      } else if (hasConflict) {
+        groups.medium.push(reason);
+      } else if (isPositive) {
+        groups.low.push(reason);
+      } else {
+        groups.info.push(reason);
+      }
+    });
+
+    return [...groups.high, ...groups.medium, ...groups.low, ...groups.info];
+  };
+
+  // Get event type icon
+  const getEventTypeIcon = (type: string) => {
+    switch (type) {
+      case 'festival':
+        return <Gift className="h-3 w-3" />;
+      case 'concert':
+        return <Music className="h-3 w-3" />;
+      case 'cultural_event':
+        return <Star className="h-3 w-3" />;
+      default:
+        return <Calendar className="h-3 w-3" />;
+    }
+  };
+
+  // Get risk level progress percentage
+  const getRiskProgress = (riskLevel: string): number => {
+    switch (riskLevel) {
+      case 'high': return 100;
+      case 'medium': return 60;
+      case 'low': return 20;
+      default: return 0;
     }
   };
 
@@ -645,77 +778,281 @@ export function ConflictAnalyzer() {
                               ));
                             })()}
                             
-                            {/* Consolidated "What This Means For You" section - show once for all recommended dates */}
+                            {/* Consolidated "What This Means For You" section - aggregated from all recommended dates */}
                             {(() => {
-                              // Collect all unique Perplexity research insights from recommended dates
-                              const allPerplexityInsights = analysisResult.recommendedDates
-                                .filter(rec => rec.perplexityResearch?.recommendations)
-                                .map(rec => rec.perplexityResearch!.recommendations);
+                              // Collect all Perplexity research data from recommended dates
+                              const allPerplexityResearch = analysisResult.recommendedDates
+                                .filter(rec => rec.perplexityResearch)
+                                .map(rec => rec.perplexityResearch!);
                               
-                              // Get the most comprehensive insights (prefer the one with most reasoning)
-                              const bestInsights = allPerplexityInsights.length > 0
-                                ? allPerplexityInsights.reduce((best, current) => 
-                                    (current.reasoning?.length || 0) > (best.reasoning?.length || 0) ? current : best
-                                  )
-                                : null;
-                              
-                              if (bestInsights && bestInsights.reasoning && bestInsights.reasoning.length > 0) {
-                                return (
-                                  <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                                    <div className="flex items-center space-x-2 mb-3">
-                                      <span className="text-sm font-semibold text-blue-900">
-                                        💡 What This Means For You:
-                                      </span>
-                                    </div>
-                                    <div className="space-y-2">
-                                      {bestInsights.reasoning.map((reason, idx) => {
-                                        const hasConflict = reason.match(/(compete|conflict|reduce|avoid|move|clash|competition|festival|event|artist|tour|hurt|impact|attendance)/i);
-                                        const isPositive = reason.match(/(good|great|excellent|optimal|perfect|ideal|recommended|best)/i) && !hasConflict;
-                                        
-                                        return (
-                                          <div 
-                                            key={idx} 
-                                            className={`text-sm ${
-                                              hasConflict
-                                                ? 'text-orange-700 bg-orange-50 p-2 rounded border-l-4 border-orange-400' 
-                                                : isPositive
-                                                ? 'text-green-700 bg-green-50 p-2 rounded border-l-4 border-green-400'
-                                                : 'text-blue-700 bg-blue-50 p-2 rounded border-l-4 border-blue-400'
-                                            }`}
-                                          >
-                                            {hasConflict && <span className="font-semibold">⚠️ Conflict: </span>}
-                                            {isPositive && <span className="font-semibold">✓ Good: </span>}
-                                            {!hasConflict && !isPositive && <span className="font-semibold">ℹ️ Info: </span>}
-                                            {reason}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                    
-                                    {/* Show recommended dates from Perplexity if available */}
-                                    {bestInsights.recommendedDates && bestInsights.recommendedDates.length > 0 && (
-                                      <div className="mt-3 p-3 bg-green-100 rounded border border-green-300">
-                                        <div className="text-sm font-semibold text-green-900 mb-2">
-                                          📅 AI-Recommended Dates:
+                              if (allPerplexityResearch.length === 0) return null;
+
+                              // Aggregate all conflicting events from all recommended dates
+                              const allConflictingEvents = Array.from(
+                                new Map(
+                                  allPerplexityResearch
+                                    .flatMap(pr => pr.conflictingEvents)
+                                    .map(event => [event.name + event.date, event])
+                                ).values()
+                              );
+
+                              // Aggregate all local festivals
+                              const allLocalFestivals = Array.from(
+                                new Map(
+                                  allPerplexityResearch
+                                    .flatMap(pr => pr.localFestivals)
+                                    .map(festival => [festival.name + festival.dates, festival])
+                                ).values()
+                              );
+
+                              // Aggregate all holidays and cultural events
+                              const allHolidays = Array.from(
+                                new Map(
+                                  allPerplexityResearch
+                                    .flatMap(pr => pr.holidaysAndCulturalEvents)
+                                    .map(holiday => [holiday.name + holiday.date, holiday])
+                                ).values()
+                              );
+
+                              // Aggregate all touring artists
+                              const allTouringArtists = Array.from(
+                                new Map(
+                                  allPerplexityResearch
+                                    .flatMap(pr => pr.touringArtists)
+                                    .map(artist => [artist.artistName, artist])
+                                ).values()
+                              );
+
+                              // Aggregate all reasoning from all recommendations (deduplicated)
+                              const allReasoning = deduplicateReasoning(
+                                allPerplexityResearch
+                                  .flatMap(pr => pr.recommendations?.reasoning || [])
+                              );
+
+                              // Aggregate all recommended dates
+                              const allRecommendedDates = Array.from(
+                                new Set(
+                                  allPerplexityResearch
+                                    .flatMap(pr => pr.recommendations?.recommendedDates || [])
+                                )
+                              ).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+                              // Calculate average risk level
+                              const riskLevels = allPerplexityResearch
+                                .map(pr => pr.recommendations?.riskLevel)
+                                .filter(Boolean) as string[];
+                              const avgRiskLevel = riskLevels.length > 0
+                                ? riskLevels.reduce((acc, level) => {
+                                    const weights = { high: 3, medium: 2, low: 1 };
+                                    return acc + (weights[level as keyof typeof weights] || 0);
+                                  }, 0) / riskLevels.length
+                                : 0;
+                              const dominantRiskLevel = avgRiskLevel >= 2.5 ? 'high' : avgRiskLevel >= 1.5 ? 'medium' : 'low';
+
+                              // Check if any recommendation suggests moving date
+                              const shouldMoveDate = allPerplexityResearch.some(
+                                pr => pr.recommendations?.shouldMoveDate
+                              );
+
+                              return (
+                                <div className="mt-4 p-4 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-lg border-2 border-blue-200 shadow-sm">
+                                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-blue-200">
+                                    <div className="flex items-center space-x-3">
+                                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <span className="text-xl">🌐</span>
+                                      </div>
+                                      <div>
+                                        <div className="text-base font-semibold text-blue-900">
+                                          Online Research Insights (Summary)
                                         </div>
-                                        <div className="text-sm text-green-800 space-y-1">
-                                          {bestInsights.recommendedDates.slice(0, 5).map((date, idx) => (
-                                            <div key={idx} className="font-medium">
-                                              {new Date(date).toLocaleDateString('en-US', { 
-                                                weekday: 'short', 
-                                                year: 'numeric', 
-                                                month: 'short', 
-                                                day: 'numeric' 
-                                              })}
-                                            </div>
-                                          ))}
+                                        <div className="text-xs text-blue-600 mt-1">
+                                          Aggregated from {allPerplexityResearch.length} recommended date{allPerplexityResearch.length > 1 ? 's' : ''}
                                         </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Summary with count badges */}
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                                    {allConflictingEvents.length > 0 && (
+                                      <div className="p-2 bg-red-50 rounded border border-red-200">
+                                        <div className="text-xs text-red-600 font-medium">Conflicts</div>
+                                        <div className="text-lg font-bold text-red-900">{allConflictingEvents.length}</div>
+                                      </div>
+                                    )}
+                                    {allLocalFestivals.length > 0 && (
+                                      <div className="p-2 bg-purple-50 rounded border border-purple-200">
+                                        <div className="text-xs text-purple-600 font-medium">Festivals</div>
+                                        <div className="text-lg font-bold text-purple-900">{allLocalFestivals.length}</div>
+                                      </div>
+                                    )}
+                                    {allHolidays.length > 0 && (
+                                      <div className="p-2 bg-amber-50 rounded border border-amber-200">
+                                        <div className="text-xs text-amber-600 font-medium">Holidays</div>
+                                        <div className="text-lg font-bold text-amber-900">{allHolidays.length}</div>
+                                      </div>
+                                    )}
+                                    {allTouringArtists.length > 0 && (
+                                      <div className="p-2 bg-pink-50 rounded border border-pink-200">
+                                        <div className="text-xs text-pink-600 font-medium">Artists</div>
+                                        <div className="text-lg font-bold text-pink-900">{allTouringArtists.length}</div>
                                       </div>
                                     )}
                                   </div>
-                                );
-                              }
-                              return null;
+
+                                  {/* Risk Level Summary */}
+                                  <div className={`mb-4 p-3 rounded-lg border-l-4 ${
+                                    dominantRiskLevel === 'high'
+                                      ? 'bg-red-50 border-red-500'
+                                      : dominantRiskLevel === 'medium'
+                                      ? 'bg-orange-50 border-orange-500'
+                                      : 'bg-green-50 border-green-500'
+                                  }`}>
+                                    <div className="flex items-start space-x-3">
+                                      <span className="text-lg">
+                                        {dominantRiskLevel === 'high' ? '🔴' :
+                                         dominantRiskLevel === 'medium' ? '🟡' : '🟢'}
+                                      </span>
+                                      <div className="flex-1">
+                                        <div className="font-semibold text-sm mb-2">
+                                          {shouldMoveDate 
+                                            ? '⚠️ Consider Moving Your Event'
+                                            : '✅ Dates Look Good'}
+                                        </div>
+                                        <div className="mb-2">
+                                          <div className="flex items-center justify-between text-xs mb-1">
+                                            <span className="text-gray-700">Overall Risk Level:</span>
+                                            <span className="font-medium capitalize">{dominantRiskLevel}</span>
+                                          </div>
+                                          <div className="w-full bg-gray-200 rounded-full h-2">
+                                            <div 
+                                              className={`h-2 rounded-full transition-all ${
+                                                dominantRiskLevel === 'high'
+                                                  ? 'bg-red-500'
+                                                  : dominantRiskLevel === 'medium'
+                                                  ? 'bg-orange-500'
+                                                  : 'bg-green-500'
+                                              }`}
+                                              style={{ width: `${getRiskProgress(dominantRiskLevel)}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Aggregated Conflicting Events */}
+                                  {allConflictingEvents.length > 0 && (
+                                    <div className="mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
+                                      <div className="flex items-center space-x-2 mb-3">
+                                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                                        <span className="text-sm font-semibold text-red-900">
+                                          Conflicting Events ({allConflictingEvents.length})
+                                        </span>
+                                      </div>
+                                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                                        {sortConflictingEvents(allConflictingEvents).slice(0, 5).map((event, idx) => (
+                                          <div key={idx} className="p-2 bg-white rounded border border-red-200">
+                                            <div className="flex items-center space-x-2 mb-1">
+                                              {getEventTypeIcon(event.type)}
+                                              <div className="font-medium text-sm text-red-900">{event.name}</div>
+                                            </div>
+                                            <div className="text-xs text-gray-600">
+                                              {new Date(event.date).toLocaleDateString()} • {event.location}
+                                              {event.expectedAttendance && ` • ~${event.expectedAttendance.toLocaleString()} attendees`}
+                                            </div>
+                                          </div>
+                                        ))}
+                                        {allConflictingEvents.length > 5 && (
+                                          <div className="text-xs text-red-600 text-center pt-1">
+                                            +{allConflictingEvents.length - 5} more events
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Aggregated Recommendations - Grouped by severity */}
+                                  {allReasoning.length > 0 && (
+                                    <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                                      <div className="flex items-center space-x-2 mb-3">
+                                        <span className="text-base font-semibold text-blue-900">
+                                          💡 What This Means For You:
+                                        </span>
+                                      </div>
+                                      <div className="space-y-2.5">
+                                        {groupReasoningBySeverity(allReasoning).map((reason, idx) => {
+                                          const hasConflict = /(compete|conflict|reduce|avoid|move|clash|competition|festival|event|artist|tour|hurt|impact|attendance)/i.test(reason);
+                                          const isHighSeverity = /(major|significant|severe|critical|high.*risk|strongly|definitely|must|should.*avoid)/i.test(reason);
+                                          const isPositive = /(good|great|excellent|optimal|perfect|ideal|recommended|best|favorable|clear|no.*conflict|low.*risk)/i.test(reason) && !hasConflict;
+                                          
+                                          return (
+                                            <div 
+                                              key={idx} 
+                                              className={`text-sm p-3 rounded-lg border-l-4 transition-all ${
+                                                hasConflict
+                                                  ? isHighSeverity
+                                                    ? 'text-red-800 bg-red-50 border-red-500 shadow-sm'
+                                                    : 'text-orange-800 bg-orange-50 border-orange-400'
+                                                  : isPositive
+                                                  ? 'text-green-800 bg-green-50 border-green-400'
+                                                  : 'text-blue-800 bg-blue-50 border-blue-400'
+                                              }`}
+                                            >
+                                              <div className="flex items-start space-x-2">
+                                                <span className="text-base flex-shrink-0 mt-0.5">
+                                                  {hasConflict 
+                                                    ? (isHighSeverity ? '🔴' : '⚠️')
+                                                    : isPositive 
+                                                    ? '✅' 
+                                                    : 'ℹ️'}
+                                                </span>
+                                                <div className="flex-1">
+                                                  {hasConflict && (
+                                                    <span className="font-semibold block mb-1">
+                                                      {isHighSeverity ? 'Critical Conflict: ' : 'Conflict: '}
+                                                    </span>
+                                                  )}
+                                                  {isPositive && (
+                                                    <span className="font-semibold block mb-1">Good News: </span>
+                                                  )}
+                                                  <span>{reason}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                      
+                                      {/* Show aggregated recommended dates */}
+                                      {allRecommendedDates.length > 0 && (
+                                        <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
+                                          <div className="text-sm font-semibold text-green-900 mb-2">
+                                            📅 AI-Recommended Dates:
+                                          </div>
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {allRecommendedDates.slice(0, 6).map((date, idx) => (
+                                              <div 
+                                                key={idx} 
+                                                className="p-2 bg-white rounded border border-green-200"
+                                              >
+                                                <div className="font-medium text-sm text-green-900">
+                                                  {new Date(date).toLocaleDateString('en-US', { 
+                                                    weekday: 'short', 
+                                                    year: 'numeric', 
+                                                    month: 'short', 
+                                                    day: 'numeric' 
+                                                  })}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
                             })()}
                           </>
                         ) : (
@@ -1049,69 +1386,326 @@ export function ConflictAnalyzer() {
 
                                 {/* Perplexity Research Insights */}
                                 {recommendation.perplexityResearch && (
-                                  <div className="mt-3 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
-                                    <div className="flex items-center space-x-2 mb-2">
-                                      <span className="text-sm font-medium text-blue-800">
-                                        🌐 Online Research Insights
-                                      </span>
+                                  <div className="mt-3 p-4 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-lg border-2 border-blue-200 shadow-sm">
+                                    {/* Header with metadata and risk level progress bar */}
+                                    <div className="flex items-center justify-between mb-4 pb-3 border-b border-blue-200">
+                                      <div className="flex items-center space-x-3">
+                                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                          <span className="text-xl">🌐</span>
+                                        </div>
+                                        <div>
+                                          <div className="text-base font-semibold text-blue-900">
+                                            Online Research Insights
+                                          </div>
+                                          {recommendation.perplexityResearch.researchMetadata && (
+                                            <div className="flex items-center space-x-2 mt-1">
+                                              <span className="text-xs text-blue-600">
+                                                {recommendation.perplexityResearch.researchMetadata.sourcesUsed || 0} sources
+                                              </span>
+                                              {recommendation.perplexityResearch.researchMetadata.timestamp && (
+                                                <>
+                                                  <span className="text-blue-400">•</span>
+                                                  <span className="text-xs text-blue-600">
+                                                    {new Date(recommendation.perplexityResearch.researchMetadata.timestamp).toLocaleDateString()}
+                                                  </span>
+                                                </>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
                                       {recommendation.perplexityResearch.researchMetadata?.confidence && (
-                                        <span className={`text-xs px-2 py-1 rounded ${
+                                        <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${
                                           recommendation.perplexityResearch.researchMetadata.confidence === 'high' 
-                                            ? 'bg-green-100 text-green-800'
+                                            ? 'bg-green-100 text-green-800 border border-green-300'
                                             : recommendation.perplexityResearch.researchMetadata.confidence === 'medium'
-                                            ? 'bg-yellow-100 text-yellow-800'
-                                            : 'bg-gray-100 text-gray-800'
+                                            ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                                            : 'bg-gray-100 text-gray-800 border border-gray-300'
                                         }`}>
                                           {recommendation.perplexityResearch.researchMetadata.confidence} confidence
                                         </span>
                                       )}
                                     </div>
-                                    
-                                    {/* Touring Artists */}
-                                    {recommendation.perplexityResearch.touringArtists.length > 0 && (
-                                      <div className="mb-2">
-                                        <div className="text-xs font-medium text-blue-700 mb-1">
-                                          Touring Artists:
+
+                                    {/* Risk Level Summary with Progress Bar */}
+                                    {recommendation.perplexityResearch.recommendations && (
+                                      <div className={`mb-4 p-3 rounded-lg border-l-4 ${
+                                        recommendation.perplexityResearch.recommendations.riskLevel === 'high'
+                                          ? 'bg-red-50 border-red-500'
+                                          : recommendation.perplexityResearch.recommendations.riskLevel === 'medium'
+                                          ? 'bg-orange-50 border-orange-500'
+                                          : 'bg-green-50 border-green-500'
+                                      }`}>
+                                        <div className="flex items-start space-x-3">
+                                          <span className="text-lg">
+                                            {recommendation.perplexityResearch.recommendations.riskLevel === 'high' ? '🔴' :
+                                             recommendation.perplexityResearch.recommendations.riskLevel === 'medium' ? '🟡' : '🟢'}
+                                          </span>
+                                          <div className="flex-1">
+                                            <div className="font-semibold text-sm mb-2">
+                                              {recommendation.perplexityResearch.recommendations.shouldMoveDate 
+                                                ? '⚠️ Consider Moving Your Event'
+                                                : '✅ Date Looks Good'}
+                                            </div>
+                                            <div className="mb-2">
+                                              <div className="flex items-center justify-between text-xs mb-1">
+                                                <span className="text-gray-700">Risk Level:</span>
+                                                <span className="font-medium capitalize">{recommendation.perplexityResearch.recommendations.riskLevel}</span>
+                                              </div>
+                                              {/* Progress bar for risk level */}
+                                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                                <div 
+                                                  className={`h-2 rounded-full transition-all ${
+                                                    recommendation.perplexityResearch.recommendations.riskLevel === 'high'
+                                                      ? 'bg-red-500'
+                                                      : recommendation.perplexityResearch.recommendations.riskLevel === 'medium'
+                                                      ? 'bg-orange-500'
+                                                      : 'bg-green-500'
+                                                  }`}
+                                                  style={{ width: `${getRiskProgress(recommendation.perplexityResearch.recommendations.riskLevel)}%` }}
+                                                />
+                                              </div>
+                                            </div>
+                                          </div>
                                         </div>
-                                        <div className="text-xs text-blue-600">
-                                          {recommendation.perplexityResearch.touringArtists.map((artist, idx) => (
-                                            <div key={idx}>
-                                              {artist.artistName} - {artist.locations.join(', ')}
+                                      </div>
+                                    )}
+
+                                    {/* Conflicting Events - Sorted and with icons */}
+                                    {recommendation.perplexityResearch.conflictingEvents.length > 0 && (
+                                      <div className="mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
+                                        <div className="flex items-center space-x-2 mb-3">
+                                          <AlertTriangle className="h-4 w-4 text-red-600" />
+                                          <span className="text-sm font-semibold text-red-900">
+                                            Conflicting Events ({recommendation.perplexityResearch.conflictingEvents.length})
+                                          </span>
+                                        </div>
+                                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                                          {sortConflictingEvents(
+                                            recommendation.perplexityResearch.conflictingEvents,
+                                            recommendation.startDate
+                                          ).map((event, idx) => (
+                                            <div key={idx} className="p-2.5 bg-white rounded border border-red-200 hover:border-red-300 transition-colors">
+                                              <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                  <div className="flex items-center space-x-2 mb-1">
+                                                    {getEventTypeIcon(event.type)}
+                                                    <div className="font-medium text-sm text-red-900">{event.name}</div>
+                                                  </div>
+                                                  <div className="text-xs text-gray-600 space-y-0.5">
+                                                    <div className="flex items-center space-x-2">
+                                                      <Calendar className="h-3 w-3" />
+                                                      <span>{new Date(event.date).toLocaleDateString('en-US', { 
+                                                        weekday: 'short', 
+                                                        year: 'numeric', 
+                                                        month: 'short', 
+                                                        day: 'numeric' 
+                                                      })}</span>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                      <MapPin className="h-3 w-3" />
+                                                      <span>{event.location}</span>
+                                                    </div>
+                                                    {event.expectedAttendance && (
+                                                      <div className="flex items-center space-x-2">
+                                                        <Users className="h-3 w-3" />
+                                                        <span>~{event.expectedAttendance.toLocaleString()} attendees</span>
+                                                      </div>
+                                                    )}
+                                                    {event.description && (
+                                                      <div className="text-xs text-gray-500 mt-1 italic">{event.description}</div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                                <div className="flex flex-col items-end space-y-1 ml-3">
+                                                  <span className={`text-xs px-2 py-1 rounded capitalize flex items-center space-x-1 ${
+                                                    event.type === 'festival' ? 'bg-purple-100 text-purple-800' :
+                                                    event.type === 'concert' ? 'bg-pink-100 text-pink-800' :
+                                                    event.type === 'cultural_event' ? 'bg-blue-100 text-blue-800' :
+                                                    'bg-gray-100 text-gray-800'
+                                                  }`}>
+                                                    {getEventTypeIcon(event.type)}
+                                                    <span>{event.type.replace('_', ' ')}</span>
+                                                  </span>
+                                                  {event.confidence && (
+                                                    <span className={`text-xs px-2 py-0.5 rounded ${
+                                                      event.confidence === 'high' ? 'bg-green-100 text-green-700' :
+                                                      event.confidence === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                                      'bg-gray-100 text-gray-700'
+                                                    }`}>
+                                                      {event.confidence}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
                                             </div>
                                           ))}
                                         </div>
                                       </div>
                                     )}
 
-                                    {/* Recommendations */}
-                                    {recommendation.perplexityResearch.recommendations && (
-                                      <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                                        <div className="flex items-center space-x-2 mb-2">
-                                          <span className="text-sm font-semibold text-blue-900">
-                                            💡 What This Means For You:
+                                    {/* Local Festivals */}
+                                    {recommendation.perplexityResearch.localFestivals.length > 0 && (
+                                      <div className="mb-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                        <div className="flex items-center space-x-2 mb-3">
+                                          <Gift className="h-4 w-4 text-purple-600" />
+                                          <span className="text-sm font-semibold text-purple-900">
+                                            Local Festivals ({recommendation.perplexityResearch.localFestivals.length})
                                           </span>
                                         </div>
                                         <div className="space-y-2">
-                                          {recommendation.perplexityResearch.recommendations.reasoning.map((reason, idx) => {
-                                            // Detect if this is a conflict/warning or a positive recommendation
-                                            const hasConflict = reason.match(/(compete|conflict|reduce|avoid|move|clash|competition|festival|event|artist|tour|hurt|impact|attendance)/i);
-                                            const isPositive = reason.match(/(good|great|excellent|optimal|perfect|ideal|recommended|best)/i) && !hasConflict;
+                                          {recommendation.perplexityResearch.localFestivals.map((festival, idx) => (
+                                            <div key={idx} className="p-2 bg-white rounded border border-purple-200">
+                                              <div className="font-medium text-sm text-purple-900">{festival.name}</div>
+                                              <div className="text-xs text-gray-600 mt-1">
+                                                {festival.dates} • {festival.location}
+                                                {festival.type && ` • ${festival.type}`}
+                                              </div>
+                                              {festival.description && (
+                                                <div className="text-xs text-gray-500 mt-1">{festival.description}</div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Holidays & Cultural Events - Sorted by impact */}
+                                    {recommendation.perplexityResearch.holidaysAndCulturalEvents.length > 0 && (
+                                      <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                                        <div className="flex items-center space-x-2 mb-3">
+                                          <Calendar className="h-4 w-4 text-amber-600" />
+                                          <span className="text-sm font-semibold text-amber-900">
+                                            Holidays & Cultural Events ({recommendation.perplexityResearch.holidaysAndCulturalEvents.length})
+                                          </span>
+                                        </div>
+                                        <div className="space-y-2">
+                                          {sortHolidays(recommendation.perplexityResearch.holidaysAndCulturalEvents).map((holiday, idx) => (
+                                            <div key={idx} className={`p-2 bg-white rounded border-l-4 ${
+                                              holiday.impact === 'high' ? 'border-red-400' :
+                                              holiday.impact === 'medium' ? 'border-orange-400' :
+                                              'border-yellow-400'
+                                            }`}>
+                                              <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                  <div className="font-medium text-sm text-amber-900">{holiday.name}</div>
+                                                  <div className="text-xs text-gray-600 mt-1">
+                                                    {new Date(holiday.date).toLocaleDateString('en-US', { 
+                                                      weekday: 'long', 
+                                                      year: 'numeric', 
+                                                      month: 'long', 
+                                                      day: 'numeric' 
+                                                    })} • {holiday.type.replace('_', ' ')}
+                                                  </div>
+                                                  {holiday.description && (
+                                                    <div className="text-xs text-gray-500 mt-1">{holiday.description}</div>
+                                                  )}
+                                                </div>
+                                                <span className={`text-xs px-2 py-1 rounded ml-2 ${
+                                                  holiday.impact === 'high' ? 'bg-red-100 text-red-800' :
+                                                  holiday.impact === 'medium' ? 'bg-orange-100 text-orange-800' :
+                                                  'bg-yellow-100 text-yellow-800'
+                                                }`}>
+                                                  {holiday.impact} impact
+                                                </span>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Touring Artists - Improved */}
+                                    {recommendation.perplexityResearch.touringArtists.length > 0 && (
+                                      <div className="mb-4 p-3 bg-pink-50 rounded-lg border border-pink-200">
+                                        <div className="flex items-center space-x-2 mb-3">
+                                          <Music className="h-4 w-4 text-pink-600" />
+                                          <span className="text-sm font-semibold text-pink-900">
+                                            Touring Artists ({recommendation.perplexityResearch.touringArtists.length})
+                                          </span>
+                                        </div>
+                                        <div className="space-y-2">
+                                          {recommendation.perplexityResearch.touringArtists.map((artist, idx) => (
+                                            <div key={idx} className="p-2.5 bg-white rounded border border-pink-200">
+                                              <div className="font-medium text-sm text-pink-900 mb-1">{artist.artistName}</div>
+                                              <div className="text-xs text-gray-600 space-y-1">
+                                                <div className="flex items-center space-x-2">
+                                                  <MapPin className="h-3 w-3" />
+                                                  <span>{artist.locations.join(', ')}</span>
+                                                </div>
+                                                {artist.tourDates && artist.tourDates.length > 0 && (
+                                                  <div className="flex items-center space-x-2">
+                                                    <Calendar className="h-3 w-3" />
+                                                    <span>
+                                                      {artist.tourDates.slice(0, 3).map(d => new Date(d).toLocaleDateString('en-US', { 
+                                                        month: 'short', 
+                                                        day: 'numeric' 
+                                                      })).join(', ')}
+                                                      {artist.tourDates.length > 3 && ` +${artist.tourDates.length - 3} more`}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                                {artist.genre && (
+                                                  <div className="text-xs bg-pink-100 text-pink-800 px-2 py-0.5 rounded inline-block mt-1">
+                                                    {artist.genre}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Recommendations - Grouped by severity and deduplicated */}
+                                    {recommendation.perplexityResearch.recommendations && (
+                                      <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                                        <div className="flex items-center space-x-2 mb-3">
+                                          <span className="text-base font-semibold text-blue-900">
+                                            💡 What This Means For You:
+                                          </span>
+                                        </div>
+                                        <div className="space-y-2.5">
+                                          {groupReasoningBySeverity(
+                                            deduplicateReasoning(recommendation.perplexityResearch.recommendations.reasoning)
+                                          ).map((reason, idx) => {
+                                            const hasConflict = /(compete|conflict|reduce|avoid|move|clash|competition|festival|event|artist|tour|hurt|impact|attendance)/i.test(reason);
+                                            const isHighSeverity = /(major|significant|severe|critical|high.*risk|strongly|definitely|must|should.*avoid)/i.test(reason);
+                                            const isPositive = /(good|great|excellent|optimal|perfect|ideal|recommended|best|favorable|clear|no.*conflict|low.*risk)/i.test(reason) && !hasConflict;
                                             
                                             return (
                                               <div 
                                                 key={idx} 
-                                                className={`text-sm ${
+                                                className={`text-sm p-3 rounded-lg border-l-4 transition-all ${
                                                   hasConflict
-                                                    ? 'text-orange-700 bg-orange-50 p-2 rounded border-l-4 border-orange-400' 
+                                                    ? isHighSeverity
+                                                      ? 'text-red-800 bg-red-50 border-red-500 shadow-sm'
+                                                      : 'text-orange-800 bg-orange-50 border-orange-400'
                                                     : isPositive
-                                                    ? 'text-green-700 bg-green-50 p-2 rounded border-l-4 border-green-400'
-                                                    : 'text-blue-700 bg-blue-50 p-2 rounded border-l-4 border-blue-400'
+                                                    ? 'text-green-800 bg-green-50 border-green-400'
+                                                    : 'text-blue-800 bg-blue-50 border-blue-400'
                                                 }`}
                                               >
-                                                {hasConflict && <span className="font-semibold">⚠️ Conflict: </span>}
-                                                {isPositive && <span className="font-semibold">✓ Good: </span>}
-                                                {!hasConflict && !isPositive && <span className="font-semibold">ℹ️ Info: </span>}
-                                                {reason}
+                                                <div className="flex items-start space-x-2">
+                                                  <span className="text-base flex-shrink-0 mt-0.5">
+                                                    {hasConflict 
+                                                      ? (isHighSeverity ? '🔴' : '⚠️')
+                                                      : isPositive 
+                                                      ? '✅' 
+                                                      : 'ℹ️'}
+                                                  </span>
+                                                  <div className="flex-1">
+                                                    {hasConflict && (
+                                                      <span className="font-semibold block mb-1">
+                                                        {isHighSeverity ? 'Critical Conflict: ' : 'Conflict: '}
+                                                      </span>
+                                                    )}
+                                                    {isPositive && (
+                                                      <span className="font-semibold block mb-1">Good News: </span>
+                                                    )}
+                                                    <span>{reason}</span>
+                                                  </div>
+                                                </div>
                                               </div>
                                             );
                                           })}
@@ -1121,19 +1715,24 @@ export function ConflictAnalyzer() {
                                         {recommendation.perplexityResearch.recommendations.shouldMoveDate && 
                                          recommendation.perplexityResearch.recommendations.recommendedDates && 
                                          recommendation.perplexityResearch.recommendations.recommendedDates.length > 0 && (
-                                          <div className="mt-3 p-2 bg-green-100 rounded border border-green-300">
-                                            <div className="text-xs font-semibold text-green-900 mb-1">
-                                              📅 Better Dates:
+                                          <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
+                                            <div className="text-sm font-semibold text-green-900 mb-2">
+                                              📅 Better Alternative Dates:
                                             </div>
-                                            <div className="text-xs text-green-800">
-                                              {recommendation.perplexityResearch.recommendations.recommendedDates.slice(0, 3).map((date, idx) => (
-                                                <div key={idx} className="font-medium">
-                                                  {new Date(date).toLocaleDateString('en-US', { 
-                                                    weekday: 'short', 
-                                                    year: 'numeric', 
-                                                    month: 'short', 
-                                                    day: 'numeric' 
-                                                  })}
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                              {recommendation.perplexityResearch.recommendations.recommendedDates.slice(0, 6).map((date, idx) => (
+                                                <div 
+                                                  key={idx} 
+                                                  className="p-2 bg-white rounded border border-green-200 hover:border-green-300 transition-colors"
+                                                >
+                                                  <div className="font-medium text-sm text-green-900">
+                                                    {new Date(date).toLocaleDateString('en-US', { 
+                                                      weekday: 'short', 
+                                                      year: 'numeric', 
+                                                      month: 'short', 
+                                                      day: 'numeric' 
+                                                    })}
+                                                  </div>
                                                 </div>
                                               ))}
                                             </div>
