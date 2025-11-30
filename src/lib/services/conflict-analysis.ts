@@ -566,15 +566,46 @@ export class ConflictAnalysisService {
         return b.conflictScore - a.conflictScore;
       }).slice(0, 5); // Show up to 5 high-risk dates
 
-      // Remove any dates that are already in recommended dates to avoid duplicates
-      const recommendedDateKeys = new Set(recommendedDates.map(rec => `${rec.startDate}-${rec.endDate}`));
-      const filteredHighRiskDates = highRiskDates.filter(rec => {
-        const isUserPreferred = rec.startDate === params.startDate && rec.endDate === params.endDate;
-        const isDuplicate = recommendedDateKeys.has(`${rec.startDate}-${rec.endDate}`);
-        // Always include user's preferred dates, even if they appear in both categories
-        return isUserPreferred || !isDuplicate;
+      // Remove any dates that overlap with recommended dates to avoid duplicates
+      // Helper function to check if two date ranges overlap
+      const datesOverlap = (start1: string, end1: string, start2: string, end2: string): boolean => {
+        const d1Start = new Date(start1);
+        const d1End = new Date(end1);
+        const d2Start = new Date(start2);
+        const d2End = new Date(end2);
+        return d1Start <= d2End && d1End >= d2Start;
+      };
+      
+      const filteredHighRiskDates = highRiskDates.filter(highRisk => {
+        const isUserPreferred = highRisk.startDate === params.startDate && highRisk.endDate === params.endDate;
+        // Always include user's preferred dates, even if they overlap with recommended dates
+        if (isUserPreferred) return true;
+        
+        // Check if this high-risk date overlaps with any recommended date
+        const overlapsWithRecommended = recommendedDates.some(rec => 
+          datesOverlap(highRisk.startDate, highRisk.endDate, rec.startDate, rec.endDate)
+        );
+        
+        if (overlapsWithRecommended) {
+          console.log(`🚫 Removing high-risk date ${highRisk.startDate} to ${highRisk.endDate} - overlaps with recommended date`);
+        }
+        
+        return !overlapsWithRecommended;
       });
-      console.log(`Final results: ${recommendedDates.length} low risk dates, ${filteredHighRiskDates.length} high risk dates`);
+      
+      // Also filter recommended dates that overlap with high-risk dates (defensive check)
+      const filteredRecommendedDates = recommendedDates.filter(rec => {
+        const overlapsWithHighRisk = filteredHighRiskDates.some(highRisk => 
+          datesOverlap(rec.startDate, rec.endDate, highRisk.startDate, highRisk.endDate)
+        );
+        
+        if (overlapsWithHighRisk) {
+          console.log(`🚫 Removing recommended date ${rec.startDate} to ${rec.endDate} - overlaps with high-risk date`);
+        }
+        
+        return !overlapsWithHighRisk;
+      });
+      console.log(`Final results: ${filteredRecommendedDates.length} low risk dates (${recommendedDates.length} before overlap filtering), ${filteredHighRiskDates.length} high risk dates`);
       console.log(`User's preferred dates (${params.startDate} to ${params.endDate}) included: ${filteredHighRiskDates.some(d => d.startDate === params.startDate && d.endDate === params.endDate)}`);
       console.log(`High-risk dates scores:`, filteredHighRiskDates.map(d => `${d.startDate}: ${d.conflictScore} (${d.riskLevel})`));
 
@@ -642,7 +673,7 @@ export class ConflictAnalysisService {
 
       // Collect all Perplexity events from date recommendations and add to allEvents
       const allPerplexityEvents: Event[] = [];
-      [...recommendedDates, ...finalHighRiskDates].forEach(rec => {
+      [...filteredRecommendedDates, ...finalHighRiskDates].forEach(rec => {
         if (rec.perplexityResearch) {
           // Extract events from Perplexity research
           // Pass date range to filter out events outside the requested range
@@ -690,7 +721,7 @@ export class ConflictAnalysisService {
       console.log(`🎯 Conflict analysis completed in ${totalTime}ms (${(totalTime/1000).toFixed(1)}s)`);
 
       return {
-        recommendedDates,
+        recommendedDates: filteredRecommendedDates,
         highRiskDates: finalHighRiskDates,
         allEvents: allEventsWithPerplexity, // Include Perplexity events in allEvents for UI display
         analysisDate: new Date().toISOString(),
@@ -1995,19 +2026,36 @@ export class ConflictAnalysisService {
         }
       }
       
-      // If competing event has no subcategory and inference failed, require stricter criteria
+      // If competing event has no subcategory and inference failed, use more lenient criteria
+      // For exact category matches, be more permissive - same-category events should compete
       if (!event.subcategory && !inferredSubcategory) {
         const hasExactCategoryMatch = event.category === params.category;
         const hasHighAttendance = event.expectedAttendees && 
                                   event.expectedAttendees >= Math.max(500, params.expectedAttendees * 0.5);
         const hasVenueMatch = Boolean(event.venue && event.venue.length > 0);
+        const hasTitleMatch = Boolean(event.title && event.title.length > 0);
         
-        if (!hasExactCategoryMatch || (!hasHighAttendance && !hasVenueMatch)) {
-          console.log(`❌ Filtered out "${event.title}": no subcategory, inference failed, and doesn't meet restrictive criteria (category match: ${hasExactCategoryMatch}, high attendance: ${hasHighAttendance}, venue: ${hasVenueMatch})`);
-          continue;
+        // For exact category matches, allow through if:
+        // 1. Exact category match AND (high attendance OR venue OR title exists)
+        // This ensures technology conferences like WebExpo are included even without subcategory
+        if (hasExactCategoryMatch && (hasHighAttendance || hasVenueMatch || hasTitleMatch)) {
+          // Allow through with category-only match - treat as potential subcategory match
+          subcategoryMatch = true;
+          console.log(`✅ Allowing "${event.title}" through: exact category match (${event.category}) with signal (attendance: ${hasHighAttendance}, venue: ${hasVenueMatch}, title: ${hasTitleMatch})`);
+        } else if (!hasExactCategoryMatch) {
+          // For non-exact category matches, require stricter criteria
+          if (!hasHighAttendance && !hasVenueMatch) {
+            console.log(`❌ Filtered out "${event.title}": no subcategory, inference failed, category mismatch (${event.category} vs ${params.category}), and doesn't meet restrictive criteria (high attendance: ${hasHighAttendance}, venue: ${hasVenueMatch})`);
+            continue;
+          }
+          // Allow through if it has high attendance or venue even without exact category match
+          subcategoryMatch = true;
+        } else {
+          // Exact category match but no signals - still allow through for same-category events
+          // This is important for conferences and events that may not have attendance/venue data
+          subcategoryMatch = true;
+          console.log(`✅ Allowing "${event.title}" through: exact category match (${event.category}) - treating as potential conflict`);
         }
-        // Allow through with category-only match if restrictive criteria met
-        subcategoryMatch = true;
       }
 
       // Categorize events: obvious relevant, obvious irrelevant, or edge cases
@@ -2140,9 +2188,10 @@ export class ConflictAnalysisService {
                           ));
       
       // Apply attendance threshold check, but allow events without attendance if they have strong signals
-      // Strong signals: venue OR matching subcategory
+      // Strong signals: venue OR matching subcategory OR exact category match (for events like conferences)
       const hasStrongSignal = Boolean(event.venue && event.venue.length > 0) || 
-                             (params.subcategory && (event.subcategory || inferredSubcategory) && subcategoryMatch);
+                             (params.subcategory && (event.subcategory || inferredSubcategory) && subcategoryMatch) ||
+                             (event.category === params.category && sameCategory); // Exact category match is a strong signal
       const finalIsCompeting = isCompeting && (meetsAttendance || hasStrongSignal);
       
       if (finalIsCompeting) {
@@ -2150,7 +2199,9 @@ export class ConflictAnalysisService {
         // Store temporal proximity in event metadata for later use in scoring
         (event as any).temporalProximity = temporalProximity;
         const reason = meetsAttendance ? 'meets attendance threshold' : 
-                      (event.venue ? 'has venue (strong signal)' : 'has matching subcategory (strong signal)');
+                      (event.venue ? 'has venue (strong signal)' : 
+                      (params.subcategory && (event.subcategory || inferredSubcategory) && subcategoryMatch) ? 'has matching subcategory (strong signal)' :
+                      (event.category === params.category) ? 'exact category match (strong signal)' : 'has strong signal');
         console.log(`✅ Competing event "${event.title}" on ${event.date} (${temporalProximity}): category="${event.category}", subcategory="${event.subcategory || 'none'}", sameCategory=${sameCategory}, subcategoryMatch=${subcategoryMatch}, isSignificant=${isSignificant}, meetsAttendance=${meetsAttendance}, hasStrongSignal=${hasStrongSignal}, reason="${reason}", isCompeting=${finalIsCompeting}`);
       } else {
         console.log(`❌ Filtered out "${event.title}" on ${event.date}: category="${event.category}", subcategory="${event.subcategory || 'none'}", sameCategory=${sameCategory}, subcategoryMatch=${subcategoryMatch}, isSignificant=${isSignificant}, meetsAttendance=${meetsAttendance}, hasStrongSignal=${hasStrongSignal}`);

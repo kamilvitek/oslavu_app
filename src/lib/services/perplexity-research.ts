@@ -817,8 +817,21 @@ IMPORTANT GUIDELINES:
    */
   private validateAndParseResponse(data: any): PerplexityConflictResearch {
     try {
-      // Validate with Zod schema
-      const validated = PerplexityConflictResearchSchema.parse(data);
+      // Ensure data has required structure with defaults
+      const safeData = {
+        conflictingEvents: Array.isArray(data?.conflictingEvents) ? data.conflictingEvents : [],
+        touringArtists: Array.isArray(data?.touringArtists) ? data.touringArtists : [],
+        localFestivals: Array.isArray(data?.localFestivals) ? data.localFestivals : [],
+        holidaysAndCulturalEvents: Array.isArray(data?.holidaysAndCulturalEvents) ? data.holidaysAndCulturalEvents : [],
+        recommendations: data?.recommendations || {
+          riskLevel: 'low' as const,
+          reasoning: [],
+          recommendedDates: []
+        }
+      };
+
+      // Validate with Zod schema (using safe defaults)
+      const validated = PerplexityConflictResearchSchema.parse(safeData);
       
       // Normalize dates and add confidence scores
       return {
@@ -844,8 +857,8 @@ IMPORTANT GUIDELINES:
         recommendations: this.transformRecommendationsForUser(validated.recommendations),
       };
     } catch (error) {
-      console.error('Failed to validate Perplexity response:', error);
-      // Return safe default
+      console.warn('⚠️ Failed to validate Perplexity response, using safe defaults:', error instanceof Error ? error.message : 'Unknown error');
+      // Return safe default - don't break the analysis
       return this.getDefaultResponse();
     }
   }

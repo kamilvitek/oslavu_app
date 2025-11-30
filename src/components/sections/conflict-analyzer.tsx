@@ -444,8 +444,43 @@ export function ConflictAnalyzer() {
                         {analysisResult.recommendedDates.length > 0 ? (
                           <>
                             {(() => {
-                              // Consolidate consecutive recommended dates into ranges
-                              const sortedDates = [...analysisResult.recommendedDates].sort((a, b) => 
+                              // Helper function to check if two date ranges overlap
+                              const datesOverlap = (start1: Date, end1: Date, start2: Date, end2: Date): boolean => {
+                                // Check if ranges overlap (including same dates)
+                                return start1 <= end2 && end1 >= start2;
+                              };
+                              
+                              // Helper function to check if two date ranges overlap or are adjacent
+                              const datesOverlapOrAdjacent = (start1: Date, end1: Date, start2: Date, end2: Date): boolean => {
+                                // Check if ranges overlap
+                                if (datesOverlap(start1, end1, start2, end2)) return true;
+                                // Check if they're adjacent (within 1 day of each other)
+                                const daysBetween = Math.floor((start2.getTime() - end1.getTime()) / (1000 * 60 * 60 * 24));
+                                return daysBetween <= 1;
+                              };
+                              
+                              // CRITICAL: Filter out recommended dates that overlap with any high-risk dates
+                              // This ensures no recommended date appears if it overlaps with a high-risk date
+                              const filteredRecommendedDates = analysisResult.recommendedDates.filter(rec => {
+                                const recStart = new Date(rec.startDate);
+                                const recEnd = new Date(rec.endDate);
+                                
+                                // Check if this recommended date overlaps with any high-risk date
+                                const overlapsWithHighRisk = analysisResult.highRiskDates.some(highRisk => {
+                                  const highRiskStart = new Date(highRisk.startDate);
+                                  const highRiskEnd = new Date(highRisk.endDate);
+                                  return datesOverlap(recStart, recEnd, highRiskStart, highRiskEnd);
+                                });
+                                
+                                if (overlapsWithHighRisk) {
+                                  console.log(`🚫 Filtering out recommended date ${rec.startDate} to ${rec.endDate} - overlaps with high-risk date`);
+                                }
+                                
+                                return !overlapsWithHighRisk;
+                              });
+                              
+                              // Consolidate consecutive recommended dates into ranges, excluding high-risk dates
+                              const sortedDates = [...filteredRecommendedDates].sort((a, b) => 
                                 new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
                               );
                               
@@ -457,6 +492,16 @@ export function ConflictAnalyzer() {
                                 maxConflictScore: number;
                                 minConflictScore: number;
                               }> = [];
+                              
+                              // Helper function to check if there are high-risk dates between two dates
+                              const hasHighRiskDatesBetween = (rangeEnd: Date, nextStart: Date): boolean => {
+                                return analysisResult.highRiskDates.some(highRisk => {
+                                  const highRiskStart = new Date(highRisk.startDate);
+                                  const highRiskEnd = new Date(highRisk.endDate);
+                                  // Check if high-risk date overlaps with or falls between the gap
+                                  return datesOverlapOrAdjacent(rangeEnd, nextStart, highRiskStart, highRiskEnd);
+                                });
+                              };
                               
                               let currentRange: typeof consolidatedRanges[0] | null = null;
                               
@@ -478,6 +523,9 @@ export function ConflictAnalyzer() {
                                   const currentRangeEnd = new Date(currentRange.endDate);
                                   const daysBetween = Math.floor((recStart.getTime() - currentRangeEnd.getTime()) / (1000 * 60 * 60 * 24));
                                   
+                                  // Check if there are high-risk dates between the current range and the next recommended date
+                                  const hasHighRiskBetween = hasHighRiskDatesBetween(currentRangeEnd, recStart);
+                                  
                                   // Check if this date is consecutive (within 3 days) and has no conflicts between
                                   // Also check all recommendations in the current range for conflicts between
                                   const allEventsInRange = currentRange.recommendations.flatMap(r => r.competingEvents);
@@ -490,8 +538,8 @@ export function ConflictAnalyzer() {
                                            (eventDate <= currentRangeEnd && eventEndDate >= recStart);
                                   });
                                   
-                                  // Consolidate if dates are close (within 3 days), no conflicts between, and both are low risk
-                                  if (daysBetween <= 3 && !hasConflictsBetween && rec.conflictScore <= 3 && 
+                                  // Consolidate if dates are close (within 3 days), no conflicts between, no high-risk dates between, and both are low risk
+                                  if (daysBetween <= 3 && !hasConflictsBetween && !hasHighRiskBetween && rec.conflictScore <= 3 && 
                                       currentRange.recommendations.every(r => r.conflictScore <= 3)) {
                                     // Extend the current range
                                     currentRange.endDate = rec.endDate;
@@ -500,7 +548,7 @@ export function ConflictAnalyzer() {
                                     currentRange.maxConflictScore = Math.max(currentRange.maxConflictScore, rec.conflictScore);
                                     currentRange.minConflictScore = Math.min(currentRange.minConflictScore, rec.conflictScore);
                                   } else {
-                                    // Save current range and start a new one
+                                    // Save current range and start a new one (either because of gap, conflicts, or high-risk dates in between)
                                     consolidatedRanges.push(currentRange);
                                     currentRange = {
                                       startDate: rec.startDate,
@@ -519,7 +567,26 @@ export function ConflictAnalyzer() {
                                 consolidatedRanges.push(currentRange);
                               }
                               
-                              return consolidatedRanges.map((range, rangeIndex) => (
+                              // Final safety check: Filter out any consolidated ranges that overlap with high-risk dates
+                              // This catches any edge cases where consolidation might have created overlapping ranges
+                              const finalFilteredRanges = consolidatedRanges.filter(range => {
+                                const rangeStart = new Date(range.startDate);
+                                const rangeEnd = new Date(range.endDate);
+                                
+                                const overlapsWithHighRisk = analysisResult.highRiskDates.some(highRisk => {
+                                  const highRiskStart = new Date(highRisk.startDate);
+                                  const highRiskEnd = new Date(highRisk.endDate);
+                                  return datesOverlap(rangeStart, rangeEnd, highRiskStart, highRiskEnd);
+                                });
+                                
+                                if (overlapsWithHighRisk) {
+                                  console.log(`🚫 Filtering out consolidated range ${range.startDate} to ${range.endDate} - overlaps with high-risk date`);
+                                }
+                                
+                                return !overlapsWithHighRisk;
+                              });
+                              
+                              return finalFilteredRanges.map((range, rangeIndex) => (
                                 <div 
                                   key={rangeIndex}
                                   className={`p-3 border rounded-lg ${getRiskBgColor('Low')}`}
@@ -675,159 +742,155 @@ export function ConflictAnalyzer() {
                     <CardContent>
                       <div className="space-y-3">
                         {analysisResult.highRiskDates.length > 0 ? (
-                          analysisResult.highRiskDates
-                            // FIXED: Don't filter out user's preferred dates - show them in both sections if they have conflicts
-                            .map((recommendation, index) => (
-                            <div 
-                              key={index}
-                              className="p-4 border rounded-lg bg-red-50 border-red-200"
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="font-semibold text-red-900">
-                                  {formatDateRange(recommendation.startDate, recommendation.endDate)}
-                                </div>
-                                <div className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-900">
-                                  {recommendation.riskLevel} Risk
-                                </div>
-                              </div>
+                          (() => {
+                            // Consolidate consecutive high-risk dates into ranges
+                            const sortedHighRiskDates = [...analysisResult.highRiskDates].sort((a, b) => 
+                              new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+                            );
+                            
+                            const consolidatedHighRiskRanges: Array<{
+                              startDate: string;
+                              endDate: string;
+                              recommendations: typeof analysisResult.highRiskDates;
+                              avgConflictScore: number;
+                              maxConflictScore: number;
+                              minConflictScore: number;
+                            }> = [];
+                            
+                            // Helper function to check if two date ranges overlap or are adjacent
+                            const datesOverlapOrAdjacent = (start1: Date, end1: Date, start2: Date, end2: Date): boolean => {
+                              if (start1 <= end2 && end1 >= start2) return true;
+                              const daysBetween = Math.floor((start2.getTime() - end1.getTime()) / (1000 * 60 * 60 * 24));
+                              return daysBetween <= 1;
+                            };
+                            
+                            let currentRange: typeof consolidatedHighRiskRanges[0] | null = null;
+                            
+                            for (const rec of sortedHighRiskDates) {
+                              const recStart = new Date(rec.startDate);
+                              const recEnd = new Date(rec.endDate);
                               
-                              {/* Aggregated Stats for Consolidated Ranges */}
-                              {recommendation.aggregatedStats && recommendation.consolidatedRanges && recommendation.consolidatedRanges.count > 1 ? (
-                                <div className="text-sm text-red-900 mb-2 space-y-1">
-                                  <div>
-                                    Conflict Score: {recommendation.conflictScore.toFixed(1)}/20 (Avg)
+                              if (!currentRange) {
+                                currentRange = {
+                                  startDate: rec.startDate,
+                                  endDate: rec.endDate,
+                                  recommendations: [rec],
+                                  avgConflictScore: rec.conflictScore,
+                                  maxConflictScore: rec.conflictScore,
+                                  minConflictScore: rec.conflictScore
+                                };
+                              } else {
+                                const currentRangeEnd = new Date(currentRange.endDate);
+                                const daysBetween = Math.floor((recStart.getTime() - currentRangeEnd.getTime()) / (1000 * 60 * 60 * 24));
+                                
+                                // Consolidate if dates are close (within 3 days) and both are high risk
+                                if (daysBetween <= 3 && rec.riskLevel === 'High' && 
+                                    currentRange.recommendations.every(r => r.riskLevel === 'High')) {
+                                  currentRange.endDate = rec.endDate;
+                                  currentRange.recommendations.push(rec);
+                                  currentRange.avgConflictScore = (currentRange.recommendations.reduce((sum, r) => sum + r.conflictScore, 0) / currentRange.recommendations.length);
+                                  currentRange.maxConflictScore = Math.max(currentRange.maxConflictScore, rec.conflictScore);
+                                  currentRange.minConflictScore = Math.min(currentRange.minConflictScore, rec.conflictScore);
+                                } else {
+                                  consolidatedHighRiskRanges.push(currentRange);
+                                  currentRange = {
+                                    startDate: rec.startDate,
+                                    endDate: rec.endDate,
+                                    recommendations: [rec],
+                                    avgConflictScore: rec.conflictScore,
+                                    maxConflictScore: rec.conflictScore,
+                                    minConflictScore: rec.conflictScore
+                                  };
+                                }
+                              }
+                            }
+                            
+                            if (currentRange) {
+                              consolidatedHighRiskRanges.push(currentRange);
+                            }
+                            
+                            return consolidatedHighRiskRanges.map((range, rangeIndex) => (
+                              <div 
+                                key={rangeIndex}
+                                className="p-4 border rounded-lg bg-red-50 border-red-200"
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="font-semibold text-red-900">
+                                    {range.recommendations.length > 1 
+                                      ? formatDateRange(range.startDate, range.endDate) + ` (${range.recommendations.length} high-risk dates)`
+                                      : formatDateRange(range.startDate, range.endDate)
+                                    }
                                   </div>
-                                  <div className="text-xs opacity-90">
-                                    Max: {recommendation.aggregatedStats.maxConflictScore.toFixed(1)} | 
-                                    Avg: {recommendation.aggregatedStats.avgConflictScore.toFixed(1)} | 
-                                    Min: {recommendation.aggregatedStats.minConflictScore.toFixed(1)}
+                                  <div className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-900">
+                                    High Risk
                                   </div>
                                 </div>
-                              ) : (
+                                
                                 <div className="text-sm text-red-900 mb-2">
-                                  Conflict Score: {recommendation.conflictScore.toFixed(1)}/20
+                                  {range.recommendations.length > 1 ? (
+                                    <>
+                                      Conflict Score: {range.avgConflictScore.toFixed(1)}/20 (Avg) • 
+                                      Range: {range.minConflictScore.toFixed(1)} - {range.maxConflictScore.toFixed(1)} • 
+                                      High Risk
+                                    </>
+                                  ) : (
+                                    <>
+                                      Conflict Score: {range.recommendations[0].conflictScore.toFixed(1)}/20
+                                    </>
+                                  )}
                                 </div>
-                              )}
-                              
-                              <div className="text-xs text-red-600 mb-2">
-                                {recommendation.reasons.join(' • ')}
-                              </div>
-                              
-                              {/* Holiday Restrictions - Only show when there are actual restrictions */}
-                              {recommendation.holidayRestrictions && 
-                               (recommendation.holidayRestrictions.holidays?.length > 0 || 
-                                recommendation.holidayRestrictions.cultural_events?.length > 0 ||
-                                recommendation.holidayRestrictions.business_impact !== 'none' ||
-                                recommendation.holidayRestrictions.venue_closure_expected) && (
-                                <div className="mt-2 p-3 bg-orange-50 rounded border-l-4 border-orange-400">
-                                  <div className="flex items-center space-x-2 mb-2">
-                                    <Calendar className="h-4 w-4 text-orange-600" />
-                                    <span className="text-sm font-medium text-orange-800">
-                                      Holiday & Cultural Restrictions
-                                    </span>
-                                  </div>
-                                  
-                                  {/* Public Holidays */}
-                                  {recommendation.holidayRestrictions.holidays?.length > 0 && (
-                                    <div className="mb-2">
-                                      <div className="text-xs font-semibold text-orange-800 mb-1">
-                                        🏛️ Public Holidays:
-                                      </div>
-                                      {recommendation.holidayRestrictions.holidays.map((h: any, index: number) => (
-                                        <div key={index} className="text-xs text-orange-700 ml-2 mb-1">
-                                          • <strong>{h.holiday_name}</strong>
-                                          {h.holiday_name_native && h.holiday_name_native !== h.holiday_name && (
-                                            <span className="text-orange-600"> ({h.holiday_name_native})</span>
-                                          )}
+                                
+                                <div className="text-xs text-red-600 mb-2">
+                                  {Array.from(new Set(range.recommendations.flatMap(r => r.reasons))).join(' • ')}
+                                </div>
+                                
+                                {/* Show competing events */}
+                                {range.recommendations.some(r => r.competingEvents.length > 0) && (
+                                  <div className="mt-3 p-2 bg-red-50 rounded border-l-4 border-red-400">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                      <Calendar className="h-3 w-3 text-red-600" />
+                                      <span className="text-xs font-medium text-red-800">
+                                        Competing Events
+                                      </span>
+                                    </div>
+                                    <div className="space-y-1">
+                                      {Array.from(new Set(
+                                        range.recommendations.flatMap(r => r.competingEvents.map(e => e.title))
+                                      )).slice(0, 5).map((eventTitle, eventIndex) => (
+                                        <div key={eventIndex} className="text-xs text-red-700">
+                                          {eventTitle}
                                         </div>
                                       ))}
                                     </div>
-                                  )}
-                                  
-                                  {/* Cultural Events */}
-                                  {recommendation.holidayRestrictions.cultural_events?.length > 0 && (
-                                    <div className="mb-2">
-                                      <div className="text-xs font-semibold text-orange-800 mb-1">
-                                        🎭 Cultural Events:
-                                      </div>
-                                      {recommendation.holidayRestrictions.cultural_events.map((e: any, index: number) => (
-                                        <div key={index} className="text-xs text-orange-700 ml-2 mb-1">
-                                          • <strong>{e.event_name}</strong>
-                                          {e.event_name_native && e.event_name_native !== e.event_name && (
-                                            <span className="text-orange-600"> ({e.event_name_native})</span>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                  
-                                  {/* Impact Warnings */}
-                                  <div className="space-y-1">
-                                    {recommendation.holidayRestrictions.business_impact === 'full' && (
-                                      <div className="text-xs text-red-700 font-medium bg-red-50 p-2 rounded">
-                                        🚫 <strong>Full Business Closure:</strong> All businesses and venues are typically closed on this date
-                                      </div>
-                                    )}
-                                    {recommendation.holidayRestrictions.business_impact === 'partial' && (
-                                      <div className="text-xs text-yellow-700 font-medium bg-yellow-50 p-2 rounded">
-                                        ⚠️ <strong>Partial Business Impact:</strong> Some businesses may have reduced hours or be closed
-                                      </div>
-                                    )}
-                                    {recommendation.holidayRestrictions.venue_closure_expected && (
-                                      <div className="text-xs text-red-700 font-medium bg-red-50 p-2 rounded">
-                                        🏢 <strong>Venue Availability:</strong> Most venues are likely to be closed or have limited availability
-                                      </div>
-                                    )}
                                   </div>
-                                  
-                                  {/* General Impact Message */}
-                                  {(recommendation.holidayRestrictions.holidays?.length > 0 || 
-                                    recommendation.holidayRestrictions.cultural_events?.length > 0) && (
-                                    <div className="text-xs text-orange-700 mt-2 p-2 bg-orange-100 rounded">
-                                      💡 <strong>Impact on Your Event:</strong> These holidays and cultural events may significantly affect attendance and venue availability. Consider alternative dates for better turnout.
+                                )}
+                                
+                                {/* Show holiday restrictions if any */}
+                                {range.recommendations.some(r => r.holidayRestrictions && 
+                                  (r.holidayRestrictions.holidays?.length > 0 || 
+                                   r.holidayRestrictions.cultural_events?.length > 0)) && (
+                                  <div className="mt-2 p-3 bg-orange-50 rounded border-l-4 border-orange-400">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                      <Calendar className="h-4 w-4 text-orange-600" />
+                                      <span className="text-sm font-medium text-orange-800">
+                                        Holiday & Cultural Restrictions
+                                      </span>
                                     </div>
-                                  )}
-                                </div>
-                              )}
-                              
-                              {/* Show competing events for this date */}
-                              {recommendation.competingEvents.length > 0 && (
-                                <div className="mt-3 p-2 bg-red-50 rounded border-l-4 border-red-400">
-                                  <div className="flex items-center space-x-2 mb-2">
-                                    <Calendar className="h-3 w-3 text-red-600" />
-                                    <span className="text-xs font-medium text-red-800">
-                                      {recommendation.competingEvents.length} Competing Event{recommendation.competingEvents.length > 1 ? 's' : ''}
-                                    </span>
-                                  </div>
-                                  <div className="space-y-1">
-                                    {recommendation.competingEvents.map((event, eventIndex) => (
-                                      <div key={eventIndex} className="text-xs text-red-700 flex items-center justify-between">
-                                        <span className="truncate">{event.title}</span>
-                                        <span className="text-red-600 ml-2">{event.category}</span>
+                                    {Array.from(new Set(
+                                      range.recommendations.flatMap(r => [
+                                        ...(r.holidayRestrictions?.holidays?.map((h: any) => h.holiday_name) || []),
+                                        ...(r.holidayRestrictions?.cultural_events?.map((e: any) => e.event_name) || [])
+                                      ])
+                                    )).slice(0, 3).map((name, idx) => (
+                                      <div key={idx} className="text-xs text-orange-700 ml-2 mb-1">
+                                        • {name}
                                       </div>
                                     ))}
                                   </div>
-                                </div>
-                              )}
-                              
-                              {/* Advanced Analysis Features for High Risk Dates */}
-                              {recommendation.audienceOverlap && (
-                                <div className="mt-2 p-2 bg-red-50 rounded border-l-4 border-red-400">
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <Users className="h-3 w-3 text-red-600" />
-                                    <span className="text-xs font-medium text-red-800">
-                                      High Audience Overlap: {(recommendation.audienceOverlap.averageOverlap * 100).toFixed(1)}%
-                                    </span>
-                                  </div>
-                                  {recommendation.audienceOverlap.overlapReasoning.length > 0 && (
-                                    <div className="text-xs text-red-700">
-                                      ⚠️ {recommendation.audienceOverlap.overlapReasoning[0]}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))
+                                )}
+                              </div>
+                            ));
+                          })()
                         ) : (
                           <div className="p-3 border border-green-200 bg-green-50 rounded-lg">
                             <div className="text-green-800 text-sm">

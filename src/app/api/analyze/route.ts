@@ -186,14 +186,24 @@ export async function POST(request: NextRequest) {
       });
 
       if (saveError) {
-        console.error('Failed to save analysis to database:', saveError);
-        // Continue with response even if save fails
+        // Handle schema cache errors gracefully
+        if (saveError.code === 'PGRST204') {
+          console.warn('⚠️ Database schema cache needs refresh. Analysis results not saved. Please refresh PostgREST schema cache in Supabase Dashboard (Settings → API → Refresh schema cache).');
+        } else {
+          console.error('Failed to save analysis to database:', saveError);
+        }
+        // Continue with response even if save fails - analysis is still valid
       } else {
         console.log('Analysis saved to database with ID:', savedAnalysis?.id);
       }
     } catch (saveError) {
-      console.error('Error saving analysis to database:', saveError);
-      // Continue with response even if save fails
+      // Handle schema cache errors gracefully
+      if (saveError instanceof Error && saveError.message.includes('PGRST204')) {
+        console.warn('⚠️ Database schema cache needs refresh. Analysis results not saved. Please refresh PostgREST schema cache in Supabase Dashboard.');
+      } else {
+        console.error('Error saving analysis to database:', saveError);
+      }
+      // Continue with response even if save fails - analysis is still valid
     }
 
     return NextResponse.json({
