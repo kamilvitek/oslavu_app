@@ -172,7 +172,17 @@ export class EventRelevanceCacheService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + ttlDays);
 
-    const cacheEntries = results.map(result => ({
+    // Deduplicate results by cache key to avoid "ON CONFLICT DO UPDATE cannot affect row a second time" error
+    const uniqueResults = Array.from(
+      new Map(
+        results.map(result => {
+          const cacheKey = this.generateCacheKey(result.key);
+          return [cacheKey, result];
+        })
+      ).values()
+    );
+
+    const cacheEntries = uniqueResults.map(result => ({
       planned_category: result.key.plannedCategory,
       planned_subcategory: result.key.plannedSubcategory || null,
       competing_category: result.key.competingCategory,
@@ -197,8 +207,8 @@ export class EventRelevanceCacheService {
         return;
       }
 
-      // Store in memory cache
-      for (const result of results) {
+      // Store in memory cache (use uniqueResults to avoid duplicates)
+      for (const result of uniqueResults) {
         const cacheKey = this.generateCacheKey(result.key);
         const cachedResult: CachedRelevanceResult = {
           id: '',

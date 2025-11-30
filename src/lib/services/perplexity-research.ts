@@ -222,21 +222,24 @@ export class PerplexityResearchService {
           return holidayDate >= windowStart && holidayDate <= windowEnd;
         });
         
+        // Create recommendations object first to avoid circular reference
+        const rangeRecommendations = {
+          shouldMoveDate: validatedResult.recommendations.shouldMoveDate,
+          recommendedDates: validatedResult.recommendations.recommendedDates?.filter(date => {
+            const recDate = new Date(date);
+            return recDate >= rangeStart && recDate <= rangeEnd;
+          }),
+          reasoning: validatedResult.recommendations.reasoning,
+          riskLevel: validatedResult.recommendations.riskLevel,
+        };
+        
         // Create a research result for this date range
         batchResults[rangeId] = {
           conflictingEvents: filteredEvents,
           touringArtists: filteredTouringArtists,
           localFestivals: filteredFestivals,
           holidaysAndCulturalEvents: filteredHolidays,
-          recommendations: {
-            shouldMoveDate: validatedResult.recommendations.shouldMoveDate,
-            recommendedDates: validatedResult.recommendations.recommendedDates?.filter(date => {
-              const recDate = new Date(date);
-              return recDate >= rangeStart && recDate <= rangeEnd;
-            }),
-            reasoning: validatedResult.recommendations.reasoning,
-            riskLevel: validatedResult.recommendations.riskLevel,
-          },
+          recommendations: rangeRecommendations,
           researchMetadata: {
             query: prompt,
             timestamp: new Date().toISOString(),
@@ -246,7 +249,7 @@ export class PerplexityResearchService {
               touringArtists: filteredTouringArtists,
               localFestivals: filteredFestivals,
               holidaysAndCulturalEvents: filteredHolidays,
-              recommendations: batchResults[rangeId].recommendations,
+              recommendations: rangeRecommendations,
             }),
           },
         };

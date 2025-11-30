@@ -154,7 +154,8 @@ export function ConflictAnalyzer() {
           },
           preferredDates: [formData.startDate, formData.endDate],
           enableAdvancedAnalysis: true, // Always enabled for best results
-          enablePerplexityResearch: true // Enable Perplexity online research for comprehensive event discovery
+          enablePerplexityResearch: true, // Enable Perplexity online research for comprehensive event discovery
+          enableLLMRelevanceFilter: true 
         })
       });
 

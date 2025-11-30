@@ -150,7 +150,8 @@ export class AIEventRelevanceService {
         await this.enforceRateLimit();
 
         const prompt = this.buildRelevancePrompt(plannedEvent, batch);
-        const response = await this.callOpenAI(prompt);
+        // Use longer timeout for batch operations (45 seconds instead of 15)
+        const response = await this.callOpenAI(prompt, 'gpt-4o-mini', 45000);
         const batchResults = this.parseBatchRelevanceResponse(response, batch);
 
         // Cache results and add to results map
@@ -252,10 +253,13 @@ Return JSON array:
 
   /**
    * Call OpenAI API
+   * @param prompt - The prompt to send to OpenAI
+   * @param model - The model to use (default: gpt-4o-mini)
+   * @param timeoutMs - Timeout in milliseconds (default: 15000 for single, 45000 for batch)
    */
-  private async callOpenAI(prompt: string, model: string = 'gpt-4o-mini'): Promise<string> {
+  private async callOpenAI(prompt: string, model: string = 'gpt-4o-mini', timeoutMs: number = 15000): Promise<string> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -294,7 +298,7 @@ Return JSON array:
     } catch (error) {
       clearTimeout(timeoutId);
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('OpenAI API request timed out after 15 seconds');
+        throw new Error(`OpenAI API request timed out after ${timeoutMs / 1000} seconds`);
       }
       throw error;
     }
