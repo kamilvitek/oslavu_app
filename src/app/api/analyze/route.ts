@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
       dateRangeEnd: sanitizedBody.dateRange.end,
       enableAdvancedAnalysis: true, // ENABLED for audience overlap analysis
       enablePerplexityResearch: sanitizedBody.enablePerplexityResearch || false, // Optional Perplexity research
+      enableLLMRelevanceFilter: sanitizedBody.enableLLMRelevanceFilter || false, // Opt-in LLM relevance filtering
       useComprehensiveFallback: false, // DISABLED for performance - was causing 5min delays
     });
     

@@ -16,6 +16,7 @@ import { perplexityResearchService } from './perplexity-research';
 import { PerplexityConflictResearch } from '@/types/perplexity';
 import { calculateSubcategoryOverlap, SUBCATEGORY_TAXONOMY } from '@/lib/constants/subcategory-taxonomy';
 import { subcategoryExtractionService } from './subcategory-extraction';
+import { aiEventRelevanceService } from './ai-event-relevance';
 
 // High-performance data structures for conflict detection
 interface EventIndex {
@@ -109,6 +110,7 @@ export interface ConflictAnalysisParams {
   dateRangeEnd: string; // analysis range end (auto-calculated)
   enableAdvancedAnalysis?: boolean; // enable audience overlap analysis (defaults to true)
   enablePerplexityResearch?: boolean; // enable Perplexity online research (defaults to false)
+  enableLLMRelevanceFilter?: boolean; // enable LLM-based relevance filtering (defaults to false - opt-in)
   searchRadius?: string; // search radius for geographic coverage (e.g., "50km", "25miles")
   useComprehensiveFallback?: boolean; // use comprehensive fallback strategies
 }
@@ -1882,8 +1884,38 @@ export class ConflictAnalysisService {
       }
     }
     
-    // For conflict analysis, use audience overlap to determine significance
-    const filteredEventIds = new Set<string>();
+    // Two-pass architecture: Collection phase, then LLM batch processing phase
+    // Pass 1: Collection Phase - categorize events into obvious cases and edge cases
+    interface EventWithMetadata {
+      event: Event;
+      eventId: string;
+      temporalProximity: 'on_date' | 'before' | 'after' | 'distant';
+      sameCategory: boolean;
+      subcategoryMatch: boolean;
+      inferredSubcategory: string | null;
+      isObviousRelevant: boolean;
+      isObviousIrrelevant: boolean;
+    }
+
+    const eventsWithMetadata: EventWithMetadata[] = [];
+    const obviousRelevantEventIds = new Set<string>();
+    const obviousIrrelevantEventIds = new Set<string>();
+    const edgeCaseEvents: EventWithMetadata[] = [];
+
+    // Create planned event for LLM evaluation
+    const plannedEvent: Event = {
+      id: 'planned_event',
+      title: 'Planned Event',
+      date: params.startDate,
+      city: params.city,
+      category: params.category,
+      subcategory: params.subcategory,
+      expectedAttendees: params.expectedAttendees,
+      source: 'manual',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
     for (const eventId of competingEventIds) {
       const event = this.eventIndex.events.get(eventId);
       if (!event) continue;
@@ -1977,7 +2009,115 @@ export class ConflictAnalysisService {
         // Allow through with category-only match if restrictive criteria met
         subcategoryMatch = true;
       }
-      
+
+      // Categorize events: obvious relevant, obvious irrelevant, or edge cases
+      // Use shouldUseLLMFilter to determine if this is an edge case
+      const needsLLM = this.shouldUseLLMFilter(
+        plannedEvent,
+        event,
+        sameCategory,
+        subcategoryMatch,
+        inferredSubcategory,
+        params.expectedAttendees
+      );
+
+      const exactCategoryMatch = event.category === params.category;
+      const exactSubcategoryMatch = params.subcategory === (event.subcategory || inferredSubcategory);
+      const hasHighAttendance = event.expectedAttendees && 
+                                event.expectedAttendees >= params.expectedAttendees * 0.5;
+      const completelyUnrelated = !sameCategory && !this.isRelatedCategory(event.category, params.category);
+
+      // Obvious relevant: exact matches or high attendance + match (and doesn't need LLM)
+      const isObviousRelevant = !needsLLM && (
+        (exactCategoryMatch && exactSubcategoryMatch) ||
+        (sameCategory && subcategoryMatch && hasHighAttendance)
+      );
+      // Obvious irrelevant: completely unrelated or low attendance + no match (and doesn't need LLM)
+      const isObviousIrrelevant = !needsLLM && (
+        completelyUnrelated ||
+        (!sameCategory && !subcategoryMatch && event.expectedAttendees && 
+         event.expectedAttendees < params.expectedAttendees * 0.1)
+      );
+
+      const metadata: EventWithMetadata = {
+        event,
+        eventId,
+        temporalProximity,
+        sameCategory,
+        subcategoryMatch,
+        inferredSubcategory,
+        isObviousRelevant,
+        isObviousIrrelevant
+      };
+
+      eventsWithMetadata.push(metadata);
+
+      if (isObviousRelevant) {
+        obviousRelevantEventIds.add(eventId);
+      } else if (isObviousIrrelevant) {
+        obviousIrrelevantEventIds.add(eventId);
+        console.log(`❌ Obvious irrelevant: "${event.title}" - ${completelyUnrelated ? 'completely unrelated category' : 'low attendance + no match'}`);
+      } else {
+        edgeCaseEvents.push(metadata);
+      }
+    }
+
+    // Pass 2: Batch LLM Processing Phase (only if enabled and there are edge cases)
+    const llmRelevanceResults = new Map<string, boolean>(); // eventId -> isRelevant
+    
+    if (params.enableLLMRelevanceFilter !== false && edgeCaseEvents.length > 0 && aiEventRelevanceService.isAvailable()) {
+      try {
+        console.log(`🤖 Processing ${edgeCaseEvents.length} edge-case events with LLM relevance filter...`);
+        const edgeCaseEventObjects = edgeCaseEvents.map(m => m.event);
+        const relevanceResults = await aiEventRelevanceService.evaluateBatchRelevance(
+          plannedEvent,
+          edgeCaseEventObjects
+        );
+
+        for (const [eventId, result] of relevanceResults) {
+          llmRelevanceResults.set(eventId, result.isRelevant);
+          if (!result.isRelevant) {
+            console.log(`❌ LLM filtered out "${this.eventIndex?.events.get(eventId)?.title}": ${result.reasoning.join('; ')}`);
+          } else {
+            console.log(`✅ LLM approved "${this.eventIndex?.events.get(eventId)?.title}": ${result.reasoning.join('; ')}`);
+          }
+        }
+      } catch (error) {
+        console.error('❌ LLM relevance evaluation failed, falling back to rule-based:', error);
+        // Fallback: treat all edge cases as if they passed (use rule-based logic)
+        for (const metadata of edgeCaseEvents) {
+          llmRelevanceResults.set(metadata.eventId, true); // Default to relevant for fallback
+        }
+      }
+    } else if (edgeCaseEvents.length > 0) {
+      // LLM disabled or unavailable - use rule-based for edge cases
+      console.log(`⚠️ LLM relevance filter ${params.enableLLMRelevanceFilter === false ? 'disabled' : 'unavailable'}, using rule-based for ${edgeCaseEvents.length} edge cases`);
+      for (const metadata of edgeCaseEvents) {
+        llmRelevanceResults.set(metadata.eventId, true); // Default to relevant for rule-based fallback
+      }
+    }
+
+    // Pass 3: Continue Existing Logic - apply final filtering
+    const filteredEventIds = new Set<string>();
+    
+    for (const metadata of eventsWithMetadata) {
+      const { event, eventId, temporalProximity, sameCategory, subcategoryMatch, inferredSubcategory, isObviousRelevant, isObviousIrrelevant } = metadata;
+
+      // Skip obvious irrelevant events
+      if (isObviousIrrelevant) {
+        continue;
+      }
+
+      // For edge cases, check LLM result
+      if (!isObviousRelevant && !isObviousIrrelevant) {
+        const llmResult = llmRelevanceResults.get(eventId);
+        if (llmResult === false) {
+          // LLM determined it's not relevant
+          continue;
+        }
+        // LLM approved or fallback - continue with existing logic
+      }
+
       // Use audience overlap analysis to determine if event is significant
       const isSignificant = await this.isEventSignificant(event, params);
       
@@ -3015,6 +3155,55 @@ export class ConflictAnalysisService {
       
       return isSignificant;
     }
+  }
+
+  /**
+   * Determine if event needs LLM evaluation (hybrid approach)
+   * Returns true if event needs LLM evaluation, false if rule-based is sufficient
+   */
+  private shouldUseLLMFilter(
+    plannedEvent: Event,
+    competingEvent: Event,
+    sameCategory: boolean,
+    subcategoryMatch: boolean,
+    inferredSubcategory: string | null,
+    plannedExpectedAttendees: number
+  ): boolean {
+    // Obvious cases - skip LLM
+    // Exact category + exact subcategory match = obviously relevant
+    if (sameCategory && subcategoryMatch && 
+        plannedEvent.category === competingEvent.category &&
+        plannedEvent.subcategory === (competingEvent.subcategory || inferredSubcategory)) {
+      return false; // Obviously relevant
+    }
+    
+    // Completely unrelated categories = obviously irrelevant
+    if (!sameCategory && !this.isRelatedCategory(competingEvent.category, plannedEvent.category)) {
+      return false; // Obviously irrelevant
+    }
+    
+    // Edge cases - use LLM
+    // Related categories but uncertain subcategory match
+    if (sameCategory && !subcategoryMatch) {
+      return true;
+    }
+    
+    // No subcategory on competing event (inference failed)
+    if (!competingEvent.subcategory && !inferredSubcategory) {
+      return true;
+    }
+    
+    // Borderline attendance/venue signals
+    const hasBorderlineAttendance = competingEvent.expectedAttendees && 
+      competingEvent.expectedAttendees >= plannedExpectedAttendees * 0.1 &&
+      competingEvent.expectedAttendees < plannedExpectedAttendees * 0.5;
+    const hasVenue = Boolean(competingEvent.venue && competingEvent.venue.length > 0);
+    if (hasBorderlineAttendance || (hasVenue && !subcategoryMatch)) {
+      return true;
+    }
+    
+    // Default to LLM for safety
+    return true;
   }
 
   /**

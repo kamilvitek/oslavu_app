@@ -67,6 +67,7 @@ export interface AnalysisRequest {
   };
   enableAdvancedAnalysis?: boolean;
   enablePerplexityResearch?: boolean;
+  enableLLMRelevanceFilter?: boolean; // Opt-in LLM relevance filtering
 }
 
 export interface User {

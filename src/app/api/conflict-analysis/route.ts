@@ -16,7 +16,8 @@ const ConflictAnalysisSchema = z.object({
     end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
   }).optional(),
   enable_advanced_analysis: z.boolean().optional().default(false),
-  enable_perplexity_research: z.boolean().optional().default(false)
+  enable_perplexity_research: z.boolean().optional().default(false),
+  enable_llm_relevance_filter: z.boolean().optional().default(false) // Opt-in for safety
 });
 
 /**
