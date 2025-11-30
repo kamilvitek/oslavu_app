@@ -2348,13 +2348,8 @@ export class ConflictAnalysisService {
           console.log(`  "${event.title}": temporal proximity ${temporalProximity} -> multiplier ${temporalMultiplier.toFixed(2)}x -> adjusted score = ${eventScore.toFixed(2)}`);
         }
         
-        // Apply duration multiplier (longer events = higher conflict impact)
-        const eventDuration = this.calculateEventDuration(event);
-        const durationMultiplier = this.getDurationMultiplier(eventDuration);
-        eventScore *= durationMultiplier;
-        if (eventDuration > 1) {
-          console.log(`  "${event.title}": duration ${eventDuration} days -> multiplier ${durationMultiplier.toFixed(2)}x -> adjusted score = ${eventScore.toFixed(2)}`);
-        }
+        // Note: Duration multiplier is already applied inside calculateEventConflictScore()
+        // No need to apply it again here to avoid double multiplication
         
         // Apply seasonal and holiday multipliers before audience overlap
         try {

@@ -45,15 +45,28 @@ export class EventRelevanceCacheService {
 
     // Check database cache
     try {
-      const { data, error } = await this.supabase
+      // Build query with proper NULL handling (SQL NULL != empty string)
+      let query = this.supabase
         .from('event_relevance_cache')
         .select('*')
         .eq('planned_category', key.plannedCategory)
-        .eq('planned_subcategory', key.plannedSubcategory || '')
         .eq('competing_category', key.competingCategory)
-        .eq('competing_subcategory', key.competingSubcategory || '')
-        .gt('expires_at', new Date().toISOString())
-        .single();
+        .gt('expires_at', new Date().toISOString());
+      
+      // Handle null subcategories properly - use .is() for NULL, .eq() for values
+      if (key.plannedSubcategory === null || key.plannedSubcategory === undefined) {
+        query = query.is('planned_subcategory', null);
+      } else {
+        query = query.eq('planned_subcategory', key.plannedSubcategory);
+      }
+      
+      if (key.competingSubcategory === null || key.competingSubcategory === undefined) {
+        query = query.is('competing_subcategory', null);
+      } else {
+        query = query.eq('competing_subcategory', key.competingSubcategory);
+      }
+      
+      const { data, error } = await query.single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
         console.error('Error fetching cached relevance:', error);
