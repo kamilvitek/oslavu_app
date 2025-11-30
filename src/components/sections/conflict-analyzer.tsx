@@ -986,36 +986,54 @@ export function ConflictAnalyzer() {
                                           const isHighSeverity = /(major|significant|severe|critical|high.*risk|strongly|definitely|must|should.*avoid)/i.test(reason);
                                           const isPositive = /(good|great|excellent|optimal|perfect|ideal|recommended|best|favorable|clear|no.*conflict|low.*risk)/i.test(reason) && !hasConflict;
                                           
+                                          // Determine the appropriate styling based on content
+                                          let headline = '';
+                                          let icon = '';
+                                          let bgColor = '';
+                                          let textColor = '';
+                                          let borderColor = '';
+                                          
+                                          if (hasConflict) {
+                                            if (isHighSeverity) {
+                                              headline = 'Critical Conflict:';
+                                              icon = '🔴';
+                                              bgColor = 'bg-red-50';
+                                              textColor = 'text-red-800';
+                                              borderColor = 'border-red-500';
+                                            } else {
+                                              headline = 'Conflict:';
+                                              icon = '⚠️';
+                                              bgColor = 'bg-orange-50';
+                                              textColor = 'text-orange-800';
+                                              borderColor = 'border-orange-400';
+                                            }
+                                          } else if (isPositive) {
+                                            headline = 'Good News:';
+                                            icon = '✅';
+                                            bgColor = 'bg-green-50';
+                                            textColor = 'text-green-800';
+                                            borderColor = 'border-green-400';
+                                          } else {
+                                            headline = 'Info:';
+                                            icon = 'ℹ️';
+                                            bgColor = 'bg-blue-50';
+                                            textColor = 'text-blue-800';
+                                            borderColor = 'border-blue-400';
+                                          }
+                                          
                                           return (
                                             <div 
                                               key={idx} 
-                                              className={`text-sm p-3 rounded-lg border-l-4 transition-all ${
-                                                hasConflict
-                                                  ? isHighSeverity
-                                                    ? 'text-red-800 bg-red-50 border-red-500 shadow-sm'
-                                                    : 'text-orange-800 bg-orange-50 border-orange-400'
-                                                  : isPositive
-                                                  ? 'text-green-800 bg-green-50 border-green-400'
-                                                  : 'text-blue-800 bg-blue-50 border-blue-400'
-                                              }`}
+                                              className={`text-sm p-3 rounded-lg border-l-4 transition-all ${bgColor} ${textColor} ${borderColor}`}
                                             >
                                               <div className="flex items-start space-x-2">
                                                 <span className="text-base flex-shrink-0 mt-0.5">
-                                                  {hasConflict 
-                                                    ? (isHighSeverity ? '🔴' : '⚠️')
-                                                    : isPositive 
-                                                    ? '✅' 
-                                                    : 'ℹ️'}
+                                                  {icon}
                                                 </span>
                                                 <div className="flex-1">
-                                                  {hasConflict && (
-                                                    <span className="font-semibold block mb-1">
-                                                      {isHighSeverity ? 'Critical Conflict: ' : 'Conflict: '}
-                                                    </span>
-                                                  )}
-                                                  {isPositive && (
-                                                    <span className="font-semibold block mb-1">Good News: </span>
-                                                  )}
+                                                  <span className="font-semibold block mb-1">
+                                                    {headline}
+                                                  </span>
                                                   <span>{reason}</span>
                                                 </div>
                                               </div>
@@ -1387,7 +1405,7 @@ export function ConflictAnalyzer() {
                                 {/* Perplexity Research Insights */}
                                 {recommendation.perplexityResearch && (
                                   <div className="mt-3 p-4 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-lg border-2 border-blue-200 shadow-sm">
-                                    {/* Header with metadata and risk level progress bar */}
+                                    {/* Header */}
                                     <div className="flex items-center justify-between mb-4 pb-3 border-b border-blue-200">
                                       <div className="flex items-center space-x-3">
                                         <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -1397,21 +1415,6 @@ export function ConflictAnalyzer() {
                                           <div className="text-base font-semibold text-blue-900">
                                             Online Research Insights
                                           </div>
-                                          {recommendation.perplexityResearch.researchMetadata && (
-                                            <div className="flex items-center space-x-2 mt-1">
-                                              <span className="text-xs text-blue-600">
-                                                {recommendation.perplexityResearch.researchMetadata.sourcesUsed || 0} sources
-                                              </span>
-                                              {recommendation.perplexityResearch.researchMetadata.timestamp && (
-                                                <>
-                                                  <span className="text-blue-400">•</span>
-                                                  <span className="text-xs text-blue-600">
-                                                    {new Date(recommendation.perplexityResearch.researchMetadata.timestamp).toLocaleDateString()}
-                                                  </span>
-                                                </>
-                                              )}
-                                            </div>
-                                          )}
                                         </div>
                                       </div>
                                       {recommendation.perplexityResearch.researchMetadata?.confidence && (
@@ -1673,36 +1676,54 @@ export function ConflictAnalyzer() {
                                             const isHighSeverity = /(major|significant|severe|critical|high.*risk|strongly|definitely|must|should.*avoid)/i.test(reason);
                                             const isPositive = /(good|great|excellent|optimal|perfect|ideal|recommended|best|favorable|clear|no.*conflict|low.*risk)/i.test(reason) && !hasConflict;
                                             
+                                            // Determine the appropriate styling based on content
+                                            let headline = '';
+                                            let icon = '';
+                                            let bgColor = '';
+                                            let textColor = '';
+                                            let borderColor = '';
+                                            
+                                            if (hasConflict) {
+                                              if (isHighSeverity) {
+                                                headline = 'Critical Conflict:';
+                                                icon = '🔴';
+                                                bgColor = 'bg-red-50';
+                                                textColor = 'text-red-800';
+                                                borderColor = 'border-red-500';
+                                              } else {
+                                                headline = 'Conflict:';
+                                                icon = '⚠️';
+                                                bgColor = 'bg-orange-50';
+                                                textColor = 'text-orange-800';
+                                                borderColor = 'border-orange-400';
+                                              }
+                                            } else if (isPositive) {
+                                              headline = 'Good News:';
+                                              icon = '✅';
+                                              bgColor = 'bg-green-50';
+                                              textColor = 'text-green-800';
+                                              borderColor = 'border-green-400';
+                                            } else {
+                                              headline = 'Info:';
+                                              icon = 'ℹ️';
+                                              bgColor = 'bg-blue-50';
+                                              textColor = 'text-blue-800';
+                                              borderColor = 'border-blue-400';
+                                            }
+                                            
                                             return (
                                               <div 
                                                 key={idx} 
-                                                className={`text-sm p-3 rounded-lg border-l-4 transition-all ${
-                                                  hasConflict
-                                                    ? isHighSeverity
-                                                      ? 'text-red-800 bg-red-50 border-red-500 shadow-sm'
-                                                      : 'text-orange-800 bg-orange-50 border-orange-400'
-                                                    : isPositive
-                                                    ? 'text-green-800 bg-green-50 border-green-400'
-                                                    : 'text-blue-800 bg-blue-50 border-blue-400'
-                                                }`}
+                                                className={`text-sm p-3 rounded-lg border-l-4 transition-all ${bgColor} ${textColor} ${borderColor}`}
                                               >
                                                 <div className="flex items-start space-x-2">
                                                   <span className="text-base flex-shrink-0 mt-0.5">
-                                                    {hasConflict 
-                                                      ? (isHighSeverity ? '🔴' : '⚠️')
-                                                      : isPositive 
-                                                      ? '✅' 
-                                                      : 'ℹ️'}
+                                                    {icon}
                                                   </span>
                                                   <div className="flex-1">
-                                                    {hasConflict && (
-                                                      <span className="font-semibold block mb-1">
-                                                        {isHighSeverity ? 'Critical Conflict: ' : 'Conflict: '}
-                                                      </span>
-                                                    )}
-                                                    {isPositive && (
-                                                      <span className="font-semibold block mb-1">Good News: </span>
-                                                    )}
+                                                    <span className="font-semibold block mb-1">
+                                                      {headline}
+                                                    </span>
                                                     <span>{reason}</span>
                                                   </div>
                                                 </div>
