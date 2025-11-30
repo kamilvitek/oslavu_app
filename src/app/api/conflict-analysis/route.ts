@@ -145,8 +145,11 @@ export async function POST(request: NextRequest) {
       analysis_id: `analysis_${Date.now()}`,
       city,
       category,
+      subcategory: subcategory || null, // Include subcategory in analysis data
       expected_attendees,
       preferred_dates,
+      date_range_start: startDate,
+      date_range_end: endDate,
       conflict_scores: conflictScores,
       overall_assessment: {
         risk_level: overallRisk,
@@ -181,10 +184,8 @@ export async function POST(request: NextRequest) {
         date_range_end: endDate,
         results: {
           // Store all analysis data in the results JSONB field
-          category: category, // Store in JSONB since it's not a top-level column
-          subcategory: subcategory || null,
-          date_range_start: startDate,
-          date_range_end: endDate,
+          // Note: category and subcategory are stored here since they're not top-level columns
+          // All fields from analysisData are included via spread, avoiding duplication
           ...analysisData
         }
       };
