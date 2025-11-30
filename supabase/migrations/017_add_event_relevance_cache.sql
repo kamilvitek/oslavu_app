@@ -34,6 +34,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Drop trigger if it exists (for idempotency)
+DROP TRIGGER IF EXISTS trigger_update_relevance_cache_timestamp ON event_relevance_cache;
+
 -- Create trigger for relevance cache timestamp updates
 CREATE TRIGGER trigger_update_relevance_cache_timestamp
   BEFORE UPDATE ON event_relevance_cache

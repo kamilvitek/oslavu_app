@@ -2023,20 +2023,21 @@ export class ConflictAnalysisService {
 
       const exactCategoryMatch = event.category === params.category;
       const exactSubcategoryMatch = params.subcategory === (event.subcategory || inferredSubcategory);
-      const hasHighAttendance = event.expectedAttendees && 
-                                event.expectedAttendees >= params.expectedAttendees * 0.5;
+      const hasHighAttendance = Boolean(event.expectedAttendees && 
+                                event.expectedAttendees >= params.expectedAttendees * 0.5);
       const completelyUnrelated = !sameCategory && !this.isRelatedCategory(event.category, params.category);
+      const hasLowAttendance = Boolean(event.expectedAttendees && 
+                                event.expectedAttendees < params.expectedAttendees * 0.1);
 
       // Obvious relevant: exact matches or high attendance + match (and doesn't need LLM)
-      const isObviousRelevant = !needsLLM && (
+      const isObviousRelevant: boolean = !needsLLM && (
         (exactCategoryMatch && exactSubcategoryMatch) ||
         (sameCategory && subcategoryMatch && hasHighAttendance)
       );
       // Obvious irrelevant: completely unrelated or low attendance + no match (and doesn't need LLM)
-      const isObviousIrrelevant = !needsLLM && (
+      const isObviousIrrelevant: boolean = !needsLLM && (
         completelyUnrelated ||
-        (!sameCategory && !subcategoryMatch && event.expectedAttendees && 
-         event.expectedAttendees < params.expectedAttendees * 0.1)
+        (!sameCategory && !subcategoryMatch && hasLowAttendance)
       );
 
       const metadata: EventWithMetadata = {
