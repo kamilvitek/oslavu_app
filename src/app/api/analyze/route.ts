@@ -57,22 +57,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate maximum date range: 31 days
-    const dateRangeDays = Math.ceil((analysisEndDate.getTime() - analysisStartDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (dateRangeDays > 31) {
+    // Get preferred dates (event dates) - these are what we need to validate
+    const preferredStart = sanitizedBody.preferredDates?.[0] || sanitizedBody.dateRange.start;
+    const preferredEnd = sanitizedBody.preferredDates?.[1] || sanitizedBody.dateRange.end;
+    const preferredStartDate = new Date(preferredStart);
+    const preferredEndDate = new Date(preferredEnd);
+    
+    // Validate that preferred start is before preferred end
+    if (preferredStartDate >= preferredEndDate) {
       return NextResponse.json(
-        { error: `Analysis date range cannot exceed 31 days. Current range: ${dateRangeDays} days` },
+        { error: 'Event start date must be before event end date' },
         { status: 400 }
       );
     }
 
-    // Allow dates from 30 days ago onwards for testing purposes
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    if (analysisStartDate < thirtyDaysAgo) {
+    // Validate maximum event duration: 31 days (this is the actual event length, not the analysis range)
+    const eventDurationDays = Math.ceil((preferredEndDate.getTime() - preferredStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    if (eventDurationDays > 31) {
       return NextResponse.json(
-        { error: 'Analysis start date cannot be more than 30 days in the past' },
+        { error: `Event duration cannot exceed 31 days. Current event duration: ${eventDurationDays} days` },
+        { status: 400 }
+      );
+    }
+
+    // Validate that preferred dates are within the analysis range
+    if (preferredStartDate < analysisStartDate || preferredEndDate > analysisEndDate) {
+      return NextResponse.json(
+        { error: 'Preferred event dates must be within the analysis date range' },
         { status: 400 }
       );
     }
@@ -85,8 +96,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Map incoming request to service params using sanitized data
-    const preferredStart = sanitizedBody.preferredDates?.[0] || sanitizedBody.dateRange.start;
-    const preferredEnd = sanitizedBody.preferredDates?.[1] || sanitizedBody.dateRange.end;
+    // (preferredStart and preferredEnd already calculated above during validation)
 
     const analysis = await conflictAnalysisService.analyzeConflicts({
       city: sanitizedBody.city,

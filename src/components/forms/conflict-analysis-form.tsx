@@ -18,6 +18,21 @@ const analysisSchema = z.object({
   expectedAttendees: z.number().min(1, "Expected attendees is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
+}).refine((data) => {
+  const start = new Date(data.startDate);
+  const end = new Date(data.endDate);
+  return start <= end;
+}, {
+  message: "Event start date must be before or equal to end date",
+  path: ["endDate"],
+}).refine((data) => {
+  const start = new Date(data.startDate);
+  const end = new Date(data.endDate);
+  const durationDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  return durationDays <= 31;
+}, {
+  message: "Event duration cannot exceed 31 days",
+  path: ["endDate"],
 });
 
 type AnalysisForm = z.infer<typeof analysisSchema>;
