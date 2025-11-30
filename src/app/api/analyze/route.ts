@@ -129,8 +129,7 @@ export async function POST(request: NextRequest) {
         user_id: null, // Anonymous analysis for now
         // Top-level fields matching database schema
         city: sanitizedBody.city,
-        category: sanitizedBody.category,
-        subcategory: sanitizedBody.subcategory || null, // Save subcategory at top level
+        // Note: category and subcategory are stored in JSONB fields only, not as top-level columns
         preferred_dates: [preferredStart, preferredEnd],
         expected_attendees: sanitizedBody.expectedAttendees,
         date_range_start: sanitizedBody.dateRange.start,
