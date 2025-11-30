@@ -208,6 +208,7 @@ export class AIEventRelevanceService {
 
   /**
    * Build relevance evaluation prompt
+   * Simplified and focused on semantic meaning for better accuracy
    */
   private buildRelevancePrompt(plannedEvent: Event, competingEvents: Event[]): string {
     const eventsList = competingEvents.map((event, index) => `
@@ -222,32 +223,42 @@ Event ${index + 1}:
 - Date: ${event.date}${event.endDate ? ` to ${event.endDate}` : ''}
 `).join('\n');
 
-    return `You are an expert event analyst. Evaluate if competing events are relevant competition from a user's perspective.
+    return `Evaluate if competing events would compete for the same audience as the planned event.
 
 Planned Event:
+- Title/Type: ${plannedEvent.title || `${plannedEvent.category}${plannedEvent.subcategory ? ` (${plannedEvent.subcategory})` : ''}`}
 - Category: ${plannedEvent.category}
 - Subcategory: ${plannedEvent.subcategory || 'None'}
 - Expected Attendees: ${plannedEvent.expectedAttendees || 'Not specified'}
-- City: ${plannedEvent.city}
 - Date: ${plannedEvent.date}${plannedEvent.endDate ? ` to ${plannedEvent.endDate}` : ''}
 
 Competing Events:
 ${eventsList}
 
-For each competing event, determine: Would a user planning the first event consider this event as relevant competition?
+CRITICAL: Analyze the EVENT TYPE from the title and description, not just category/subcategory.
 
-Consider:
-- Category/subcategory alignment
-- Audience overlap potential
-- Event type similarity
-- Temporal proximity
-- Scale/attendance comparison
-- Semantic content (title/description)
+✅ RELEVANT (mark isRelevant: true):
+- Same event type (e.g., both are concerts, both are conferences, both are festivals)
+- Would attract the same audience (e.g., Pop concert vs Rock concert, Marketing conference vs Startup conference)
+- Similar format and purpose
+
+❌ NOT RELEVANT (mark isRelevant: false):
+- Different event types even if same category (e.g., Pop concert vs Forest trail, Conference vs Exhibition)
+- Different audiences (e.g., Family outdoor activity vs Adult music event, Business event vs Cultural festival)
+- Completely different purposes (e.g., Educational workshop vs Entertainment show)
+
+Examples:
+- Pop Concert vs Rock Concert → RELEVANT (both music concerts, similar audience)
+- Pop Concert vs Forest Trail → NOT RELEVANT (completely different event types)
+- Tech Conference vs Startup Meetup → RELEVANT (both tech events, similar audience)
+- Tech Conference vs Art Exhibition → NOT RELEVANT (different purposes, different audiences)
+
+When subcategory is "None", rely heavily on title/description to understand the actual event type.
 
 Return JSON array:
 [
-  {"eventId": "id1", "isRelevant": boolean, "confidence": 0-1, "reasoning": ["reason1", "reason2"]},
-  {"eventId": "id2", "isRelevant": boolean, "confidence": 0-1, "reasoning": ["reason1", "reason2"]}
+  {"eventId": "id1", "isRelevant": boolean, "confidence": 0-1, "reasoning": ["brief reason"]},
+  {"eventId": "id2", "isRelevant": boolean, "confidence": 0-1, "reasoning": ["brief reason"]}
 ]`;
   }
 
