@@ -15,6 +15,7 @@ graph TB
     
     D --> D1[Ticketmaster API]
     D --> D2[PredictHQ API]
+    D --> D3[Perplexity AI]
     
     E --> E1[PostgreSQL]
     E --> E2[Vector Search - pgvector]
