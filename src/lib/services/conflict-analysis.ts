@@ -566,8 +566,7 @@ export class ConflictAnalysisService {
         return b.conflictScore - a.conflictScore;
       }).slice(0, 5); // Show up to 5 high-risk dates
 
-      // Remove any dates that overlap to avoid duplicates
-      // CRITICAL: High-risk dates should ALWAYS take precedence over recommended dates
+      // Remove any dates that overlap with recommended dates to avoid duplicates
       // Helper function to check if two date ranges overlap
       const datesOverlap = (start1: string, end1: string, start2: string, end2: string): boolean => {
         const d1Start = new Date(start1);
@@ -577,35 +576,34 @@ export class ConflictAnalysisService {
         return d1Start <= d2End && d1End >= d2Start;
       };
       
-      // STEP 1: Filter recommended dates against ORIGINAL high-risk dates list
-      // This ensures no recommended date overlaps with any high-risk date
-      const filteredRecommendedDates = recommendedDates.filter(rec => {
-        const isUserPreferred = rec.startDate === params.startDate && rec.endDate === params.endDate;
+      const filteredHighRiskDates = highRiskDates.filter(highRisk => {
+        const isUserPreferred = highRisk.startDate === params.startDate && highRisk.endDate === params.endDate;
+        // Always include user's preferred dates, even if they overlap with recommended dates
+        if (isUserPreferred) return true;
         
-        // Check if this recommended date overlaps with ANY high-risk date (use original list)
-        const overlapsWithHighRisk = highRiskDates.some(highRisk => 
+        // Check if this high-risk date overlaps with any recommended date
+        const overlapsWithRecommended = recommendedDates.some(rec => 
+          datesOverlap(highRisk.startDate, highRisk.endDate, rec.startDate, rec.endDate)
+        );
+        
+        if (overlapsWithRecommended) {
+          console.log(`🚫 Removing high-risk date ${highRisk.startDate} to ${highRisk.endDate} - overlaps with recommended date`);
+        }
+        
+        return !overlapsWithRecommended;
+      });
+      
+      // Also filter recommended dates that overlap with high-risk dates (defensive check)
+      const filteredRecommendedDates = recommendedDates.filter(rec => {
+        const overlapsWithHighRisk = filteredHighRiskDates.some(highRisk => 
           datesOverlap(rec.startDate, rec.endDate, highRisk.startDate, highRisk.endDate)
         );
         
         if (overlapsWithHighRisk) {
-          // User's preferred dates that are also high-risk should still be excluded from recommended
-          // They will appear in high-risk section instead
-          if (isUserPreferred) {
-            console.log(`🚫 Removing user's preferred date ${rec.startDate} to ${rec.endDate} from recommended - overlaps with high-risk date (will appear in high-risk section)`);
-          } else {
-            console.log(`🚫 Removing recommended date ${rec.startDate} to ${rec.endDate} - overlaps with high-risk date`);
-          }
+          console.log(`🚫 Removing recommended date ${rec.startDate} to ${rec.endDate} - overlaps with high-risk date`);
         }
         
         return !overlapsWithHighRisk;
-      });
-      
-      // STEP 2: Keep all high-risk dates (they take precedence)
-      // Since we've already filtered recommended dates to exclude overlaps, all high-risk dates should be kept
-      const filteredHighRiskDates = highRiskDates.filter(highRisk => {
-        // Always keep all high-risk dates - they take precedence over recommended dates
-        // Recommended dates have already been filtered to exclude overlaps with high-risk dates
-        return true;
       });
       console.log(`Final results: ${filteredRecommendedDates.length} low risk dates (${recommendedDates.length} before overlap filtering), ${filteredHighRiskDates.length} high risk dates`);
       console.log(`User's preferred dates (${params.startDate} to ${params.endDate}) included: ${filteredHighRiskDates.some(d => d.startDate === params.startDate && d.endDate === params.endDate)}`);
@@ -4492,21 +4490,27 @@ export class ConflictAnalysisService {
           return false;
         }
         
-        // Filter out events outside the requested date range
+        // Filter out events outside the requested date range (with ±7 day window for temporal proximity)
         if (requestedStartDate && requestedEndDate) {
           const eventDate = new Date(normalizedDate);
           const startDate = new Date(requestedStartDate);
           const endDate = new Date(requestedEndDate);
           
+          // Add ±7 day window (same as batch processing uses)
+          const windowStart = new Date(startDate);
+          windowStart.setDate(windowStart.getDate() - 7);
+          const windowEnd = new Date(endDate);
+          windowEnd.setDate(windowEnd.getDate() + 7);
+          
           // Set time to midnight for accurate date comparison
           eventDate.setHours(0, 0, 0, 0);
-          startDate.setHours(0, 0, 0, 0);
-          endDate.setHours(0, 0, 0, 0);
+          windowStart.setHours(0, 0, 0, 0);
+          windowEnd.setHours(0, 0, 0, 0);
           
-          // Check if event is within the requested date range (inclusive)
-          if (eventDate < startDate || eventDate > endDate) {
-            console.log(`🚫 Filtering out Perplexity event "${pe.name}" on ${normalizedDate} - outside requested range ${requestedStartDate} to ${requestedEndDate}`);
-            return false; // Filter out events outside the range
+          // Check if event is within the extended window (not just exact range)
+          if (eventDate < windowStart || eventDate > windowEnd) {
+            console.log(`🚫 Filtering out Perplexity event "${pe.name}" on ${normalizedDate} - outside extended window ${windowStart.toISOString().split('T')[0]} to ${windowEnd.toISOString().split('T')[0]}`);
+            return false;
           }
         }
         
