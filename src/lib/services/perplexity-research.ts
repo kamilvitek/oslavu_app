@@ -635,6 +635,10 @@ IMPORTANT GUIDELINES:
     // Longer prompts (batch queries) need more time for Perplexity's web research
     const promptLength = prompt.length;
     const timeoutDuration = promptLength > 2000 ? 90000 : 60000; // 90s for long prompts, 60s for short
+    
+    // Detect batch queries and set appropriate token limits
+    const isBatchQuery = promptLength > 3000 || prompt.includes('multiple date ranges') || prompt.includes('TARGET DATE RANGES');
+    const maxTokens = isBatchQuery ? 6000 : 3000;
     const timeoutId = setTimeout(() => {
       console.warn(`⏱️ Perplexity API timeout triggered after ${timeoutDuration / 1000} seconds (prompt length: ${promptLength} chars)`);
       controller.abort();
@@ -726,6 +730,8 @@ IMPORTANT GUIDELINES:
         timeout: timeoutDuration / 1000 + 's',
         model: this.model,
         hasApiKey: !!apiKey,
+        isBatchQuery: isBatchQuery,
+        maxTokens: maxTokens,
       });
       
       const fetchStartTime = Date.now();
@@ -759,7 +765,7 @@ IMPORTANT GUIDELINES:
             },
           } : {}),
           temperature: 0.2, // Lower temperature for more consistent results
-          max_tokens: 2000,
+          max_tokens: maxTokens, // Dynamic based on query type
         }),
         signal: controller.signal,
       });
@@ -840,6 +846,10 @@ IMPORTANT GUIDELINES:
             parsed = this.extractPartialJSON(content);
             if (parsed) {
               console.log('✅ Successfully extracted partial JSON data');
+              // Log if recommendations was incomplete
+              if (!parsed.recommendations || parsed.recommendations.shouldMoveDate === undefined) {
+                console.warn('⚠️ Extracted JSON had incomplete recommendations, using defaults');
+              }
             } else {
               throw new Error('Could not extract valid JSON from response');
             }
@@ -890,6 +900,35 @@ IMPORTANT GUIDELINES:
   }
 
   /**
+   * Ensures recommendations object has all required fields
+   * Handles null, undefined, empty objects, and partial objects
+   */
+  private ensureCompleteRecommendations(partial?: any): {
+    shouldMoveDate: boolean;
+    reasoning: string[];
+    recommendedDates?: string[];
+    riskLevel: 'low' | 'medium' | 'high';
+  } {
+    // Handle null/undefined
+    if (!partial || typeof partial !== 'object') {
+      return {
+        shouldMoveDate: false,
+        reasoning: [],
+        recommendedDates: [],
+        riskLevel: 'low',
+      };
+    }
+
+    // Ensure all required fields exist with defaults
+    return {
+      shouldMoveDate: typeof partial.shouldMoveDate === 'boolean' ? partial.shouldMoveDate : false,
+      reasoning: Array.isArray(partial.reasoning) ? partial.reasoning : [],
+      recommendedDates: Array.isArray(partial.recommendedDates) ? partial.recommendedDates : [],
+      riskLevel: ['low', 'medium', 'high'].includes(partial.riskLevel) ? partial.riskLevel : 'low',
+    };
+  }
+
+  /**
    * Validate and parse Perplexity response
    */
   private validateAndParseResponse(data: any): PerplexityConflictResearch {
@@ -900,11 +939,7 @@ IMPORTANT GUIDELINES:
         touringArtists: Array.isArray(data?.touringArtists) ? data.touringArtists : [],
         localFestivals: Array.isArray(data?.localFestivals) ? data.localFestivals : [],
         holidaysAndCulturalEvents: Array.isArray(data?.holidaysAndCulturalEvents) ? data.holidaysAndCulturalEvents : [],
-        recommendations: data?.recommendations || {
-          riskLevel: 'low' as const,
-          reasoning: [],
-          recommendedDates: []
-        }
+        recommendations: this.ensureCompleteRecommendations(data?.recommendations)
       };
 
       // Validate with Zod schema (using safe defaults)
@@ -934,7 +969,30 @@ IMPORTANT GUIDELINES:
         recommendations: this.transformRecommendationsForUser(validated.recommendations),
       };
     } catch (error) {
-      console.warn('⚠️ Failed to validate Perplexity response, using safe defaults:', error instanceof Error ? error.message : 'Unknown error');
+      if (error instanceof z.ZodError) {
+        console.warn('⚠️ Failed to validate Perplexity response:', {
+          errors: error.errors.map(e => {
+            const errorInfo: any = {
+              path: e.path.join('.'),
+              message: e.message,
+            };
+            // Only add expected/received if they exist (not all ZodIssue types have them)
+            if ('expected' in e) {
+              errorInfo.expected = (e as any).expected;
+            }
+            if ('received' in e) {
+              errorInfo.received = (e as any).received;
+            }
+            return errorInfo;
+          }),
+          dataReceived: {
+            hasRecommendations: !!data?.recommendations,
+            recommendationsKeys: data?.recommendations ? Object.keys(data.recommendations) : [],
+          }
+        });
+      } else {
+        console.warn('⚠️ Failed to validate Perplexity response, using safe defaults:', error instanceof Error ? error.message : 'Unknown error');
+      }
       // Return safe default - don't break the analysis
       return this.getDefaultResponse();
     }
@@ -1361,6 +1419,12 @@ IMPORTANT GUIDELINES:
         const parsed = JSON.parse(fixed);
         // Validate it has the expected structure
         if (parsed && typeof parsed === 'object') {
+          // Ensure recommendations object is complete
+          if (!parsed.recommendations || typeof parsed.recommendations !== 'object') {
+            parsed.recommendations = this.ensureCompleteRecommendations();
+          } else {
+            parsed.recommendations = this.ensureCompleteRecommendations(parsed.recommendations);
+          }
           return parsed;
         }
       } catch {
@@ -1381,11 +1445,9 @@ IMPORTANT GUIDELINES:
         touringArtists: [],
         localFestivals: [],
         holidaysAndCulturalEvents: [],
-        recommendations: {
-          shouldMoveDate: false,
+        recommendations: this.ensureCompleteRecommendations({
           reasoning: ['Partial data extracted from response. Some information may be incomplete.'],
-          riskLevel: 'low' as const,
-        },
+        }),
       };
       
       // Try to extract any valid arrays or objects we can find
