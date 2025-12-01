@@ -630,7 +630,17 @@ IMPORTANT GUIDELINES:
    */
   private async callPerplexityAPI(prompt: string): Promise<any> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    
+    // Dynamic timeout based on prompt complexity
+    // Longer prompts (batch queries) need more time for Perplexity's web research
+    const promptLength = prompt.length;
+    const timeoutDuration = promptLength > 2000 ? 90000 : 60000; // 90s for long prompts, 60s for short
+    const timeoutId = setTimeout(() => {
+      console.warn(`⏱️ Perplexity API timeout triggered after ${timeoutDuration / 1000} seconds (prompt length: ${promptLength} chars)`);
+      controller.abort();
+    }, timeoutDuration);
+
+    const requestStartTime = Date.now();
 
     try {
       // Define JSON schema for structured output
@@ -710,6 +720,15 @@ IMPORTANT GUIDELINES:
 
       const apiKey = this.getApiKey();
       
+      // Log request details for diagnostics
+      console.log('📡 Perplexity API Request:', {
+        promptLength: promptLength,
+        timeout: timeoutDuration / 1000 + 's',
+        model: this.model,
+        hasApiKey: !!apiKey,
+      });
+      
+      const fetchStartTime = Date.now();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -745,12 +764,46 @@ IMPORTANT GUIDELINES:
         signal: controller.signal,
       });
 
+      const fetchDuration = Date.now() - fetchStartTime;
       clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        const retryAfter = response.headers.get('Retry-After');
+        const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
+        
+        // Enhanced error logging with diagnostic information
+        const errorInfo: any = {
+          status: response.status,
+          statusText: response.statusText,
+          fetchDuration: fetchDuration + 'ms',
+          error: errorData,
+        };
+        
+        if (response.status === 429) {
+          errorInfo.message = 'Rate limit exceeded';
+          errorInfo.retryAfter = retryAfter || 'unknown';
+          console.error('❌ Perplexity API Rate Limit:', errorInfo);
+          throw new Error(`Perplexity API rate limit exceeded${retryAfter ? ` - Retry after ${retryAfter} seconds` : ''}`);
+        }
+        
+        if (response.status === 401 || response.status === 403) {
+          errorInfo.message = 'Authentication failed';
+          console.error('❌ Perplexity API Authentication Error:', errorInfo);
+          throw new Error(`Perplexity API authentication failed (${response.status}) - Check your API key`);
+        }
+        
+        if (response.status === 402) {
+          errorInfo.message = 'Payment required';
+          console.error('❌ Perplexity API Payment Required:', errorInfo);
+          throw new Error('Perplexity API payment required - Check your account credits');
+        }
+        
+        console.error('❌ Perplexity API Error:', errorInfo);
         throw new Error(`Perplexity API error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
       }
+      
+      console.log(`✅ Perplexity API response received in ${fetchDuration}ms`);
 
       const data = await response.json();
       const content = data.choices[0]?.message?.content;
@@ -802,11 +855,35 @@ IMPORTANT GUIDELINES:
         }
       }
 
+      const totalDuration = Date.now() - requestStartTime;
+      console.log(`✅ Perplexity API call completed successfully in ${totalDuration}ms`);
       return parsed;
     } catch (error) {
       clearTimeout(timeoutId);
+      const totalDuration = Date.now() - requestStartTime;
+      
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Perplexity API request timed out after 30 seconds');
+        console.error('❌ Perplexity API Timeout:', {
+          timeout: timeoutDuration / 1000 + 's',
+          actualDuration: totalDuration + 'ms',
+          promptLength: promptLength,
+          possibleCauses: [
+            'API is experiencing high load',
+            'Network connectivity issues',
+            'Complex batch query taking longer than expected',
+            'Model processing delay'
+          ]
+        });
+        throw new Error(`Perplexity API request timed out after ${timeoutDuration / 1000} seconds (request took ${totalDuration}ms)`);
+      }
+      
+      // Log other errors with timing info
+      if (error instanceof Error) {
+        console.error('❌ Perplexity API Error:', {
+          error: error.message,
+          duration: totalDuration + 'ms',
+          promptLength: promptLength,
+        });
       }
       throw error;
     }
