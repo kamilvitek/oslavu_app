@@ -1,0 +1,76 @@
+---
+description: Rules for service layer development
+globs: ["src/lib/services/**/*.ts"]
+---
+
+# Service Layer Rules
+
+## Structure
+- One service per domain (e.g., `conflict-analysis.ts`, `event-scraper.ts`)
+- Export functions, not classes
+- Use TypeScript interfaces for all parameters and return types
+
+## Error Handling
+- Always handle errors gracefully
+- Throw meaningful error messages
+- Log errors for debugging
+- Never expose sensitive information in errors
+
+## Database Operations
+- Use Supabase client from `@/lib/supabase`
+- Always use parameterized queries
+- Handle database errors appropriately
+- Use transactions when needed
+
+## AI Integration
+- Batch OpenAI API calls when possible
+- Handle rate limits and retries
+- Cache AI responses appropriately
+- Use proper error handling for API failures
+
+## External APIs
+- Implement proper error handling
+- Use request deduplication
+- Cache responses when appropriate
+- Handle rate limits gracefully
+
+## Function Structure
+```tsx
+interface FunctionParams {
+  param1: string;
+  param2?: number;
+}
+
+interface FunctionResult {
+  success: boolean;
+  data?: any;
+  error?: string;
+}
+
+export async function serviceFunction(
+  params: FunctionParams
+): Promise<FunctionResult> {
+  try {
+    // Implementation
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Service error:', error);
+    return { 
+      success: false, 
+      error: 'User-friendly error message' 
+    };
+  }
+}
+```
+
+## Performance
+- Use batch operations when processing multiple items
+- Implement caching for expensive operations
+- Use async/await properly
+- Avoid blocking operations
+
+## Logging
+- Log important operations for debugging
+- Include relevant context in log messages
+- Use appropriate log levels (info, warn, error)
+- Never log sensitive information (API keys, passwords, etc.)

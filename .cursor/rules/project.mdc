@@ -1,0 +1,114 @@
+---
+alwaysApply: true
+description: Core project rules and conventions for Oslavu
+---
+
+# Oslavu - AI-Powered Event Date Optimization
+
+## Project Overview
+Oslavu is a SaaS platform that helps event managers pick optimal dates by detecting conflicts with competing events. Built with Next.js 15, TypeScript, Supabase, and AI-powered analysis.
+
+## Technology Stack
+- **Framework**: Next.js 15 with App Router
+- **Language**: TypeScript (strict mode)
+- **Database**: Supabase (PostgreSQL with pgvector)
+- **Styling**: Tailwind CSS + shadcn/ui
+- **State**: @tanstack/react-query
+- **Forms**: react-hook-form + zod
+- **AI**: OpenAI GPT-4 for content extraction and analysis
+
+## Code Style & Conventions
+
+### TypeScript
+- Always use strict TypeScript mode
+- Define explicit interfaces for all props and function parameters
+- Use type inference only when types are obvious
+- Prefer `interface` over `type` for object shapes
+- Export types alongside their implementations
+
+### React Components
+- Use function components with TypeScript interfaces for props
+- Use default parameters for optional props: `optional = false`
+- Prefer composition over inheritance
+- Use `cn()` utility from `@/lib/utils` for conditional classes
+- Always handle loading and error states for async operations
+
+### File Organization
+- API routes: `src/app/api/[feature]/route.ts`
+- Components: `src/components/[category]/[component].tsx`
+- Services: `src/lib/services/[service].ts`
+- Types: `src/types/[domain].ts` or co-located with components
+- Use `@/*` path alias for imports from `src/`
+
+### Styling
+- Mobile-first responsive design with Tailwind
+- Use semantic HTML elements
+- Ensure WCAG 2.1 AA accessibility compliance
+- Use Tailwind responsive utilities: `md:`, `lg:`, etc.
+
+### API Routes
+- All API routes must return proper error responses
+- Use Next.js API route handlers (not Pages Router)
+- Implement proper error handling and logging
+- Use Supabase client from `@/lib/supabase`
+
+### Database
+- Use Supabase Row-Level Security (RLS) for data access
+- Prefer parameterized queries to prevent SQL injection
+- Use vector search (pgvector) for semantic similarity
+- Always handle database errors gracefully
+
+### AI Integration
+- Batch OpenAI API calls when possible (see batch-audience-overlap.ts)
+- Always handle rate limits and API errors
+- Cache AI responses when appropriate
+- Use GPT-4 for content extraction and analysis
+
+## Common Patterns
+
+### Component Structure
+```tsx
+interface ComponentProps {
+  title: string;
+  optional?: boolean;
+}
+
+export function Component({ title, optional = false }: ComponentProps) {
+  // Implementation
+}
+```
+
+### API Route Structure
+```tsx
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(request: NextRequest) {
+  try {
+    // Implementation
+    return NextResponse.json({ data: result });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Error message' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Error Handling
+- Always use try-catch for async operations
+- Return user-friendly error messages
+- Log errors for debugging
+- Use proper HTTP status codes
+
+## Testing
+- Write tests for complex business logic
+- Use Jest for unit tests
+- Test API routes with proper mocking
+- Ensure all tests pass before committing
+
+## Documentation
+- Update relevant docs when adding features
+- Document API changes in `docs/API.md`
+- Keep component docs in `docs/COMPONENTS.md`
+- Document new services in appropriate feature docs

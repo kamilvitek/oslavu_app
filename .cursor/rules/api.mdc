@@ -1,0 +1,56 @@
+---
+description: Rules for API route development
+globs: ["src/app/api/**/*.ts"]
+---
+
+# API Route Rules
+
+## Structure
+- All API routes must be in `src/app/api/[feature]/route.ts`
+- Use named exports: `GET`, `POST`, `PUT`, `DELETE`
+- Always validate request data with zod schemas
+
+## Error Handling
+- Return `NextResponse.json()` with proper status codes
+- Include error messages in response body
+- Log errors for observability
+- Never expose internal error details to clients
+
+## Authentication
+- Check authentication when required
+- Use Supabase Auth for user verification
+- Implement proper authorization checks
+
+## Rate Limiting
+- Implement rate limiting for external API calls
+- Use request deduplication for expensive operations
+- Cache responses when appropriate
+
+## Response Format
+```tsx
+// Success
+return NextResponse.json({ data: result });
+
+// Error
+return NextResponse.json(
+  { error: 'User-friendly message' },
+  { status: 400 }
+);
+```
+
+## Request Validation
+- Always validate request bodies with zod schemas
+- Return 400 status for validation errors
+- Provide clear error messages for invalid input
+
+## External API Integration
+- Handle rate limits gracefully
+- Implement retry logic with exponential backoff
+- Use request deduplication to avoid duplicate calls
+- Cache responses when data doesn't change frequently
+
+## Database Queries
+- Use Supabase client from `@/lib/supabase`
+- Always use parameterized queries
+- Handle database errors appropriately
+- Use transactions for multi-step operations

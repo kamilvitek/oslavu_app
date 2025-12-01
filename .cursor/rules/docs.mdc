@@ -1,5 +1,23 @@
 ---
 alwaysApply: true
+description: Project documentation references
 ---
-The following documentation has all of our features and requirements for this project. Keep this doc in your memory so that you can stay aligned:
-@oslavu_all_documentation.md
+
+# Documentation References
+
+When working on features, refer to these documentation files:
+
+- **Project Overview**: `docs/README.md`
+- **Architecture**: `docs/architecture/overview.md`
+- **API Reference**: `docs/API.md`
+- **Components**: `docs/COMPONENTS.md`
+- **Data Structures**: `docs/DATA_STRUCTURES.md`
+- **Flows**: `docs/FLOWS.md`
+- **Features**:
+  - Conflict Analysis: `docs/features/conflict-analysis.md`
+  - Web Scraping: `docs/features/web-scraping.md`
+  - AI Normalization: `docs/features/ai-normalization.md`
+  - Performance: `docs/features/performance.md`
+  - Seasonality: `docs/features/seasonality.md`
+
+Always update relevant documentation when adding or modifying features.

@@ -1,0 +1,73 @@
+---
+description: Rules for React component development
+globs: ["src/components/**/*.tsx"]
+---
+
+# Component Development Rules
+
+## Component Structure
+- Use function components with TypeScript
+- Define props interface above component
+- Use default parameters for optional props
+- Export component as named export
+
+## Styling
+- Use Tailwind CSS classes
+- Use `cn()` utility for conditional classes
+- Follow mobile-first responsive design
+- Ensure accessibility (ARIA labels, keyboard navigation)
+
+## State Management
+- Use `@tanstack/react-query` for server state
+- Use React hooks for local state
+- Avoid prop drilling - use context when needed
+
+## Forms
+- Use `react-hook-form` with `zod` validation
+- Always show validation errors
+- Handle form submission errors gracefully
+
+## Performance
+- Use `React.memo` for expensive components
+- Lazy load heavy components
+- Optimize images and assets
+
+## Accessibility
+- Use semantic HTML elements
+- Add ARIA labels where appropriate
+- Ensure keyboard navigation works
+- Test with screen readers
+
+## Component Example
+```tsx
+import { cn } from "@/lib/utils";
+
+interface ButtonProps {
+  children: React.ReactNode;
+  variant?: "primary" | "secondary";
+  onClick?: () => void;
+  disabled?: boolean;
+}
+
+export function Button({ 
+  children, 
+  variant = "primary", 
+  onClick,
+  disabled = false 
+}: ButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "px-4 py-2 rounded",
+        variant === "primary" && "bg-blue-500 text-white",
+        variant === "secondary" && "bg-gray-200 text-gray-800",
+        disabled && "opacity-50 cursor-not-allowed"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+```
