@@ -16,7 +16,7 @@ interface SectionProps {
 
 function Section({ title, id, children }: SectionProps) {
   return (
-    <section id={id} className="border-t border-border py-12 md:py-16">
+    <section id={id} className="rounded-2xl border border-border/80 bg-card/40 px-6 md:px-8 py-10 md:py-12">
       <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-5">{title}</h2>
       <div className="space-y-4 text-base leading-7 text-foreground/90">{children}</div>
     </section>
@@ -24,23 +24,49 @@ function Section({ title, id, children }: SectionProps) {
 }
 
 export default function OslavuCaseStudyPage() {
+  const navItems = [
+    { href: "#initial-hypothesis", label: "Hypothesis" },
+    { href: "#approach", label: "Approach" },
+    { href: "#solution", label: "Solution" },
+    { href: "#traction", label: "Traction" },
+    { href: "#core-problem-discovery", label: "Discovery" },
+    { href: "#pivot-attempt", label: "Pivot" },
+    { href: "#why-it-failed", label: "Failure" },
+    { href: "#technical-stack-process", label: "Stack" },
+    { href: "#demo-section", label: "Demo" },
+    { href: "#about-me", label: "About" },
+  ];
+
   return (
-    <main className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 pt-32 pb-16 max-w-4xl">
+    <main className="min-h-screen bg-gradient-to-b from-background to-muted/20">
+      <div className="container mx-auto px-4 pt-32 pb-16 max-w-5xl">
         <header id="hero" className="py-10 md:py-14 border-t border-border">
           <p className="text-sm uppercase tracking-wider text-muted-foreground mb-4">Case study</p>
-          <h1 className="text-4xl md:text-6xl font-semibold leading-tight tracking-tight mb-6">
-            Oslavu: building an event-date decision tool, then shutting it down
-          </h1>
-          <p className="text-lg md:text-xl text-foreground/85 max-w-3xl mb-4">
+          <h1 className="text-3xl md:text-5xl font-semibold leading-tight tracking-tight mb-6 max-w-4xl">
             Oslavu was a SaaS project that helped event organizers choose better dates by analyzing conflict risk
             between events, venues, and audience overlap.
-          </p>
-          <p className="text-lg font-medium">
+          </h1>
+          <p className="text-lg md:text-xl font-medium max-w-3xl">
             Outcome: the project worked at MVP level, but it did not reach a viable business model.
           </p>
         </header>
 
+        <nav className="mb-8">
+          <ul className="flex flex-wrap gap-2">
+            {navItems.map((item) => (
+              <li key={item.href}>
+                <a
+                  href={item.href}
+                  className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                >
+                  {item.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="space-y-6">
         <Section id="initial-hypothesis" title="1) Initial hypothesis">
           <p>
             I believed event organizers had a painful and expensive decision problem: choosing the wrong date could
@@ -233,6 +259,7 @@ export default function OslavuCaseStudyPage() {
             .
           </p>
         </Section>
+        </div>
       </div>
     </main>
   );
