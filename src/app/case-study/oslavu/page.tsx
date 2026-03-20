@@ -45,7 +45,7 @@ export default function OslavuCaseStudyPage() {
         <header id="hero" className="py-10 md:py-14 border-t border-border">
           <p className="text-sm uppercase tracking-wider text-muted-foreground mb-4">Case study</p>
           <h1 className="text-3xl md:text-5xl font-semibold leading-tight tracking-tight mb-6 max-w-4xl">
-            Oslavu was a SaaS project that helped event organizers choose better dates by analyzing conflict risk
+            Oslavu was a SaaS project meant to help event organizers choose better dates by analyzing conflict risk
             between events, venues, and audience overlap.
           </h1>
           <p className="text-lg md:text-xl font-medium max-w-3xl">
