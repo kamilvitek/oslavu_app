@@ -51,10 +51,10 @@ export default function OslavuCaseStudyPage() {
           </p>
         </header>
 
-        <nav className="mb-8">
-          <ul className="flex flex-wrap gap-2">
+        <nav className="mb-8 lg:hidden sticky top-24 z-30 -mx-4 px-4 py-3 bg-background/95 backdrop-blur-sm border-y border-border">
+          <ul className="flex gap-2 overflow-x-auto">
             {navItems.map((item) => (
-              <li key={item.href}>
+              <li key={item.href} className="shrink-0">
                 <a
                   href={item.href}
                   className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
@@ -66,7 +66,26 @@ export default function OslavuCaseStudyPage() {
           </ul>
         </nav>
 
-        <div className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-6 lg:gap-10 items-start">
+          <aside className="hidden lg:block sticky top-28 self-start">
+            <div className="rounded-2xl border border-border bg-background/90 backdrop-blur-sm p-3">
+              <p className="px-3 pt-2 pb-3 text-xs uppercase tracking-wide text-muted-foreground">On this page</p>
+              <ul className="space-y-1">
+                {navItems.map((item) => (
+                  <li key={item.href}>
+                    <a
+                      href={item.href}
+                      className="block rounded-lg px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      {item.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </aside>
+
+          <div className="space-y-6">
         <Section id="initial-hypothesis" title="1) Initial hypothesis">
           <p>
             I believed event organizers had a painful and expensive decision problem: choosing the wrong date could
@@ -259,6 +278,7 @@ export default function OslavuCaseStudyPage() {
             .
           </p>
         </Section>
+          </div>
         </div>
       </div>
     </main>
