@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ConflictScoreSimulator } from "./conflict-score-simulator";
-import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
   title: "Oslavu Case Study",
@@ -83,11 +82,6 @@ export default function OslavuCaseStudyPage() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-3 pt-3 border-t border-border px-2 pb-1">
-                <Button asChild variant="default" size="sm" className="w-full">
-                  <Link href="/">MVP Preview</Link>
-                </Button>
-              </div>
             </div>
           </aside>
 
