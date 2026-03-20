@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
+import { Globe, Linkedin } from "lucide-react";
 import { ConflictScoreSimulator } from "./conflict-score-simulator";
 
 export const metadata: Metadata = {
@@ -253,28 +255,63 @@ export default function OslavuCaseStudyPage() {
         </Section>
 
         <Section id="about-me" title="11) About me">
-          <p>
-            I'm Kamil, currently a student at a business academy highschool in the Czech Republic while building projects alongside my
-            studies.
-          </p>
-          <p>
-            My core work is creating websites where strategy, design, and development are aligned to help people present
-            themselves clearly and build trust.
-          </p>
-          <p>
-            Long-term, I want to build globally successful startups. I see myself primarily as a builder focused on
-            process, learning speed, and real impact.
-          </p>
-          <p>
-            <Link
-              href="https://www.linkedin.com/in/kamil-vitek/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline underline-offset-4 hover:opacity-80"
-            >
-              If you are interested in how I think or what I am building, connect with me on LinkedIn.
-            </Link>
-          </p>
+          <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-6 items-start">
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border bg-background overflow-hidden">
+                <Image
+                  src="/about-me-photo.png"
+                  alt="Kamil Vitek portrait photo"
+                  width={1024}
+                  height={1024}
+                  className="w-full h-auto object-cover"
+                  priority
+                />
+              </div>
+              <Link
+                href="https://kamilvitek.cz/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:border-primary/40 hover:text-primary transition-colors"
+                aria-label="Visit personal website"
+              >
+                <Globe className="h-4 w-4" />
+                <span>kamilvitek.cz</span>
+              </Link>
+              <Link
+                href="https://www.linkedin.com/in/kamil-vitek/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center rounded-lg border border-border bg-background p-2 hover:border-primary/40 hover:text-primary transition-colors"
+                aria-label="Visit LinkedIn profile"
+              >
+                <Linkedin className="h-5 w-5" />
+              </Link>
+            </div>
+            <div className="space-y-4">
+              <p>
+                I'm Kamil, currently a student at a business academy highschool in the Czech Republic while building
+                projects alongside my studies.
+              </p>
+              <p>
+                My core work is creating websites where strategy, design, and development are aligned to help people
+                present themselves clearly and build trust.
+              </p>
+              <p>
+                Long-term, I want to build globally successful startups. I see myself primarily as a builder focused on
+                process, learning speed, and real impact.
+              </p>
+              <p>
+                <Link
+                  href="https://www.linkedin.com/in/kamil-vitek/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline underline-offset-4 hover:opacity-80"
+                >
+                  If you are interested in how I think or what I am building, connect with me on LinkedIn.
+                </Link>
+              </p>
+            </div>
+          </div>
         </Section>
           </div>
         </div>
