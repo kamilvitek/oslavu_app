@@ -254,7 +254,7 @@ export default function OslavuCaseStudyPage() {
 
         <Section id="about-me" title="11) About me">
           <p>
-            I am currently a student at a business academy in the Czech Republic while building projects alongside my
+            I'm Kamil, currently a student at a business academy highschool in the Czech Republic while building projects alongside my
             studies.
           </p>
           <p>
@@ -266,16 +266,14 @@ export default function OslavuCaseStudyPage() {
             process, learning speed, and real impact.
           </p>
           <p>
-            If you are interested in how I think or what I am building, connect with me on{" "}
             <Link
               href="https://www.linkedin.com/in/kamil-vitek/"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline underline-offset-4 hover:text-primary"
+              className="text-primary underline underline-offset-4 hover:opacity-80"
             >
-              LinkedIn
+              If you are interested in how I think or what I am building, connect with me on LinkedIn.
             </Link>
-            .
           </p>
         </Section>
           </div>
