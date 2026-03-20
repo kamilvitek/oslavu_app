@@ -4,13 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Calendar, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 export function Header() {
+  const pathname = usePathname();
+  const isCaseStudyRoute = pathname?.startsWith("/case-study/oslavu");
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
+    if (isCaseStudyRoute) {
+      return;
+    }
+
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       
@@ -30,10 +37,15 @@ export function Header() {
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [lastScrollY]);
+  }, [lastScrollY, isCaseStudyRoute]);
 
   // Close mobile menu when clicking outside or on a link
   useEffect(() => {
+    if (isCaseStudyRoute) {
+      document.body.style.overflow = "";
+      return;
+    }
+
     if (isMobileMenuOpen) {
       document.body.style.overflow = "hidden";
     } else {
@@ -42,7 +54,11 @@ export function Header() {
     return () => {
       document.body.style.overflow = "";
     };
-  }, [isMobileMenuOpen]);
+  }, [isMobileMenuOpen, isCaseStudyRoute]);
+
+  if (isCaseStudyRoute) {
+    return null;
+  }
 
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
