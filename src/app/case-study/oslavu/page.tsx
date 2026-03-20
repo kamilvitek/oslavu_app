@@ -52,7 +52,7 @@ export default function OslavuCaseStudyPage() {
           </p>
         </header>
 
-        <nav className="mb-8 lg:hidden sticky top-24 z-30 -mx-4 px-4 py-3 bg-background/95 backdrop-blur-sm border-y border-border">
+        <nav className="mb-8 lg:hidden sticky top-0 z-40 -mx-4 px-4 py-3 bg-background/95 backdrop-blur-sm border-y border-border">
           <ul className="flex gap-2 overflow-x-auto">
             {navItems.map((item) => (
               <li key={item.href} className="shrink-0">
