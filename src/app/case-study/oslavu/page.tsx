@@ -4,10 +4,30 @@ import Image from "next/image";
 import { Globe, Linkedin } from "lucide-react";
 import { ConflictScoreSimulator } from "./conflict-score-simulator";
 
+const CASE_STUDY_TITLE = "Oslavu Case Study";
+const CASE_STUDY_DESCRIPTION =
+  "An honest case study of Oslavu: hypothesis, MVP execution, customer discovery, pivot attempt, and why it was shut down.";
+const CASE_STUDY_URL = "https://www.oslavu.com/case-study/oslavu";
+
 export const metadata: Metadata = {
-  title: "Oslavu Case Study",
-  description:
-    "An honest case study of Oslavu: hypothesis, MVP execution, customer discovery, pivot attempt, and why it was shut down.",
+  title: CASE_STUDY_TITLE,
+  description: CASE_STUDY_DESCRIPTION,
+  alternates: {
+    canonical: CASE_STUDY_URL,
+  },
+  openGraph: {
+    title: CASE_STUDY_TITLE,
+    description: CASE_STUDY_DESCRIPTION,
+    url: CASE_STUDY_URL,
+    siteName: "Oslavu",
+    type: "article",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: CASE_STUDY_TITLE,
+    description: CASE_STUDY_DESCRIPTION,
+  },
 };
 
 interface SectionProps {

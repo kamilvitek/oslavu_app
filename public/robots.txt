@@ -1,2 +1,8 @@
+# Allow LinkedIn to scrape pages for link previews (Projects, posts, etc.)
+User-agent: LinkedInBot
+Allow: /
+
+# Keep the product private, but allow the public case study
 User-agent: *
+Allow: /case-study/
 Disallow: /
