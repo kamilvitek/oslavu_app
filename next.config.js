@@ -11,6 +11,15 @@ const nextConfig = {
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
   },
+  async redirects() {
+    return [
+      {
+        source: "/",
+        destination: "/case-study/oslavu",
+        permanent: true,
+      },
+    ];
+  },
   // Security headers (additional layer, middleware also handles this)
   async headers() {
     return [

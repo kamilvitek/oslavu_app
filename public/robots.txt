@@ -1,8 +1,15 @@
-# Allow LinkedIn to scrape pages for link previews (Projects, posts, etc.)
+# LinkedIn and other preview crawlers must be able to fetch the case study.
+# Do not use "Disallow: /" — some crawlers treat that as a full-site block
+# and ignore Allow rules, which prevents LinkedIn Projects from adding the link.
 User-agent: LinkedInBot
 Allow: /
 
-# Keep the product private, but allow the public case study
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
 User-agent: *
-Allow: /case-study/
-Disallow: /
+Allow: /
+Disallow: /api/
