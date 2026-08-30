@@ -309,16 +309,16 @@ export default function OslavuCaseStudyPage() {
             </div>
             <div className="space-y-4">
               <p>
-                I'm Kamil, currently a student at a business academy highschool in the Czech Republic while building
-                projects alongside my studies.
+                I'm Kamil Vítek, currently studying Economics and Business Administration at Aarhus University in
+                Herning, Denmark, while continuing to build projects and explore new opportunities.
               </p>
               <p>
-                My core work is creating websites where strategy, design, and development are aligned to help people
-                present themselves clearly and build trust.
+                My background is in web design and web development. I enjoy turning ideas into practical products and
+                thinking about how technology, business, and human behavior come together.
               </p>
               <p>
-                Long-term, I want to build globally successful startups. I see myself primarily as a builder focused on
-                process, learning speed, and real impact.
+                Long-term, I want to build globally successful startup here in Denmark. I see myself primarily as a builder, focused on
+                learning fast, understanding problems deeply, and creating things with real-world impact.
               </p>
               <p>
                 <Link
